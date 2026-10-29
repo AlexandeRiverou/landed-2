@@ -67,6 +67,19 @@ Until then the task stays open:
 If a rule blocks the task (missing permissions, a failing check that isn't yours, unclear requirements), stop and ask
 the human instead of working around it.
 
+## 6. Test preview after every change
+
+The human tests the game in the browser at **https://claude.ai/artifact/6vvTmbwBznvxiT49uftkHL**. Every time you push
+code changes (a new PR, or more commits on one), update that preview in the same turn:
+
+1. Run `npm run preview`. It builds `dist/VERSION.json` stamped `<branch>@<commit>` and prints the files map.
+2. Publish `index.html` to that same URL with the Artifact tool. Pass the printed map as `files` (it lists every
+   `src/*.js` module, so new modules are never left out) and a `label` naming the branch or PR. In a new
+   conversation, `read` the artifact once before publishing, so it updates in place instead of making a new one.
+3. Give the human the link, and say which branch or PR it shows. The title card shows the build too.
+
+The preview shows the work under review, not necessarily `main`. After a merge, republish from `main` when asked.
+
 ## Project quick reference
 
 - Loop-de-Whoops: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.

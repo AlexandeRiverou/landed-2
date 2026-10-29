@@ -8,7 +8,8 @@
     "check": "for f in src/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done",
     "build": "node scripts/build.mjs",
     "test": "node scripts/smoke-test.mjs",
-    "serve": "python3 -m http.server 8000"
+    "serve": "python3 -m http.server 8000",
+    "preview": "RELEASE_VERSION=\"$(git rev-parse --abbrev-ref HEAD)@$(git rev-parse --short HEAD)\" node scripts/build.mjs && node scripts/preview-files.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",

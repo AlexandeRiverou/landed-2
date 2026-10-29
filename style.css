@@ -63,6 +63,8 @@ html, body {
 #zone-card .zone-blurb { font-size: 14px; font-weight: 600; color: #fff; text-shadow: 0 1px 0 var(--ink), 0 0 6px var(--ink); }
 #best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
 #best:empty { display: none; }
+#build-info:empty { display: none; }
+#build-info { font-family: ui-monospace, Menlo, monospace; }
 
 /* Active power-ups, stacked above the hull/boost bars. */
 #powerups { position: absolute; left: 14px; bottom: 120px; display: flex; flex-direction: column-reverse; gap: 5px; width: 220px; }
