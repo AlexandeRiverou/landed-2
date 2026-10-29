@@ -15,6 +15,28 @@ python3 -m http.server 8000
 
 (Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.)
 
+## Building, testing and releasing
+
+```bash
+npm ci            # three.js + Playwright
+npm run check     # syntax check every module
+npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN needed)
+npx playwright install chromium   # once
+npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
+                  # world mutations and a boss fight; fails on any error
+```
+
+CI/CD (`.github/workflows/ci.yml`) runs the same steps on every push and pull request and uploads the zipped build
+as a workflow artifact. To publish a release, push a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow then creates a GitHub Release with `loop-de-whoops-v1.0.0.zip` attached. Unzip it and serve the folder
+with any static server.
+
 ## Controls
 
 | Action | Keys |

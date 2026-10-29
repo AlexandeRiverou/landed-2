@@ -1,0 +1,98 @@
+# CI/CD for Loop-de-Whoops.
+#  - Every push and pull request: syntax check, build an offline-ready dist/, smoke-test it in
+#    headless Chromium, and upload the zipped build as a workflow artifact.
+#  - Pushing a tag like v1.2.0: the same, then publish a GitHub Release with the zip attached.
+name: CI/CD
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Check, build & smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke test
+        run: npm test
+
+      - name: Package release zip
+        run: |
+          mkdir -p release
+          name="loop-de-whoops-${{ steps.version.outputs.version }}"
+          cp -r dist "release/$name"
+          (cd release && zip -qr "$name.zip" "$name")
+          ls -l release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loop-de-whoops-${{ steps.version.outputs.version }}
+          path: release/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: loop-de-whoops-${{ needs.build.outputs.version }}
+          path: release
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" release/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Loop-de-Whoops $TAG" \
+            --generate-notes
