@@ -42,6 +42,7 @@ try {
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.click('#start');
+  await page.evaluate(async () => { window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS; });
 
   const report = await page.evaluate(() => {
     const G = window.G;
@@ -80,6 +81,32 @@ try {
     for (let i = 0; i < 30 * 120 && !boss.dead; i++) { G.player.grace = 1; G.player.nudgeToward(boss.pos, 6, 1 / 30); step(1); }
     G.input.keys.delete('Space');
     out.bossDefeated = boss.dead;
+    step(10);
+    out.bossDroppedPowerup = G.powerups.pickups.length > 0;
+
+    // Power-ups: a pickup spawns ahead, flying into it activates it, and every type runs and expires.
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+    G.powerups.timer = 0;
+    step(2);
+    const pickup = G.powerups.pickups[0];
+    out.pickupSpawned = !!pickup;
+    if (pickup) { G.player.pos.copy(pickup.pos); step(2); }
+    out.pickupCollected = G.powerups.active.size > 0 || G.player.health === G.player.maxHealth;
+    for (const id of Object.keys(window.POWERUPS_FOR_TEST || {})) { G.powerups.activate(id); }
+    G.input.keys.add('Space');
+    step(30 * 5);
+    G.input.keys.delete('Space');
+    out.powerupsActiveMidway = G.powerups.active.size;
+    step(30 * 60);
+    out.powerupsActiveAfterAMinute = G.powerups.active.size;
+
+    // Progression: score is XP; ranks and perks unlock as it grows.
+    const hull = G.player.maxHealth;
+    G.score = Math.max(G.score, 4000);
+    step(2);
+    out.level = G.progress.level;
+    out.perks = G.progress.perks.length;
+    out.hullGrew = G.player.maxHealth > hull || G.progress.level >= 3;
     out.score = G.score;
     out.chunks = G.terrain.chunks.size;
     return out;
@@ -92,6 +119,10 @@ try {
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [report.bossDefeated, 'boss can be defeated'],
     [report.chunks > 20, 'terrain is loaded'],
+    [report.bossDroppedPowerup, 'boss drops a power-up'],
+    [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
+    [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {

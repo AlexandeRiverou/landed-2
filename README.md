@@ -70,6 +70,16 @@ blimps that drop "special offers", zapping sky jellyfish, grumpy ground cannons,
 storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows. Enemies spawn in a narrow cone straight
 ahead of you and carry a small red marker, so you see them coming.
 
+**Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
+40 s; never more than one waiting), and every boss drops one. Each lasts a few seconds, shown with a countdown in the
+bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,
+Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and Objective Radar.
+
+**Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
+→ Sky Intern → … → Supreme Commander Of Up) and grants a permanent perk for the flight: more hull, faster boost
+recharge, higher fire rate, longer and more frequent power-ups, harder-hitting bullets... The XP bar is under your
+score, and your best run is remembered on the title screen.
+
 **Bosses** (`src/enemies.js`, `src/objectives.js`): every 4 completed objectives a crowned boss shows up, cycling
 through King Drone the Unpleasant (summons minions), Her Royal Honkness the Goose Queen (golden eggs), The Mothership
 (orb shotguns) and Thunderclaus (lightning up close, hail from afar). Bosses circle you, taunt you, and get ENRAGED below

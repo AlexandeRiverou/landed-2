@@ -477,7 +477,7 @@ function tailwind(G, o) {
       if (!tg || t <= 0) { p.wind.set(0, 0, 0); return false; }
       if (p.dead) return;
       _v.subVectors(tg, p.pos).normalize();
-      p.wind.copy(_v).multiplyScalar(28);
+      p.wind.copy(_v).multiplyScalar(24);
       p.nudgeToward(tg, 0.9, dt);
     },
     dispose() { G.player.wind.set(0, 0, 0); },
