@@ -29,7 +29,7 @@ export class UI {
     i.textContent = icons[kind] || '✈️';
     n.append(i, document.createTextNode(text));
     this.el.notes.prepend(n);
-    while (this.el.notes.children.length > 4) this.el.notes.lastChild.remove();
+    while (this.el.notes.children.length > 3) this.el.notes.lastChild.remove();
     setTimeout(() => { n.classList.add('out'); setTimeout(() => n.remove(), 400); }, dur * 1000);
   }
 
@@ -50,6 +50,14 @@ export class UI {
     e.obj.classList.add('pop');
     e.objTitle.textContent = obj.title;
     e.objDesc.textContent = obj.desc;
+  }
+
+  bossBar(e) {
+    const bar = document.getElementById('boss-bar');
+    if (!e) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden');
+    document.getElementById('boss-name').textContent = `👑 ${e.def.name}${e.enraged ? ' (ENRAGED)' : ''}`;
+    document.getElementById('boss-fill').style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
   }
 
   flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }

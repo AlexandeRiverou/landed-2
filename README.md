@@ -41,6 +41,11 @@ crystals, lollipops, donuts, gnomes, traffic cones and giant rubber ducks.
 **Enemies** (`src/enemies.js`): angry drones, spiky balloon mines, a seagull gang, orb-spitting UFOs, grumpy storm
 clouds that zap you, and evil top-hat pigeons. Harder types unlock as your score grows.
 
+**Bosses** (`src/enemies.js`, `src/objectives.js`): every 4 completed objectives a crowned boss shows up, cycling
+through King Drone the Unpleasant (summons minions), Her Royal Honkness the Goose Queen (golden eggs), The Mothership
+(orb shotguns) and Thunderclaus (lightning up close, hail from afar). Bosses circle you, taunt you, and get ENRAGED below
+half health. Each boss cycle adds HP. Defeating one pays 400+ points and reshapes the world like any other win.
+
 **13 objective types** (`src/objectives.js`): hoop, ring chain, tiny precision hoop, timed speed hoop, star collection,
 balloon popping, catching the golden goose, loop-de-loop (a real maneuver, detected from your pitch rotation), crop
 dusting (low flying), climbing to an altitude, buzzing a giant landmark, the pigeon hunt, and flying under a stone arch.

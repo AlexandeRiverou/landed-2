@@ -93,7 +93,7 @@ function objective(o) {
 function mkHoop(G, opt = {}) {
   const R = opt.radius || 17;
   const ring = makeRing(R, opt.color ?? '#ffc23a');
-  ring.position.copy(pointAhead(G, opt.dMin ?? 450, opt.dMax ?? 800, opt.spread ?? 1.1));
+  ring.position.copy(pointAhead(G, opt.dMin ?? 350, opt.dMax ?? 620, opt.spread ?? 1.1));
   faceFlat(ring, G.player.pos);
   G.scene.add(ring);
   let warnedTime = false;
@@ -140,7 +140,7 @@ const mkTinyHoop = (G) => mkHoop(G, {
 });
 
 const mkTimedHoop = (G) => mkHoop(G, {
-  type: 'timed', timeLimit: 28, reward: 180, color: '#3ad8ff', dMin: 400, dMax: 600, noun: 'the speed hoop',
+  type: 'timed', timeLimit: 28, reward: 180, color: '#3ad8ff', dMin: 320, dMax: 480, noun: 'the speed hoop',
   title: pick(['Speed Hoop', 'Hoop, But Hurry', 'Express Delivery Ring']),
   desc: pick(['You have 28 seconds. The hoop has a dinner reservation.', 'Fly through it before it gets bored. It bores easily.']),
 });
@@ -148,7 +148,7 @@ const mkTimedHoop = (G) => mkHoop(G, {
 function mkChain(G) {
   const n = 4 + Math.floor(Math.random() * 3);
   const rings = [];
-  let p = pointAhead(G, 380, 560, 0.7, 50, 100);
+  let p = pointAhead(G, 300, 450, 0.7, 50, 100);
   const dir = new THREE.Vector3().subVectors(p, G.player.pos).setY(0).normalize();
   for (let k = 0; k < n; k++) {
     const r = makeRing(15, k === 0 ? '#ffc23a' : '#7ad8ff');
@@ -211,7 +211,7 @@ function mkChain(G) {
 function mkCollect(G, kind) {
   const stars = kind === 'stars';
   const n = stars ? 6 : 5;
-  const center = pointAhead(G, 550, 800, 0.8, 60, 130);
+  const center = pointAhead(G, 420, 620, 0.8, 60, 130);
   const items = [];
   const colors = ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff'];
   for (let k = 0; k < n; k++) {
@@ -272,7 +272,7 @@ function mkCollect(G, kind) {
 
 function mkGoose(G) {
   const goose = makeGoose();
-  goose.position.copy(pointAhead(G, 400, 600, 0.6, 50, 90));
+  goose.position.copy(pointAhead(G, 320, 480, 0.6, 50, 90));
   G.scene.add(goose);
   const vel = new THREE.Vector3();
   let speedMul = 1, scale = 1, lastHonk = 0;
@@ -292,7 +292,7 @@ function mkGoose(G) {
       wander.applyAxisAngle(Y, rand(-1, 1) * dt);
       const desired = d < 350 ? away.normalize().multiplyScalar(0.75).addScaledVector(wander, 0.5) : wander.clone().multiplyScalar(0.4);
       desired.y *= 0.3;
-      desired.normalize().multiplyScalar(54 * speedMul * (d < 350 ? 1 : 0.4));
+      desired.normalize().multiplyScalar(40 * speedMul * (d < 350 ? 1 : 0.4));
       vel.lerp(desired, 1 - Math.exp(-dt * 1.5));
       goose.position.addScaledVector(vel, dt);
       anim(goose, dt);
@@ -401,7 +401,7 @@ const BUZZ = [
 
 function mkBuzz(G) {
   const [kind, name, desc] = pick(BUZZ);
-  const spot = pointAhead(G, 650, 900, 0.8);
+  const spot = pointAhead(G, 500, 700, 0.8);
   const scale = rand(4, 6);
   const m = makeLandmark(kind, scale);
   const g = new THREE.Group();
@@ -433,7 +433,7 @@ function mkBuzz(G) {
 
 function mkGate(G) {
   const R = 32;
-  const spot = pointAhead(G, 600, 850, 0.8);
+  const spot = pointAhead(G, 480, 680, 0.8);
   const arch = makeArch(R);
   arch.position.set(spot.x, groundAt(G, spot.x, spot.z) + 2, spot.z);
   faceFlat(arch, G.player.pos);
@@ -467,7 +467,7 @@ function mkGate(G) {
 
 function mkHunt(G) {
   const n = 3;
-  const center = pointAhead(G, 500, 700, 0.7, 50, 100);
+  const center = pointAhead(G, 400, 560, 0.7, 50, 100);
   const list = [];
   for (let k = 0; k < n; k++) list.push(G.enemies.spawn('pigeon', center.clone().add(new THREE.Vector3(rand(-60, 60), rand(-10, 20), rand(-60, 60))), { quest: true, anchor: center }));
   let scale = 1;
@@ -497,6 +497,38 @@ function mkHunt(G) {
   });
 }
 
+// ---------- bosses ----------
+
+const BOSS_ORDER = ['kingDrone', 'gooseQueen', 'megaUfo', 'thunder'];
+export const BOSS_EVERY = 4;
+
+function mkBoss(G, level) {
+  const kind = BOSS_ORDER[level % BOSS_ORDER.length];
+  const e = G.enemies.spawnBoss(kind, pointAhead(G, 420, 560, 0.4, 70, 110), level);
+  const d = e.def;
+  G.ui.bossBar(e);
+  G.ui.notify(`⚠ BOSS INCOMING: ${d.name}!`, 'bad', 5);
+  G.audio.zap();
+  return objective({
+    type: 'boss', reward: 400 + level * 100, noun: d.noun,
+    title: `BOSS: ${d.short}`, desc: `${d.desc} Shoot it with Space / click!`,
+    caps: new Set(['grow', 'approach', 'easier']),
+    signText: ['BOSS FIGHT', 'THAT WAY →'],
+    hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Your hull repairs itself if you avoid hits for 4 seconds.'],
+    target() { return e.dead ? null : e.pos; },
+    onUpdate(dt, G) {
+      G.ui.bossBar(e);
+      this.progress = `❤️ Boss HP ${Math.max(0, Math.ceil(e.hp))} / ${e.maxHp}`;
+      if (e.hp !== this.lastHp) { if (this.lastHp !== undefined) this.progressed = true; this.lastHp = e.hp; }
+      return e.dead ? 'done' : null;
+    },
+    grow(f) { const k = Math.min(f, 1.4); e.radius *= k; e.mesh.scale.multiplyScalar(k); },
+    approach(G, f) { e.pos.lerp(G.player.pos, f * 0.6); },
+    easier() { e.hp = Math.max(1, Math.ceil(e.hp * 0.7)); return `${d.short} pulled a muscle. Boss HP -30%. Embarrassing for them, great for you.`; },
+    dispose(G) { G.ui.bossBar(null); if (!e.dead) G.enemies.removeEnemy(e); },
+  });
+}
+
 // ---------- manager ----------
 
 const TYPES = [
@@ -513,18 +545,28 @@ export class Objectives {
     this.recent = [];
     this.completed = 0;
     this.cooldown = 4;
+    this.bossLevel = 0;
+    this.bossAt = 0;
   }
 
   next() {
     const G = this.G;
+    if (this.completed > 0 && this.completed % BOSS_EVERY === 0 && this.bossAt !== this.completed) {
+      this.bossAt = this.completed;
+      return this.start(mkBoss(G, this.bossLevel++), 'boss');
+    }
     const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]));
     const [type, , make] = weightedPick(pool, (t) => t[1]);
+    this.start(make(G), type);
+  }
+
+  start(obj, type) {
+    const G = this.G;
     this.recent = [type, ...this.recent].slice(0, 3);
-    const obj = make(G);
     this.current = obj;
     G.persuasion.reset(obj);
     G.ui.setObjective(obj);
-    G.ui.notify(`${pick(T.newObjective)} ${obj.title}`, 'good', 4);
+    if (type !== 'boss') G.ui.notify(`${pick(T.newObjective)} ${obj.title}`, 'good', 4);
     G.audio.ding(0.8);
   }
 
@@ -562,7 +604,7 @@ export class Objectives {
     this.cooldown = 4;
     G.ui.setObjective(null);
     const changes = G.mutations.celebrate(forced);
-    G.ui.banner(forced ? 'PARTICIPATION TROPHY!' : pick(T.successTitle), [`+${reward} points`, ...lines, pick(T.worldChange), ...changes.map((c) => '• ' + c)], 7);
+    G.ui.banner(forced ? 'PARTICIPATION TROPHY!' : obj.type === 'boss' ? 'BOSS DEFEATED!' : pick(T.successTitle), [`+${reward} points`, ...lines, ...changes.map((c) => '• ' + c)], 6);
     document.getElementById('score').classList.remove('bump');
     void document.getElementById('score').offsetWidth;
     document.getElementById('score').classList.add('bump');

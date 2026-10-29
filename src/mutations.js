@@ -127,9 +127,9 @@ const MUTATIONS = [
     G.player.setSkin(s);
     return `Your plane got a new paint job: "${s.name}". It's... a choice.`;
   } },
-  { id: 'speed', group: 'speed', can: (G) => G.player.baseSpeed < 112, apply(G) {
-    G.player.baseSpeed = Math.min(115, G.player.baseSpeed + 8);
-    return 'Engine upgrade: +8 speed! Warranty void.';
+  { id: 'speed', group: 'speed', can: (G) => G.player.baseSpeed < 74, apply(G) {
+    G.player.baseSpeed = Math.min(76, G.player.baseSpeed + 5);
+    return 'Engine upgrade: +5 speed! Warranty void.';
   } },
   { id: 'clouds', group: 'clouds', apply(G) {
     const [color, count, text] = pick([
@@ -190,12 +190,12 @@ export class Mutations {
   celebrate(forced) {
     const G = this.G, p = G.player;
     G.audio.success();
-    G.ui.flash('#fff6c8', 0.5);
+    // Fireworks well off to the sides and high up, so they celebrate without blocking the view.
     for (let k = 0; k < 6; k++) {
-      const pos = p.pos.clone().addScaledVector(p.forward, rand(60, 160)).add(new THREE.Vector3(rand(-80, 80), rand(20, 80), rand(-80, 80)));
+      const side = (k % 2 ? 1 : -1) * rand(120, 200);
+      const pos = p.pos.clone().addScaledVector(p.forward, rand(180, 320)).addScaledVector(p.right, side).add(new THREE.Vector3(0, rand(70, 140), 0));
       setTimeout(() => G.fx.firework(pos), k * 220);
     }
-    G.fx.confetti(p.pos.clone().addScaledVector(p.forward, 30));
 
     const count = forced ? 2 : Math.min(6, 3 + Math.floor(G.objectives.completed / 2));
     const pool = MUTATIONS.filter((m) => !m.can || m.can(G));

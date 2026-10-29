@@ -105,7 +105,7 @@ export const TACTICS = [
   },
   {
     id: 'calmEnemies', tier: 2,
-    can: (o, P) => P.G.enemies.list.some((e) => !e.quest) && o.type !== 'hunt',
+    can: (o, P) => P.G.enemies.list.some((e) => !e.quest) && o.type !== 'hunt' && o.type !== 'boss',
     apply: (G) => { G.enemies.calm(45); },
     texts: ['We bribed the enemies to take a coffee break. 45 seconds. GO.', 'Enemies are on strike. They want better dental. Fly freely!'],
   },
@@ -445,7 +445,7 @@ function birds(G, o) {
       const p = G.player;
       if (t > 9 || center.distanceTo(tg) < 30) { t = 0; center.copy(p.pos).addScaledVector(p.forward, 40).add(new THREE.Vector3(0, 12, 0)); }
       _v.subVectors(tg, center).normalize();
-      center.addScaledVector(_v, 85 * dt);
+      center.addScaledVector(_v, 60 * dt);
       for (const f of flock) {
         f.b.position.copy(center).add(f.off);
         f.b.lookAt(_v.clone().add(f.b.position));
@@ -477,7 +477,7 @@ function tailwind(G, o) {
       if (!tg || t <= 0) { p.wind.set(0, 0, 0); return false; }
       if (p.dead) return;
       _v.subVectors(tg, p.pos).normalize();
-      p.wind.copy(_v).multiplyScalar(40);
+      p.wind.copy(_v).multiplyScalar(28);
       p.nudgeToward(tg, 0.9, dt);
     },
     dispose() { G.player.wind.set(0, 0, 0); },

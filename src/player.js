@@ -6,7 +6,7 @@ import { pick, T } from './texts.js';
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
 
-const PITCH_RATE = 1.5, ROLL_RATE = 2.6, YAW_RATE = 0.6, TURN = 1.35, MAX_BANK = 0.9, BANK_RESPONSE = 4;
+const PITCH_RATE = 1.25, ROLL_RATE = 2.2, YAW_RATE = 0.5, TURN = 1.1, MAX_BANK = 0.9, BANK_RESPONSE = 4;
 
 export class Player {
   constructor(G) {
@@ -22,8 +22,8 @@ export class Player {
     this.up = new THREE.Vector3(0, 1, 0);
     this.right = new THREE.Vector3(1, 0, 0);
     this.wind = new THREE.Vector3();
-    this.baseSpeed = 72;
-    this.speed = 72;
+    this.baseSpeed = 52;
+    this.speed = 52;
     this.boost = 1;
     this.freeBoost = 0;
     this.health = 100;
@@ -122,7 +122,7 @@ export class Player {
     if (this.freeBoost > 0) this.freeBoost -= dt;
     else if (boosting) this.boost = Math.max(0, this.boost - dt * 0.35);
     else this.boost = Math.min(1, this.boost + dt * 0.15);
-    const target = (boosting ? this.baseSpeed * 1.9 : this.baseSpeed) - this.forward.y * 18;
+    const target = (boosting ? this.baseSpeed * 1.8 : this.baseSpeed) - this.forward.y * 12;
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
     this.boosting = boosting;
 

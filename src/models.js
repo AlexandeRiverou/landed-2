@@ -483,3 +483,17 @@ export function disposeTree(obj) {
     }
   });
 }
+
+// Bosses wear crowns. It's in the union contract.
+export function makeCrown(s = 1) {
+  const g = new THREE.Group();
+  const gold = new THREE.MeshPhongMaterial({ color: '#ffcc33', emissive: '#8a5a00', emissiveIntensity: 0.5, shininess: 100, flatShading: true });
+  add(g, Cyl(2, 2, 1.2, 10), gold, { y: 0.6 });
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * PI * 2;
+    add(g, Cone(0.55, 1.8, 5), gold, { x: Math.cos(a) * 1.7, y: 2, z: Math.sin(a) * 1.7 });
+    add(g, Sph(0.3, 5, 4), basic(k % 2 ? '#ff3a5a' : '#3ad8ff'), { x: Math.cos(a) * 2, y: 0.6, z: Math.sin(a) * 2 });
+  }
+  g.scale.setScalar(s);
+  return g;
+}

@@ -141,7 +141,7 @@ function step(dt) {
   updateCamera(dt);
   G.sky.update(dt);
   G.ui.update(dt);
-  G.audio.setEngine(p.speed / 140, !p.dead);
+  G.audio.setEngine(p.speed / 100, !p.dead);
 }
 
 G.step = step; // console/debug: advance the simulation without rendering
