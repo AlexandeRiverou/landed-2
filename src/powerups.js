@@ -59,7 +59,7 @@ export class PowerUps {
     const G = this.G, p = G.player;
     const f = flatForward(G), side = new THREE.Vector3(-f.z, 0, f.x);
     const pos = p.pos.clone().addScaledVector(f, rand(220, 320)).addScaledVector(side, rand(-60, 60));
-    pos.y = Math.max(p.pos.y + rand(-5, 20), groundAt(G, pos.x, pos.z) + 30);
+    pos.y = Math.min(Math.max(p.pos.y + rand(-5, 20), groundAt(G, pos.x, pos.z) + 30), G.terrain.ceilingHeight(pos.x, pos.z) - 20);
     this.drop(pos);
     if (!this.seenFirst) {
       this.seenFirst = true;

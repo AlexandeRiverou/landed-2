@@ -90,6 +90,9 @@ try {
     const boss = G.enemies.list.find((e) => e.boss);
     if (!boss) throw new Error('boss did not spawn');
     // Count drops directly: the plane is usually close enough to grab the drop the moment the boss dies.
+    // Regular power-up spawns go through drop() too: hold them off so only the boss's drop is counted.
+    const puTimer = G.powerups.timer;
+    G.powerups.timer = 1e9;
     let drops = 0;
     const drop = G.powerups.drop.bind(G.powerups);
     G.powerups.drop = (...args) => { drops++; return drop(...args); };
@@ -98,7 +101,9 @@ try {
     G.input.keys.delete('Space');
     out.bossDefeated = boss.dead;
     out.bossDroppedPowerup = drops === 1;
+    out.bossDrops = drops;
     G.powerups.drop = drop;
+    G.powerups.timer = puTimer;
     step(30);
 
     // Every boss: spawns, fights for a while (attacks, summons, dashes), then falls and completes the objective.
@@ -275,11 +280,26 @@ try {
     out.zoneAdvanced = G.zones.index === zone0 + 1;
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
+    const { CURVE } = await import('./src/curve.js');
     for (let i = 0; i < zoneCount; i++) {
       G.zones.enter(i);
       step(90);
-      const z = G.zones.current;
-      out.zones.push({ name: z.name, ground: Math.round(G.terrain.surfaceHeight(G.player.pos.x, G.player.pos.z)), asteroids: G.zones.asteroids.list.length });
+      const z = G.zones.current, pp = G.player.pos;
+      const ground = G.terrain.surfaceHeight(pp.x, pp.z), roof = G.terrain.ceilingHeight(pp.x, pp.z);
+      out.zones.push({
+        name: z.name, ground: Math.round(ground), asteroids: G.zones.asteroids.list.length,
+        roof: Number.isFinite(roof) ? Math.round(roof) : null, gap: Number.isFinite(roof) ? Math.round(roof - ground) : null,
+        planeUnderRoof: pp.y < roof, curve: +(CURVE.value * 1e4).toFixed(2),
+      });
+      if (z.world.cave) {
+        // Things placed in the cave stay under the roof: a fresh objective, and an enemy spawn.
+        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        G.objectives.completed = 1;
+        G.objectives.next();
+        const t = G.objectives.current.target();
+        out.caveObjective = { type: G.objectives.current.type, underRoof: !t || t.y < G.terrain.ceilingHeight(t.x, t.z) };
+        G.objectives.current.dispose(G); G.objectives.current = null;
+      }
       if (z.name === 'Meteor Belt') {
         // A big asteroid shot apart breaks into smaller ones.
         const a = G.zones.asteroids;
@@ -331,7 +351,10 @@ try {
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
-    [report.zones.length >= 10, 'every zone loads'],
+    [report.zones.length >= 20, 'every zone loads (20+)'],
+    [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
+    [report.zones.filter((z) => z.name !== 'Crystal Caverns').every((z) => z.roof === null), 'only the cave has a roof'],
+    [report.zones.find((z) => z.name === 'Planet Pebble').curve > 1 && report.zones[0].curve < 0.5, 'Planet Pebble curves the horizon (and nothing else does)'],
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],

@@ -1,10 +1,11 @@
 // DOM HUD: score, objective card, notifications, banner, target marker + edge arrow.
 import * as THREE from 'three';
+import { curveDrop } from './curve.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_NOTES = 2;   // on screen at once
 const MAX_QUEUE = 3;   // waiting; anything beyond this is dropped
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _t = new THREE.Vector3();
 
 export class UI {
   constructor(G) {
@@ -144,9 +145,12 @@ export class UI {
     this.updatePointer(t, dist);
   }
 
-  updatePointer(t, dist) {
+  updatePointer(target, dist) {
     const cam = this.G.camera, e = this.el;
     const w = innerWidth, h = innerHeight;
+    // On a curved (tiny-planet) world the target is drawn lower than it really is: point at where it's drawn.
+    const t = _t.copy(target);
+    t.y -= curveDrop(t.x, t.z, cam.position);
     _v.copy(t).applyMatrix4(cam.matrixWorldInverse);
     const behind = _v.z > 0;
     const camX = _v.x, camY = _v.y;

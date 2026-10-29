@@ -7,6 +7,7 @@ import { TOD } from './sky.js';
 import { PLANE_SKINS } from './models.js';
 import { pick, rand } from './texts.js';
 import { flatForward } from './objectives.js';
+import { noCurve } from './curve.js';
 
 const TOD_TEXT = {
   noon: 'High noon. The sun is directly overhead, judging you.',
@@ -148,8 +149,8 @@ const MUTATIONS = [
     const kind = pick(['planet', 'moons', 'rainbow']);
     const dir = flatForward(G).applyAxisAngle(new THREE.Vector3(0, 1, 0), rand(-0.6, 0.6));
     if (kind === 'planet') {
-      const p = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), new THREE.MeshBasicMaterial({ color: pick(['#ffb46a', '#8ad0ff', '#d08aff']), fog: false }));
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(520, 40, 2, 48), new THREE.MeshBasicMaterial({ color: '#fff0c8', fog: false, transparent: true, opacity: 0.7 }));
+      const p = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), noCurve(new THREE.MeshBasicMaterial({ color: pick(['#ffb46a', '#8ad0ff', '#d08aff']), fog: false })));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(520, 40, 2, 48), noCurve(new THREE.MeshBasicMaterial({ color: '#fff0c8', fog: false, transparent: true, opacity: 0.7 })));
       ring.rotation.x = 1.2;
       p.add(ring);
       p.position.copy(dir).multiplyScalar(3300).setY(900);
@@ -158,7 +159,7 @@ const MUTATIONS = [
     }
     if (kind === 'moons') {
       for (let k = 0; k < 3; k++) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(rand(80, 160), 16, 12), new THREE.MeshBasicMaterial({ color: pick(['#f4f0e0', '#ffd0d0', '#d0e0ff']), fog: false }));
+        const m = new THREE.Mesh(new THREE.SphereGeometry(rand(80, 160), 16, 12), noCurve(new THREE.MeshBasicMaterial({ color: pick(['#f4f0e0', '#ffd0d0', '#d0e0ff']), fog: false })));
         m.position.copy(dir).applyAxisAngle(new THREE.Vector3(0, 1, 0), (k - 1) * 0.35).multiplyScalar(3300).setY(700 + k * 300);
         G.sky.decor.add(m);
       }
@@ -166,7 +167,7 @@ const MUTATIONS = [
     }
     const colors = ['#ff3a3a', '#ff9a3a', '#ffe03a', '#4aff6a', '#3ab0ff', '#9a5aff'];
     colors.forEach((c, i) => {
-      const t = new THREE.Mesh(new THREE.TorusGeometry(1800 - i * 60, 30, 4, 64, Math.PI), new THREE.MeshBasicMaterial({ color: c, fog: false, transparent: true, opacity: 0.55 }));
+      const t = new THREE.Mesh(new THREE.TorusGeometry(1800 - i * 60, 30, 4, 64, Math.PI), noCurve(new THREE.MeshBasicMaterial({ color: c, fog: false, transparent: true, opacity: 0.55 })));
       t.position.copy(dir).multiplyScalar(2500).setY(-300);
       t.rotation.y = Math.atan2(dir.x, dir.z);
       G.sky.decor.add(t);

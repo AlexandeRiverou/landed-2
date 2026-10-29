@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters } from './world.js';
 import { Asteroids } from './asteroids.js';
+import { CURVE, noCurve } from './curve.js';
 
 export const ZONE_EVERY = 3; // completed objectives per zone
 
@@ -18,14 +19,29 @@ export const ZONES = [
     world: { palette: 'Classic Countryside' }, sky: 'noon', weather: 'clear', clouds: ['#ffffff', 40], mood: 'day', lock: LOCK,
   },
   {
+    name: 'Autumn Woods', blurb: 'Crunchy leaves, cozy forests and pumpkin-coloured everything.',
+    world: { palette: 'Autumn Spice', propDensity: 1.5, amp: 0.8, tempBias: -0.45, mesa: 0.3 }, sky: 'morning', weather: 'leaves', clouds: ['#fff0e0', 35], mood: 'day', lock: [...LOCK, 'weather'],
+  },
+  {
     name: 'Canyon Country', blurb: 'Red rock, deep gorges and table mountains. Bring sunscreen.',
     world: { palette: 'Classic Countryside', tempBias: 0.7, canyon: 1.4, canyonWidth: 2.2, mesa: 2, spikes: 1.2, amp: 0.8 },
     sky: 'morning', weather: 'clear', clouds: ['#fff4e0', 15], mood: 'day', lock: LOCK,
   },
   {
+    name: 'Dune Sea', blurb: 'Endless golden dunes. Somewhere out here, a cactus is very lonely.',
+    world: { palette: 'dunes', tempBias: 1.3, amp: 0.2, roughness: 1.8, terrace: 0, mesa: 0.3, canyon: 0, spikes: 0.1, seaLevel: -40, propDensity: 0.5, floatingIslands: 0 },
+    sky: 'noon', weather: 'dust', clouds: ['#fff8e8', 10], fog: 0.85, mood: 'day', lock: [...LOCK, 'weather', 'sea'],
+  },
+  {
     name: 'Frozen Peaks', blurb: 'Jagged ice-cold mountains. The snowmen here are judgmental.',
     world: { palette: 'Winter Wonderland', amp: 1.9, terrace: 0.9, snowLine: 60, tempBias: -0.5 },
     sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'dusk', lock: [...LOCK, 'weather'],
+  },
+  {
+    name: 'Crystal Caverns', blurb: 'You flew into a cave. There is a ceiling now. Please respect the ceiling.',
+    world: { palette: 'cavern', cave: 1, amp: 0.45, terrace: 0, mesa: 0, canyon: 0.8, spikes: 1.1, seaLevel: -5, snowLine: 9999, floatingIslands: 0, propTheme: 'cave', propDensity: 1.1, tempBias: -0.2 },
+    sky: 'cave', weather: 'spores', clouds: ['#ffffff', 0], fog: 0.45, mood: 'dusk', noObjectives: ['altitude', 'stairs'],
+    lock: [...LOCK, 'weather', 'clouds', 'islands', 'fog', 'amp', 'sea', 'shape', 'spikes', 'mesa', 'canyon'],
   },
   {
     name: 'Volcano Land', blurb: 'Lava seas and falling ash. Do not land. Really, do not.',
@@ -38,9 +54,19 @@ export const ZONES = [
     sky: 'sunset', weather: 'clear', clouds: ['#ffd8c0', 35], mood: 'day', lock: LOCK,
   },
   {
+    name: 'Giant\'s Garden', blurb: 'Everything here is enormous. You are basically a bug with a propeller.',
+    world: { palette: 'Deep Jungle', propTheme: 'garden', propScale: 3.2, propDensity: 0.9, amp: 0.6, tempBias: -0.3 },
+    sky: 'noon', weather: 'petals', clouds: ['#ffffff', 30], mood: 'day', lock: [...LOCK, 'weather'],
+  },
+  {
     name: 'Mushroom Forest', blurb: 'Glowing toxic jungle. The mushrooms are bigger than your plane.',
     world: { palette: 'Toxic Neon', propTheme: 'mushroom', propScale: 2, propDensity: 1.4 },
     sky: 'alien', weather: 'bubbles', clouds: ['#c8ffd8', 30], mood: 'dream', lock: [...LOCK, 'weather'],
+  },
+  {
+    name: 'Princess Kingdom', blurb: 'Pink castles, heart-shaped trees and unicorns. Curtsy while flying.',
+    world: { palette: 'princess', propTheme: 'princess', propDensity: 1.3, amp: 0.7, spikes: 0.2, tempBias: -0.2 },
+    sky: 'royal', weather: 'petals', clouds: ['#fff0fa', 45], mood: 'dream', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Candy Kingdom', blurb: 'Lollipop forests and donut boulders. Dentists fear this place.',
@@ -73,6 +99,16 @@ export const ZONES = [
     sky: 'space', weather: 'clear', clouds: ['#ffffff', 0], mood: 'space', decor: 'earthrise', asteroids: 6, lock: SPACE_LOCK,
   },
   {
+    name: 'Mars', blurb: 'Red dust, deep canyons, two tiny moons and zero Wi-Fi.',
+    world: { palette: 'Mars Vacation', craters: 0.6, amp: 1.1, canyon: 1.2, mesa: 1.2, seaLevel: -60, propTheme: 'lunar', propDensity: 0.4, floatingIslands: 0, balloons: 0, tempBias: 0.6 },
+    sky: 'mars', weather: 'dust', clouds: ['#f0c8a0', 8], fog: 0.8, mood: 'dusk', decor: 'marsMoons', lock: [...LOCK, 'weather', 'sea', 'islands'],
+  },
+  {
+    name: 'Planet Pebble', blurb: 'A planet so small you can watch it curve away. Try not to fall off.',
+    world: { palette: 'Classic Countryside', curve: 1 / 2400, amp: 0.7, seaLevel: 10, floatingIslands: 0, propDensity: 1.2 },
+    sky: 'pebble', weather: 'clear', clouds: ['#ffffff', 14, 220], mood: 'dream', lock: [...LOCK, 'islands'],
+  },
+  {
     name: 'Alien World', blurb: 'Purple grass, crystal forests, a lime sky. You are far from home.',
     world: { palette: 'Alien Planet', amp: 1.5, spikes: 1, propTheme: 'crystal', propDensity: 1.2 },
     sky: 'alien', weather: 'glitter', clouds: ['#b0ffe8', 35], mood: 'dream', decor: 'twoMoons', lock: [...LOCK, 'weather'],
@@ -95,7 +131,10 @@ export class Zones {
   get current() { return ZONES[this.index]; }
 
   allowsMutation(group) { return !this.current.lock.includes(group); }
-  allowsObjective(type) { return !(this.current.noGround && GROUND_OBJECTIVES.has(type)); }
+  allowsObjective(type) {
+    const z = this.current;
+    return !(z.noGround && GROUND_OBJECTIVES.has(type)) && !z.noObjectives?.includes(type);
+  }
   allowsEnemy(def) { return !(this.current.noGround && def.ground); }
 
   // Called once per completed objective. Returns lines for the success card when a new zone begins.
@@ -144,9 +183,10 @@ export class Zones {
       const earth = planet(320, '#2a6ad0');
       earth.position.set(1800, 1500, -2600);
       this.decor.add(earth);
-    } else if (kind === 'twoMoons') {
-      for (const [r, c, x, y] of [[260, '#ffd0f0', -1600, 1200], [140, '#c8fff0', 1300, 1700]]) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshBasicMaterial({ color: c, fog: false }));
+    } else if (kind === 'twoMoons' || kind === 'marsMoons') {
+      const moons = kind === 'twoMoons' ? [[260, '#ffd0f0', -1600, 1200], [140, '#c8fff0', 1300, 1700]] : [[90, '#b8a898', -1200, 1500], [50, '#a89888', 900, 1900]];
+      for (const [r, c, x, y] of moons) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), noCurve(new THREE.MeshBasicMaterial({ color: c, fog: false })));
         m.position.set(x, y, -2800);
         this.decor.add(m);
       }
@@ -168,6 +208,7 @@ export class Zones {
     const G = this.G, z = this.current;
     this.asteroids.update(dt);
     this.decor.position.copy(G.camera.position);
+    CURVE.value += (world.curve - CURVE.value) * (1 - Math.exp(-dt * 0.8)); // the horizon bends in (and back out) gently
     const music = G.audio.music;
     if (music && music.mood !== undefined) music.setMood(z.mood); // music starts after the first click
     if (this.cardTimer > 0 && (this.cardTimer -= dt) <= 0) this.el.card.classList.remove('show');
@@ -194,7 +235,7 @@ function planet(radius, ocean) {
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32), new THREE.MeshBasicMaterial({ map: tex, fog: false })));
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(radius * 1.04, 48, 32), new THREE.MeshBasicMaterial({ color: '#8ac8ff', transparent: true, opacity: 0.25, fog: false, side: THREE.BackSide })));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 32), noCurve(new THREE.MeshBasicMaterial({ map: tex, fog: false }))));
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(radius * 1.04, 48, 32), noCurve(new THREE.MeshBasicMaterial({ color: '#8ac8ff', transparent: true, opacity: 0.25, fog: false, side: THREE.BackSide }))));
   return g;
 }

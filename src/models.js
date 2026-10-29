@@ -149,6 +149,7 @@ export function buildProps() {
     P(Box(3, 2.5, 3), C.brown, { y: 1.5 }), P(Box(0.2, 5, 0.2), C.black, { x: 1.2, y: 4.5, z: 1.2 }), P(Box(0.2, 5, 0.2), C.black, { x: -1.2, y: 4.5, z: -1.2 }),
   ], { scale: [0.9, 1.3], sink: 0, tints: ['#ff5a5a', '#ffd23a', '#5ad0ff', '#a05aff', '#5aff8a', '#ff8ad8'] });
   buildMoreProps();
+  buildFantasyProps();
 }
 
 // ---------- the countryside, the beach, the snow, and some questionable landmarks ----------
@@ -221,6 +222,44 @@ function buildMoreProps() {
   for (let k = 0; k < 8; k++) { const a = (k / 8) * PI * 2; stones.push(P(Box(2.2, 7, 1.4), '#9a968c', { x: Math.cos(a) * 10, y: 3.5, z: Math.sin(a) * 10, ry: -a })); }
   for (let k = 0; k < 8; k += 2) { const a = ((k + 0.5) / 8) * PI * 2; stones.push(P(Box(1.6, 1.2, 8.5), '#8a867c', { x: Math.cos(a) * 9.6, y: 7.6, z: Math.sin(a) * 9.6, ry: -a })); }
   def('stoneCircle', stones, { scale: [1, 1.4], sink: 0.4 });
+}
+
+// ---------- the princess kingdom and the caverns ----------
+function buildFantasyProps() {
+  // A fairy-tale castle: a keep with four pink-roofed towers, a gate and pennants.
+  const fc = [P(Box(14, 12, 14), '#f4ecf8', { y: 6 }), P(Cyl(3.2, 3.6, 22, 10), '#f8f0fc', { y: 11 }), P(Cone(4.2, 9, 10), '#ff7ac0', { y: 26.5 }), P(Box(0.15, 2.4, 1.8), '#ffd23a', { y: 32, z: 0.9 })];
+  for (const [x, z] of [[7, 7], [-7, 7], [7, -7], [-7, -7]]) fc.push(P(Cyl(2.2, 2.4, 16, 8), '#f8f0fc', { x, y: 8, z }), P(Cone(3, 6, 8), '#c07aff', { x, y: 19, z }));
+  fc.push(P(Box(4, 6, 0.3), '#a05ad0', { y: 3, z: 7.05 }), P(new THREE.CylinderGeometry(2, 2, 0.31, 12, 1, false, 0, PI), '#a05ad0', { y: 6, z: 7.05, rx: PI / 2, rz: PI / 2 }));
+  for (let k = 0; k < 6; k++) fc.push(P(Box(1.4, 1.2, 1.4), '#f4ecf8', { x: -6 + k * 2.4, y: 12.6, z: 7 }));
+  def('fairyCastle', fc, { scale: [1, 1.4] });
+
+  const legs = [[0.9, 1.4], [-0.9, 1.4], [0.9, -1.4], [-0.9, -1.4]].map(([x, z]) => P(Box(0.5, 2.4, 0.5), '#ffffff', { x, y: 1.2, z }));
+  def('unicorn', [
+    P(Box(2.4, 2.2, 4.4), '#ffffff', { y: 3.3 }), ...legs, P(Box(1.2, 2.4, 1.2), '#ffffff', { y: 4.8, z: 2.4, rx: -0.4 }),
+    P(Box(1.3, 1.3, 2.2), '#ffffff', { y: 5.9, z: 3.4 }), P(Cone(0.3, 2.2, 6), '#ffd23a', { y: 7.4, z: 3.8, rx: 0.5 }),
+    P(Box(0.5, 2.6, 1.6), '#ff7ac0', { y: 5.4, z: 2.1, rx: -0.4 }), P(Box(0.5, 0.6, 0.5), '#7ad8ff', { y: 6.4, z: 1.5 }),
+    P(Box(0.6, 2.6, 0.6), '#c07aff', { y: 3, z: -2.6, rx: 0.5 }), P(Sph(0.18, 4, 3), C.black, { x: 0.66, y: 6.2, z: 3.8 }), P(Sph(0.18, 4, 3), C.black, { x: -0.66, y: 6.2, z: 3.8 }),
+  ], { scale: [1.4, 2], sink: 0.1 });
+
+  // Two puffs and a point: a heart-shaped canopy on a slim trunk.
+  def('heartTree', [
+    P(Cyl(0.6, 0.9, 6, 6), '#b07a5a', { y: 3 }), P(Ico(3.2, 1), '#ff8ac8', { x: -2, y: 9.5 }), P(Ico(3.2, 1), '#ff8ac8', { x: 2, y: 9.5 }),
+    P(Cone(4.6, 5.5, 4), '#ff8ac8', { y: 6.6, rz: PI, ry: PI / 4, sz: 0.55 }),
+  ], { scale: [0.8, 1.3], tints: ['#ffffff', '#ffd0f0', '#e0d0ff', '#fff0d0'] });
+
+  def('carriage', [
+    P(Sph(3.2, 10, 8), '#ff9a3a', { y: 4.4, sx: 1.1 }), P(Box(0.4, 2.4, 0.4), '#3a8a2a', { y: 8 }), P(Ico(0.7), '#3a8a2a', { x: 0.5, y: 9.2 }),
+    P(Box(1.6, 1.8, 0.2), '#ffe08a', { y: 4.4, z: 3.2 }),
+    ...[[2.6, 2], [-2.6, 2], [2.6, -2], [-2.6, -2]].map(([x, z]) => P(Tor(1.2, 0.2, 4, 12), '#ffd23a', { x, y: 1.4, z, ry: PI / 2 })),
+  ], { scale: [1.1, 1.5], sink: 0.2, tints: ['#ffffff', '#ffd0f0', '#e0ffe0'] });
+
+  const glow = [];
+  [[0, 0, 1], [2.2, 0.8, 0.7], [-1.8, -1, 0.8], [0.6, -2.2, 0.55]].forEach(([x, z, s]) => {
+    glow.push(P(Cyl(0.35 * s, 0.5 * s, 4 * s, 6), '#e0f0ff', { x, y: 2 * s, z }), P(new THREE.SphereGeometry(2.2 * s, 8, 5, 0, PI * 2, 0, PI / 2), '#5af0ff', { x, y: 3.8 * s, z, sy: 0.7 }));
+  });
+  def('glowShroom', glow, { scale: [1, 2], sink: 0.1, tints: ['#ffffff', '#b0ffd0', '#e0b0ff', '#b0d0ff'] });
+
+  def('stalagmite', [P(Cone(3, 14, 6), '#6a6070', { y: 7 }), P(Cone(1.8, 8, 5), '#7a7080', { x: 2.6, y: 4, z: 1 }), P(Cone(1.4, 6, 5), '#5a5060', { x: -2.2, y: 3, z: -1.2 })], { scale: [0.8, 2], sink: 0.5, tilt: 0.15 });
 }
 
 // ---------- player ----------

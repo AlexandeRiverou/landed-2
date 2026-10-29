@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
-import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, BUZZ } from './objectives.js';
+import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -37,7 +37,7 @@ export function mkMovingHoop(G) {
       if (eight) _a.set(Math.sin(t * 0.45) * 55, Math.sin(t * 0.9) * 18, Math.sin(t * 0.9) * 25);
       else _a.set(Math.sin(t * 0.6) * 30, Math.sin(t * 0.8) * 35, 0);
       ring.position.copy(holder.position).addScaledVector(_a, amp);
-      ring.position.y = Math.max(ring.position.y, clearance(G, ring.position.x, ring.position.z, 20) + 25);
+      ring.position.y = underRoof(G, ring.position.x, ring.position.z, Math.max(ring.position.y, clearance(G, ring.position.x, ring.position.z, 20) + 25));
       if (G.player.pos.distanceTo(ring.position) > 150) faceFlat(ring, G.player.pos, dt);
       const r = crossRing(ring, G.player.prevPos, G.player.pos, R);
       if (r === 'hit') return 'done';
@@ -193,7 +193,8 @@ export function mkFollow(G) {
       heading.applyAxisAngle(Y, Math.sin(this.t * 0.25) * 0.35 * dt);
       const want = heading.clone().multiplyScalar(speed);
       const ground = clearance(G, leader.position.x + heading.x * 80, leader.position.z + heading.z * 80, 25);
-      want.y = THREE.MathUtils.clamp((ground + 70 + Math.sin(this.t * 0.4) * 30 - leader.position.y) * 0.5, -12, 16);
+      const cruise = underRoof(G, leader.position.x, leader.position.z, ground + 70 + Math.sin(this.t * 0.4) * 30, 35);
+      want.y = THREE.MathUtils.clamp((cruise - leader.position.y) * 0.5, -12, 16);
       vel.lerp(want, 1 - Math.exp(-dt * 1.5));
       leader.position.addScaledVector(vel, dt);
       anim(leader, dt);

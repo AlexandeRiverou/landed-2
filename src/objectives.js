@@ -21,6 +21,9 @@ export function clearance(G, x, z, r = 30) {
   return g;
 }
 
+// In a cave, keep anything placed in the air below the roof.
+export const underRoof = (G, x, z, y, margin = 25) => Math.min(y, G.terrain.ceilingHeight(x, z) - margin);
+
 export function flatForward(G) {
   const f = new THREE.Vector3(G.player.forward.x, 0, G.player.forward.z);
   if (f.lengthSq() < 1e-4) f.set(0, 0, -1);
@@ -34,13 +37,13 @@ export function pointAhead(G, dMin, dMax, spread = 0.9, hMin = 40, hMax = 120) {
   let y = clearance(G, x, z) + rand(hMin, hMax);
   // No ground worth the name (space zones): put it near the player's altitude instead.
   if (G.zones.current.noGround) y = Math.max(y, p.y + rand(-50, 60));
-  return new THREE.Vector3(x, y, z);
+  return new THREE.Vector3(x, underRoof(G, x, z, y), z);
 }
 
 export function inFront(G, d, minClear = 35) {
   const f = flatForward(G), p = G.player.pos;
   const v = new THREE.Vector3(p.x + f.x * d, p.y, p.z + f.z * d);
-  v.y = Math.max(v.y, clearance(G, v.x, v.z, 25) + minClear);
+  v.y = underRoof(G, v.x, v.z, Math.max(v.y, clearance(G, v.x, v.z, 25) + minClear));
   return v;
 }
 
@@ -73,7 +76,7 @@ export function anim(o3, dt) {
 export function moveToward(G, o3, f, minClear = 35) {
   const from = o3.userData.tpos || o3.position;
   const np = from.clone().lerp(G.player.pos, f);
-  np.y = Math.max(np.y, clearance(G, np.x, np.z, 25) + minClear);
+  np.y = underRoof(G, np.x, np.z, Math.max(np.y, clearance(G, np.x, np.z, 25) + minClear));
   o3.userData.tpos = np;
 }
 
@@ -185,6 +188,7 @@ export function mkChain(G, style = 'slalom') {
       const dy = style === 'stairs' ? rand(28, 38) : style === 'dive' ? -rand(25, 35) : rand(-30, 30);
       p.y = Math.max(prev.y + dy, clearance(G, p.x, p.z) + 35);
     }
+    p.y = underRoof(G, p.x, p.z, p.y);
     _dummy.position.copy(r.position);
     _dummy.lookAt(k === 0 ? G.player.pos.clone().setY(r.position.y) : rings[k - 1].position);
     r.quaternion.copy(_dummy.quaternion);
