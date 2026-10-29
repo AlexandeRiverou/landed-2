@@ -1,0 +1,120 @@
+// DOM HUD: score, objective card, notifications, banner, target marker + edge arrow.
+import * as THREE from 'three';
+
+const $ = (id) => document.getElementById(id);
+const _v = new THREE.Vector3();
+
+export class UI {
+  constructor(G) {
+    this.G = G;
+    this.el = {
+      score: $('score'), stats: $('stats'), obj: $('objective'), objTitle: $('obj-title'), objDesc: $('obj-desc'),
+      objProgress: $('obj-progress'), objDist: $('obj-dist'), hp: $('hp-fill'), boost: $('boost-fill'), speed: $('speed'),
+      notes: $('notifications'), banner: $('banner'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
+    };
+    this.edgeArrow = 0;      // 0 off, 1 normal, 2 big & pulsing (persuasion unlocks)
+    this.showDistance = false;
+    this.shownScore = 0;
+    this.bannerTimer = 0;
+    this.flashA = 0;
+    this.tintTimer = 0;
+  }
+
+  notify(text, kind = 'info', dur = 4.5) {
+    const icons = { info: '✈️', warn: '⚠️', bad: '💥', good: '🎉', persuade: '📣' };
+    const n = document.createElement('div');
+    n.className = `note ${kind}`;
+    const i = document.createElement('span');
+    i.className = 'icon';
+    i.textContent = icons[kind] || '✈️';
+    n.append(i, document.createTextNode(text));
+    this.el.notes.prepend(n);
+    while (this.el.notes.children.length > 4) this.el.notes.lastChild.remove();
+    setTimeout(() => { n.classList.add('out'); setTimeout(() => n.remove(), 400); }, dur * 1000);
+  }
+
+  banner(title, lines, dur = 5.5) {
+    const b = this.el.banner;
+    b.querySelector('h1').textContent = title;
+    const ul = b.querySelector('ul');
+    ul.replaceChildren(...lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
+    b.classList.add('show');
+    this.bannerTimer = dur;
+  }
+
+  setObjective(obj) {
+    const e = this.el;
+    if (!obj) { e.obj.classList.add('hidden'); return; }
+    e.obj.classList.remove('hidden', 'pop');
+    void e.obj.offsetWidth;
+    e.obj.classList.add('pop');
+    e.objTitle.textContent = obj.title;
+    e.objDesc.textContent = obj.desc;
+  }
+
+  flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }
+  tint(color, seconds) { this.el.tint.style.background = color; this.el.tint.style.opacity = 0.55; this.tintTimer = seconds; }
+
+  update(dt) {
+    const G = this.G, e = this.el, p = G.player;
+    if (Math.round(this.shownScore) !== G.score) {
+      const before = Math.round(this.shownScore);
+      this.shownScore += (G.score - this.shownScore) * Math.min(1, dt * 6);
+      if (Math.abs(G.score - this.shownScore) < 1) this.shownScore = G.score;
+      if (Math.round(this.shownScore) !== before) e.score.textContent = Math.round(this.shownScore);
+    }
+    e.stats.textContent = `✔ ${G.objectives.completed}  💥 ${G.stats.crashes}  🎯 ${G.stats.kills}`;
+    e.hp.style.width = `${Math.max(0, p.health)}%`;
+    e.hp.style.background = p.health > 50 ? 'var(--good)' : p.health > 25 ? 'var(--warn)' : 'var(--bad)';
+    e.boost.style.width = `${p.freeBoost > 0 ? 100 : p.boost * 100}%`;
+    e.boost.style.background = p.freeBoost > 0 ? '#ff4dc4' : '#3aa8ff';
+    const alt = Math.max(0, Math.round(p.pos.y - Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel)));
+    e.speed.textContent = `SPD ${Math.round(p.speed * 3.6)} km/h · ALT ${alt} m`;
+
+    if (this.bannerTimer > 0) { this.bannerTimer -= dt; if (this.bannerTimer <= 0) e.banner.classList.remove('show'); }
+    if (this.flashA > 0) { this.flashA = Math.max(0, this.flashA - dt * 2); e.flash.style.opacity = this.flashA; }
+    if (this.tintTimer > 0) { this.tintTimer -= dt; if (this.tintTimer <= 0) e.tint.style.opacity = 0; }
+
+    const obj = G.objectives.current;
+    e.objProgress.textContent = obj ? obj.progress || '' : '';
+    const t = obj && obj.target();
+    if (!t || p.dead) {
+      e.marker.style.display = 'none';
+      e.arrow.style.display = 'none';
+      e.objDist.textContent = '';
+      return;
+    }
+    const dist = Math.round(p.pos.distanceTo(t));
+    e.objDist.textContent = this.showDistance ? `📍 ${dist} m away` : obj.virtual ? '' : '📍 Distance: classified';
+    this.updatePointer(t, dist);
+  }
+
+  updatePointer(t, dist) {
+    const cam = this.G.camera, e = this.el;
+    const w = innerWidth, h = innerHeight;
+    _v.copy(t).applyMatrix4(cam.matrixWorldInverse);
+    const behind = _v.z > 0;
+    const camX = _v.x, camY = _v.y;
+    _v.copy(t).project(cam);
+    const onScreen = !behind && Math.abs(_v.x) < 0.92 && Math.abs(_v.y) < 0.88;
+    const label = this.showDistance ? `${dist} m` : '';
+    if (onScreen) {
+      e.marker.style.display = 'block';
+      e.marker.style.left = `${((_v.x + 1) / 2) * w}px`;
+      e.marker.style.top = `${((1 - _v.y) / 2) * h}px`;
+      e.marker.querySelector('span').textContent = label;
+      e.arrow.style.display = 'none';
+      return;
+    }
+    e.marker.style.display = 'none';
+    if (!this.edgeArrow) { e.arrow.style.display = 'none'; return; }
+    const ang = Math.atan2(camY, camX);
+    const rx = w / 2 - 60, ry = h / 2 - 70;
+    e.arrow.style.display = 'block';
+    e.arrow.classList.toggle('big', this.edgeArrow > 1);
+    e.arrow.style.left = `${w / 2 + Math.cos(ang) * rx}px`;
+    e.arrow.style.top = `${h / 2 - Math.sin(ang) * ry}px`;
+    e.arrow.querySelector('.rot').style.transform = `rotate(${-ang}rad)`;
+    e.arrow.querySelector('span').textContent = label || (this.edgeArrow > 1 ? 'THIS WAY!!!' : '');
+  }
+}

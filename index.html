@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Loop-de-Whoops</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="ui">
+    <div id="topleft" class="panel">
+      <div id="score">0</div>
+      <div id="score-label">POINTS</div>
+      <div id="stats"></div>
+    </div>
+
+    <div id="objective" class="panel hidden">
+      <div class="label">OBJECTIVE</div>
+      <div id="obj-title"></div>
+      <div id="obj-desc"></div>
+      <div id="obj-progress"></div>
+      <div id="obj-dist"></div>
+    </div>
+
+    <div id="bars" class="panel">
+      <div class="bar"><span>HULL</span><div class="track"><div id="hp-fill"></div></div></div>
+      <div class="bar"><span>BOOST</span><div class="track"><div id="boost-fill"></div></div></div>
+      <div id="speed"></div>
+    </div>
+
+    <div id="notifications"></div>
+    <div id="banner"><h1></h1><ul></ul></div>
+    <div id="marker"><div class="diamond"></div><span></span></div>
+    <div id="edge-arrow"><div class="rot"><div class="tri"></div></div><span></span></div>
+    <div id="crosshair"></div>
+    <div id="tint"></div>
+    <div id="flash"></div>
+
+    <div id="touch-controls">
+      <div id="t-boost" class="tbtn">BOOST</div>
+      <div id="t-fire" class="tbtn">FIRE</div>
+    </div>
+  </div>
+
+  <div id="title" class="overlay">
+    <div class="card">
+      <h1>Loop-de-Whoops</h1>
+      <p class="tag">A casual flying game with an extremely needy objective system.</p>
+      <div class="controls">
+        <div><b>W / ↑</b> climb &nbsp; <b>S / ↓</b> dive</div>
+        <div><b>A D / ← →</b> bank &amp; turn &nbsp; <b>Q E</b> rudder</div>
+        <div><b>Shift</b> boost &nbsp; <b>Space</b> / click shoot</div>
+        <div><b>I</b> invert pitch &nbsp; <b>M</b> mute &nbsp; <b>P</b> pause</div>
+        <div class="touch-hint">Touch: drag on the left to steer, buttons on the right.</div>
+      </div>
+      <button id="start">TAKE OFF</button>
+      <p class="small">The world is generated fresh every flight. Results may vary. Ground may be hard.</p>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay hidden">
+    <div class="card">
+      <h1>Paused</h1>
+      <p class="tag" id="pause-quip">The sky will wait. It has nowhere else to be.</p>
+      <button id="resume">RESUME</button>
+    </div>
+  </div>
+
+  <div id="boot-error" class="overlay hidden">
+    <div class="card"><h1>Uh oh</h1><p class="tag" id="boot-error-msg"></p></div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
