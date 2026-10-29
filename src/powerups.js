@@ -1,24 +1,24 @@
 // Timed power-ups. One floats into view ahead of the player every minute or so (never more than
-// one waiting at a time), bosses always drop one, and each lasts a limited time.
+// one waiting at a time), bosses always drop one, and each lasts a limited time (most about half a minute).
 import * as THREE from 'three';
 import { makeTextSprite, disposeTree } from './models.js';
 import { pick, rand } from './texts.js';
 import { flatForward, groundAt } from './objectives.js';
 
 export const POWERUPS = {
-  shield: { name: 'Bubble Shield', icon: '🛡️', color: '#4dd6ff', dur: 15, text: 'Bubble Shield! Bullets bounce off. Mountains still do not.' },
-  rapid: { name: 'Rapid Fire', icon: '🔥', color: '#ff7a3a', dur: 15, text: 'Rapid Fire! Your trigger finger is now legally a machine.' },
-  triple: { name: 'Triple Shot', icon: '🔱', color: '#ffd23a', dur: 15, text: 'Triple Shot! Twice the bullets, for the price of none.' },
-  homing: { name: 'Homing Bullets', icon: '🎯', color: '#ff4dc4', dur: 15, text: 'Homing Bullets! Aiming is now optional (it always was).' },
-  turbo: { name: 'Turbo', icon: '🚀', color: '#7ad8ff', dur: 10, text: 'Turbo! Unlimited boost. Point it at the sky, not the ground.' },
-  slowmo: { name: 'Slow-Mo', icon: '🐌', color: '#a07aff', dur: 12, text: 'Slow-Mo! Enemies now move like it\'s Monday morning.' },
-  freeze: { name: 'Time Freeze', icon: '⏸️', color: '#c8f0ff', dur: 7, text: 'Time Freeze! Every enemy is frozen. Rude, but effective.' },
-  double: { name: 'Double Points', icon: '💰', color: '#7aff6a', dur: 25, text: 'Double Points! Everything is worth twice as much for a while.' },
+  shield: { name: 'Bubble Shield', icon: '🛡️', color: '#4dd6ff', dur: 30, text: 'Bubble Shield! Bullets bounce off. Mountains still do not.' },
+  rapid: { name: 'Rapid Fire', icon: '🔥', color: '#ff7a3a', dur: 30, text: 'Rapid Fire! Your trigger finger is now legally a machine.' },
+  triple: { name: 'Triple Shot', icon: '🔱', color: '#ffd23a', dur: 30, text: 'Triple Shot! Twice the bullets, for the price of none.' },
+  homing: { name: 'Homing Bullets', icon: '🎯', color: '#ff4dc4', dur: 30, text: 'Homing Bullets! Aiming is now optional (it always was).' },
+  turbo: { name: 'Turbo', icon: '🚀', color: '#7ad8ff', dur: 20, text: 'Turbo! Unlimited boost. Point it at the sky, not the ground.' },
+  slowmo: { name: 'Slow-Mo', icon: '🐌', color: '#a07aff', dur: 25, text: 'Slow-Mo! Enemies now move like it\'s Monday morning.' },
+  freeze: { name: 'Time Freeze', icon: '⏸️', color: '#c8f0ff', dur: 14, text: 'Time Freeze! Every enemy is frozen. Rude, but effective.' },
+  double: { name: 'Double Points', icon: '💰', color: '#7aff6a', dur: 45, text: 'Double Points! Everything is worth twice as much for a while.' },
   repair: { name: 'Repair Kit', icon: '🔧', color: '#3ccf7a', dur: 0, text: 'Repair Kit! Hull fully patched with duct tape and optimism.' },
-  ghost: { name: 'Ghost Mode', icon: '👻', color: '#e8e8ff', dur: 10, text: 'Ghost Mode! You can\'t crash into the ground or sea. Go wild.' },
-  mega: { name: 'Mega Plane', icon: '🦖', color: '#ff9a3a', dur: 12, text: 'Mega Plane! You\'re HUGE. Small enemies pop on contact.' },
-  tiny: { name: 'Tiny Plane', icon: '🐜', color: '#c8ff7a', dur: 15, text: 'Tiny Plane! Half the size, half as easy to hit.' },
-  radar: { name: 'Objective Radar', icon: '📡', color: '#ffe08a', dur: 25, text: 'Objective Radar! Arrow and distance to the objective, no nagging needed.' },
+  ghost: { name: 'Ghost Mode', icon: '👻', color: '#e8e8ff', dur: 20, text: 'Ghost Mode! You can\'t crash into the ground or sea. Go wild.' },
+  mega: { name: 'Mega Plane', icon: '🦖', color: '#ff9a3a', dur: 25, text: 'Mega Plane! You\'re HUGE. Small enemies pop on contact.' },
+  tiny: { name: 'Tiny Plane', icon: '🐜', color: '#c8ff7a', dur: 30, text: 'Tiny Plane! Half the size, half as easy to hit.' },
+  radar: { name: 'Objective Radar', icon: '📡', color: '#ffe08a', dur: 45, text: 'Objective Radar! Arrow and distance to the objective, no nagging needed.' },
 };
 const IDS = Object.keys(POWERUPS);
 const OPPOSITES = { mega: 'tiny', tiny: 'mega' };
@@ -125,7 +125,7 @@ export class PowerUps {
       G.ui.notify(`${POWERUPS[id].name} wore off.`, 'info', 2.5, 0);
     }
 
-    if (!this.pickups.length && !p.dead) {
+    if (!this.pickups.length && !p.dead && !G.relax) {
       this.timer -= dt;
       if (this.timer <= 0) {
         this.timer = rand(...SPAWN_EVERY) * G.progress.spawnMul;

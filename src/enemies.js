@@ -40,40 +40,106 @@ function makeMarker() {
   return m;
 }
 
-// Bosses: one shows up every few completed objectives. They orbit you, attack in patterns,
-// and get ENRAGED (faster attacks) below half health.
+// Bosses: one shows up every few completed objectives. They orbit you (or dig in, for the fort),
+// attack in patterns, and get ENRAGED (faster attacks) below half health.
+// face: how the model turns ('player', 'vel' = along its flight, 'spin', 'none').
 export const BOSSES = {
   kingDrone: {
-    make: makeDrone, scale: 5, crownY: 3.2, crownS: 1, radius: 18, hp: 80, speed: 30, orbit: 150, dmg: 20, score: 0,
+    make: makeDrone, scale: 5, crownY: 3.2, crownS: 1, radius: 18, hp: 80, speed: 30, orbit: 150, dmg: 20, face: 'player',
     name: 'King Drone the Unpleasant', short: 'King Drone', noun: 'King Drone',
     desc: 'A giant drone with a crown and a superiority complex. It summons minions.',
     taunts: ['King Drone: "Kneel before my rotors!"', 'King Drone: "My minions are unionized, but loyal!"', 'King Drone: "I have FOUR propellers. You have ONE. Do the math."'],
     rage: ['Its rotors are spinning with pure spite.', 'It is now buzzing aggressively.'],
   },
   gooseQueen: {
-    make: makeGoose, scale: 5, crownY: 5.6, crownS: 1, radius: 16, hp: 80, speed: 42, orbit: 130, dmg: 20, score: 0,
+    make: makeGoose, scale: 5, crownY: 5.6, crownS: 1, radius: 16, hp: 80, speed: 42, orbit: 130, orbitRate: 0.45, dmg: 20, face: 'vel',
     name: 'Her Royal Honkness, the Goose Queen', short: 'The Goose Queen', noun: 'the Goose Queen',
     desc: 'You caught her son. She remembers. She throws golden eggs.',
     taunts: ['Goose Queen: "HONK. (You will pay for the goose incident.)"', 'Goose Queen: "My eggs are 24 karat. And pointy."', 'Goose Queen: "HOOOOONK."'],
     rage: ['She has entered her HONK ERA.', 'Feathers are flying. Mostly hers.'],
   },
   megaUfo: {
-    make: makeUfo, scale: 4, crownY: 4.5, crownS: 1.2, radius: 30, hp: 95, speed: 26, orbit: 190, dmg: 20, score: 0,
+    make: makeUfo, scale: 4, crownY: 4.5, crownS: 1.2, radius: 30, hp: 95, speed: 26, orbit: 190, dmg: 20, face: 'spin', spin: 1.2,
     name: 'The Mothership (Mildly Rude)', short: 'The Mothership', noun: 'the Mothership',
     desc: 'The UFOs called their mom. She fires orb shotguns.',
     taunts: ['Mothership: "We come in peace. Just kidding."', 'Mothership: "Your planet\'s Wi-Fi is terrible."', 'Mothership: "Prepare to be mildly probed."'],
     rage: ['The Mothership has switched to "angry disco" mode.', 'All the little lights are blinking menacingly.'],
   },
   thunder: {
-    make: makeStorm, scale: 2.5, crownY: 13, crownS: 2.2, radius: 38, hp: 110, speed: 22, orbit: 110, dmg: 20, score: 0,
+    make: makeStorm, scale: 2.5, crownY: 13, crownS: 2.2, radius: 38, hp: 110, speed: 22, orbit: 110, dmg: 20, face: 'player',
     name: 'Thunderclaus, Cloud of Bad Moods', short: 'Thunderclaus', noun: 'Thunderclaus',
     desc: 'The grumpiest cloud ever. Lightning up close, hail from afar.',
     taunts: ['Thunderclaus: "I am NOT a fluffy cloud."', 'Thunderclaus: "It\'s going to rain. On YOU. Specifically."', 'Thunderclaus: "Brrrrumble. That means \'go away\'."'],
     rage: ['Thunderclaus is now a category 5 grump.', 'The forecast says: extremely angry.'],
   },
+  blimpBaron: {
+    make: makeBlimp, scale: 3, crownY: 7, crownS: 1.3, radius: 30, hp: 100, speed: 20, orbit: 170, orbitRate: 0.2, dmg: 20, face: 'vel',
+    name: 'Baron von Blimpenstein', short: 'The Blimp Baron', noun: 'the Blimp Baron',
+    desc: 'An airship full of hot air and worse deals. Carpet-bombs your flight path. Shoot the gondola!',
+    taunts: ['Blimp Baron: "LIMITED TIME OFFER: explosions!"', 'Blimp Baron: "Have you considered upgrading to Ground Premium?"', 'Blimp Baron: "I am 90% helium and 10% marketing."'],
+    rage: ['Everything must go! Including you!', 'The Baron is having a CLEARANCE SALE on bombs.'],
+  },
+  jellyEmpress: {
+    make: makeJelly, scale: 4.5, crownY: 4.2, crownS: 1, radius: 22, hp: 90, speed: 18, orbit: 120, orbitRate: 0.22, dmg: 18, face: 'spin', spin: 0.3,
+    name: 'Empress Wobblina of the Upper Jellies', short: 'Empress Wobblina', noun: 'Empress Wobblina',
+    desc: 'A royal sky jellyfish. Fires rings of goo (fly through the middle!) and zaps anyone who gets cuddly.',
+    taunts: ['Wobblina: "Bow before my wobble."', 'Wobblina: "I have no brain and I am STILL winning."', 'Wobblina: "Bloop. (That was a threat.)"'],
+    rage: ['She is wobbling at a dangerous frequency.', 'The Empress has gone full jiggle.'],
+  },
+  garyPrime: {
+    make: makeRivalJet, scale: 4, crownY: 2, crownS: 0.8, radius: 18, hp: 85, speed: 46, orbit: 160, orbitRate: 0.4, dmg: 22, face: 'vel',
+    name: 'Gary Prime (Gary\'s Dad)', short: 'Gary Prime', noun: 'Gary Prime',
+    desc: 'You kept shooting Gary. His dad is here now. Strafing runs and rapid bursts. Shoot the propeller!',
+    taunts: ['Gary Prime: "Nobody shoots down MY son. Except me, in parenting."', 'Gary Prime: "I flew before flying was invented."', 'Gary Prime: "Gary, get in the car. Oh wait, I AM the car."'],
+    rage: ['Gary Prime has taken off his reading glasses.', 'He is now in "dad driving" mode.'],
+  },
+  hiveQueen: {
+    make: makeBee, scale: 7, crownY: 1.3, crownZ: 1.6, crownS: 0.5, radius: 14, hp: 80, speed: 34, orbit: 120, orbitRate: 0.5, dmg: 18, face: 'vel',
+    name: 'Queen Bee-atrice the Buzzkill', short: 'Queen Bee-atrice', noun: 'Queen Bee-atrice',
+    desc: 'The bees elected a queen. She shoots stingers and calls in the swarm.',
+    taunts: ['Bee-atrice: "Bzzzz. (Translation: you\'re grounded.)"', 'Bee-atrice: "My kingdom for some pollen."', 'Bee-atrice: "To bee or not to bee? Bee. Always bee."'],
+    rage: ['The Queen is buzzing in all caps.', 'Honey production halted. War production started.'],
+  },
+  pigeonDon: {
+    make: makePigeon, scale: 5.5, crownY: 4.3, crownZ: 2.2, crownS: 0.7, radius: 16, hp: 85, speed: 32, orbit: 140, orbitRate: 0.35, dmg: 18, face: 'vel',
+    name: 'Don Pigeone, the Godfeather', short: 'The Godfeather', noun: 'the Godfeather',
+    desc: 'The boss of all evil pigeons. Sends "associates" and special air mail from above.',
+    taunts: ['Godfeather: "I\'m gonna make you an offer you can\'t re-coo-se."', 'Godfeather: "You come to me, on the day of my bread crumbs..."', 'Godfeather: "Leave the plane. Take the cannoli."'],
+    rage: ['The Godfeather has taken this personally.', 'It\'s not business anymore. It\'s pigeon.'],
+  },
+  seagullSteven: {
+    make: makeGull, scale: 7, crownY: 1.4, crownZ: 2.2, crownS: 0.6, radius: 16, hp: 80, speed: 40, orbit: 150, orbitRate: 0.42, dmg: 20, face: 'vel',
+    name: 'Steven, Seagull Overlord', short: 'Steven', noun: 'Steven',
+    desc: 'He dive-bombs. If he hits you, he steals your boost. And your chips. Mostly the chips.',
+    taunts: ['Steven: "MINE. MINE. MINE."', 'Steven: "Is that a chip? It\'s MY chip now."', 'Steven: "I have no manners and I must screech."'],
+    rage: ['Steven has spotted a french fry. He is unstoppable.', 'Steven is screeching at a frequency only dogs can hear.'],
+  },
+  mineMother: {
+    make: makeMine, scale: 5, crownY: 5.4, crownS: 1.1, radius: 24, hp: 90, speed: 16, orbit: 130, orbitRate: 0.2, dmg: 25, face: 'spin', spin: 0.4,
+    name: 'The Mother of All Spiky Balloons', short: 'Mother Spiky', noun: 'Mother Spiky',
+    desc: 'A huge spiky balloon. Lays mines in your path and sprays spikes in every direction.',
+    taunts: ['Mother Spiky: "Hug? HUG?"', 'Mother Spiky: "I\'m not round, I\'m pointy-curvy."', 'Mother Spiky: "My children are everywhere. Watch your step. Er, flight."'],
+    rage: ['She is inflating with fury.', 'Mother Spiky is now extra pointy.'],
+  },
+  fortGrump: {
+    make: makeCannon, scale: 4.5, crownY: 6.2, crownS: 1.2, radius: 26, hp: 95, speed: 0, orbit: 0, dmg: 20, face: 'none', ground: true,
+    name: 'Fort Grumpington', short: 'Fort Grumpington', noun: 'Fort Grumpington',
+    desc: 'A giant grumpy cannon dug into the ground. Mortars and flak. Shoot the barrel to calm it down.',
+    taunts: ['Fort Grumpington: "GET OFF MY LAWN. (The sky is my lawn.)"', 'Fort Grumpington: "In my day, planes were made of WOOD."', 'Fort Grumpington: "I have one setting: grump."'],
+    rage: ['Fort Grumpington is extremely grumped.', 'The fort is shouting at clouds now. Literally.'],
+  },
+};
+
+// Later bosses can roll a modifier. Names get a prefix; stats get a nudge.
+export const BOSS_MODS = {
+  jumbo: { prefix: 'Jumbo', text: 'It\'s 30% bigger. And 30% angrier.', size: 1.3, hp: 1.3 },
+  turbo: { prefix: 'Turbo', text: 'It drank three espressos. Faster everything.', speed: 1.35, cd: 0.8 },
+  fragile: { prefix: 'Furious But Fragile', text: 'Less health, way more attitude.', hp: 0.7, cd: 0.7 },
+  shiny: { prefix: 'Shiny', text: 'Extra shiny. Worth double points.', score: 2 },
 };
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _pp = new THREE.Vector3();
+const Y = new THREE.Vector3(0, 1, 0);
 
 // What happens when a breakable part is shot off. Regular enemies and bosses share these.
 const BREAK_TEXT = {
@@ -88,6 +154,14 @@ const BREAK_TEXT = {
   wing: 'Wing clipped! She\'s flying slower now.',
   crown: 'CROWN KNOCKED OFF! It takes 30% more damage now. Also, embarrassment.',
 };
+// Bosses shrug off what would floor a regular enemy, so some parts read differently on them.
+const BOSS_BREAK_TEXT = {
+  rotor: 'Rotor down! The King wobbles. Fewer minions incoming.',
+  prop: 'Propeller shot off! Gary Prime is sputtering: slower, with shorter bursts.',
+  gondola: 'Gondola gone! The Baron\'s bombing runs are mostly bluster now.',
+  barrel: 'Barrel smashed! The fort can only manage sad little mortars now.',
+  wing: 'Wing clipped! She\'s flying slower now.',
+};
 
 export class Enemies {
   constructor(G) {
@@ -96,6 +170,7 @@ export class Enemies {
     this.shots = [];
     this.spawnTimer = 6;
     this.calmTimer = 0;
+    this.frenzy = false;
     this.hats = false;
     this.orbGeo = new THREE.SphereGeometry(1.6, 8, 6);
     this.orbMat = new THREE.MeshBasicMaterial({ color: '#7aff5a' });
@@ -103,27 +178,39 @@ export class Enemies {
     this.orbMats = new Map();
   }
 
-  spawnBoss(kind, pos, level = 0) {
-    const def = BOSSES[kind];
+  spawnBoss(kind, pos, level = 0, opts = {}) {
+    const def = BOSSES[kind], mod = BOSS_MODS[opts.mod] || null;
     const mesh = new THREE.Group();
     const body = def.make(false);
     const crown = makeCrown(def.crownS);
-    crown.position.y = def.crownY;
+    crown.position.set(0, def.crownY, def.crownZ || 0);
     body.add(crown);
     (body.userData.parts ||= []).push({ obj: crown, r: 2.4 * def.crownS, mult: 2, hp: 10, name: 'crown' });
     for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown') part.hp *= 6;
     mesh.add(body);
-    mesh.scale.setScalar(def.scale);
+    const size = (opts.size || 1) * (mod?.size || 1);
+    mesh.scale.setScalar(def.scale * size);
     mesh.userData = body.userData;
     mesh.position.copy(pos);
     this.G.scene.add(mesh);
-    const hp = def.hp + level * 20;
+    const hp = Math.round((def.hp + level * 20) * (opts.hp || 1) * (mod?.hp || 1));
+    const short = mod ? `${mod.prefix} ${def.short}` : def.short;
     const e = {
-      type: 'boss', kind, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp, maxHp: hp, radius: def.radius,
-      t: 0, cd: 3, state: 'idle', stateT: 0, quest: true, boss: true, anchor: pos.clone(), dead: false, attacks: 0, tauntT: 6,
+      type: 'boss', kind, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp, maxHp: hp, radius: def.radius * size,
+      t: Math.random() * 10, cd: 3, state: 'idle', stateT: 0, quest: true, boss: true, anchor: pos.clone(), dead: false, attacks: 0, tauntT: 6,
+      mod, short, name: mod ? `${mod.prefix} ${def.name}` : def.name, speedMul: mod?.speed || 1, cdMul: mod?.cd || 1,
+      orbitPhase: opts.phase || 0, burst: 0, burstT: 0, dash: 0, dashDir: new THREE.Vector3(),
     };
     this.list.push(e);
     return e;
+  }
+
+  // Summon helpers, capped so the sky never turns into soup.
+  count(type) { return this.list.filter((x) => x.type === type).length; }
+  summon(type, n, cap, at) {
+    let made = 0;
+    for (let k = 0; k < n && this.count(type) < cap; k++, made++) this.spawn(type, at.clone().add(new THREE.Vector3(rand(-25, 25), rand(-10, 10), rand(-25, 25))));
+    return made;
   }
 
   fireOrb(from, dir, speed, dmg, color = '#7aff5a', size = 1) {
@@ -139,12 +226,26 @@ export class Enemies {
     const G = this.G, p = G.player, d = e.def;
     if (!e.enraged && e.hp < e.maxHp / 2) {
       e.enraged = true;
-      G.ui.notify(`${d.short} is ENRAGED! ${pick(d.rage)}`, 'bad', 4);
+      G.ui.notify(`${e.short} is ENRAGED! ${pick(d.rage)}`, 'bad', 4);
       G.audio.zap();
     }
-    const ang = e.t * (e.kind === 'gooseQueen' ? 0.45 : 0.28);
-    _w.set(Math.cos(ang) * d.orbit, 25 + Math.sin(e.t * 0.7) * 15, Math.sin(ang) * d.orbit).add(p.pos).sub(e.pos);
-    e.vel.lerp(_w.clampLength(0, d.speed * (e.enraged ? 1.25 : 1) * 0.7 ** (e.broken?.wing || 0)), 1 - Math.exp(-dt * 1.2));
+    // Movement: circle the player (dashing bosses sometimes charge straight through), or sit tight if dug in.
+    if (d.ground) e.vel.set(0, 0, 0);
+    else if (e.dash > 0) {
+      e.dash -= dt;
+      e.vel.lerp(_w.copy(e.dashDir).multiplyScalar(d.speed * 2.4 * e.speedMul), 1 - Math.exp(-dt * 4));
+    } else {
+      const ang = e.t * (d.orbitRate || 0.28) + e.orbitPhase;
+      _w.set(Math.cos(ang) * d.orbit, 25 + Math.sin(e.t * 0.7) * 15, Math.sin(ang) * d.orbit).add(p.pos).sub(e.pos);
+      const speed = d.speed * e.speedMul * (e.enraged ? 1.25 : 1) * 0.7 ** (e.broken?.wing || 0) * (e.slow || 1);
+      e.vel.lerp(_w.clampLength(0, speed), 1 - Math.exp(-dt * 1.2));
+    }
+    // Rapid-fire bursts are fired over several frames.
+    if (e.burst > 0 && (e.burstT -= dt) <= 0 && !p.dead) {
+      e.burst--;
+      e.burstT = 0.12;
+      this.fireOrb(e.pos, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(e.pos), 105, 7, '#ff3ad0', 0.8);
+    }
 
     e.tauntT -= dt;
     if (e.tauntT <= 0) { e.tauntT = rand(12, 18); G.ui.notify(pick(d.taunts), 'warn', 3.5, 0); if (e.kind === 'gooseQueen') G.audio.honk(); }
@@ -153,40 +254,117 @@ export class Enemies {
     if (e.cd > 0 || dist > 650 || p.dead) return;
     e.attacks++;
     const aim = (spread) => _w.copy(toP).normalize().add(new THREE.Vector3(rand(-spread, spread), rand(-spread, spread), rand(-spread, spread)));
+    const lead = (k = 0.6, speed = 55) => p.pos.clone().addScaledVector(p.forward, p.speed * (dist / speed) * k).sub(e.pos);
+    const ahead = (m) => p.pos.clone().addScaledVector(p.forward, m);
+    const n = e.attacks;
+    let cd = 3;
     switch (e.kind) {
       case 'kingDrone':
-        e.cd = 3;
         for (let k = -1; k <= 1; k++) this.fireOrb(e.pos, aim(0).applyAxisAngle(new THREE.Vector3(0, 1, 0), k * 0.15), 60, 14, '#ff5a3a', 1.3);
-        if (e.attacks % 2 === 0 && (e.broken?.rotor || 0) < 2 && this.list.filter((x) => x.type === 'drone').length < 4) {
-          for (const s of [-1, 1]) this.spawn('drone', e.pos.clone().add(new THREE.Vector3(s * 25, -10, 0)));
-          G.ui.notify('King Drone summoned minions. They look nervous.', 'warn', 2.5, 0);
-        }
+        if (n % 2 === 0 && (e.broken?.rotor || 0) < 2 && this.summon('drone', 2, 4, e.pos)) G.ui.notify('King Drone summoned minions. They look nervous.', 'warn', 2.5, 0);
         break;
       case 'gooseQueen':
-        e.cd = 2.4;
-        for (let k = 0; k < 2; k++) {
-          const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 55) * 0.6).sub(e.pos);
-          this.fireOrb(e.pos, lead.add(new THREE.Vector3(rand(-15, 15), rand(-10, 10), rand(-15, 15))), 55, 16, '#ffd23a', 1.6);
-        }
+        cd = 2.4;
+        for (let k = 0; k < 2; k++) this.fireOrb(e.pos, lead().add(new THREE.Vector3(rand(-15, 15), rand(-10, 10), rand(-15, 15))), 55, 16, '#ffd23a', 1.6);
         G.audio.honk();
         break;
       case 'megaUfo':
-        e.cd = 3.4;
+        cd = 3.4;
         for (let k = 0; k < Math.max(2, 7 - (e.broken?.turret || 0)); k++) this.fireOrb(e.pos, aim(0.22), 52, 12, '#7aff5a', 1.1);
         G.audio.tone(200, 0.4, { type: 'sine', vol: 0.08, slide: 500 });
         break;
       case 'thunder':
         if (dist < 150) {
-          e.cd = 2;
+          cd = 2;
           G.fx.lightning(e.pos, p.pos);
           G.audio.zap();
           p.damage(16);
         } else {
-          e.cd = 2.6;
+          cd = 2.6;
           for (let k = 0; k < 3; k++) this.fireOrb(e.pos, aim(0.15), 50, 10, '#cfe8ff', 1);
         }
         break;
+      case 'blimpBaron':
+        cd = 3.2;
+        if (n % 3 === 0 && this.summon('mine', 2, 6, ahead(160))) G.ui.notify('Blimp Baron: "Special offer! Two spiky balloons for the price of none!"', 'warn', 3, 0);
+        else {
+          // Carpet bombing along where you're about to be.
+          const bombs = e.noBombs ? 2 : 5;
+          for (let k = 0; k < bombs; k++) this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, -15, 0)), ahead(40 + k * 30).sub(e.pos), 50, 13, '#ff9a3a', 1.4);
+        }
+        break;
+      case 'jellyEmpress': {
+        cd = 2.8;
+        if (dist < 130 && !e.noZap) { G.fx.lightning(e.pos, p.pos); G.audio.zap(); p.damage(14); break; }
+        // A ring of goo with a safe hole in the middle.
+        const dir = _w.copy(toP).normalize(), side = new THREE.Vector3().crossVectors(dir, Y).normalize(), up = new THREE.Vector3().crossVectors(side, dir);
+        const count = Math.max(5, 12 - (e.broken?.tentacle || 0));
+        for (let k = 0; k < count; k++) {
+          const a = (k / count) * Math.PI * 2;
+          this.fireOrb(e.pos, dir.clone().addScaledVector(side, Math.cos(a) * 0.3).addScaledVector(up, Math.sin(a) * 0.3), 45, 12, '#ff8ad8', 1.2);
+        }
+        G.audio.tone(320, 0.35, { type: 'sine', vol: 0.07, slide: -150 });
+        break;
+      }
+      case 'garyPrime':
+        cd = 2.4;
+        if (n % 3 === 0) {
+          e.dash = 2;
+          e.dashDir.copy(toP).normalize();
+          G.ui.notify('Gary Prime is going for a strafing run! Get out of the way!', 'warn', 2.5, 1);
+        } else e.burst = e.slow ? 3 : 5;
+        break;
+      case 'hiveQueen':
+        cd = 2.6;
+        for (let k = -2; k <= 2; k++) this.fireOrb(e.pos, aim(0.02).applyAxisAngle(Y, k * 0.12), 75, 8, '#ffcc1a', 0.7);
+        if (n % 2 === 0 && this.summon('bee', 4, 10, e.pos)) G.ui.notify('Bee-atrice called the swarm. Not the bees! Okay, the bees.', 'warn', 2.5, 0);
+        break;
+      case 'pigeonDon':
+        if (n % 2 === 0) { if (this.summon('pigeon', 2, 4, e.pos)) G.ui.notify('The Godfeather sent some "associates".', 'warn', 2.5, 0); }
+        else {
+          // Air mail: dropped from high above where you're heading.
+          for (let k = 0; k < 4; k++) {
+            const from = ahead(50 + k * 25).add(new THREE.Vector3(rand(-20, 20), 110, rand(-20, 20)));
+            this.fireOrb(from, new THREE.Vector3(rand(-0.1, 0.1), -1, rand(-0.1, 0.1)), 55, 12, '#f4f4f4', 1.3);
+          }
+          G.ui.notify('Incoming air mail! Look up!', 'warn', 2, 0);
+        }
+        break;
+      case 'seagullSteven':
+        cd = 2.6;
+        if (n % 3 === 1) {
+          e.dash = 2.2;
+          e.dashDir.copy(toP).normalize();
+          G.ui.notify('Steven is diving at you! He wants your chips!', 'warn', 2.5, 1);
+          G.audio.tone(1200, 0.3, { type: 'sawtooth', vol: 0.04, slide: -700 });
+        } else if (n % 3 === 2 && this.summon('gull', 4, 8, e.pos)) G.ui.notify('Steven brought the gang.', 'warn', 2.5, 0);
+        else for (let k = 0; k < 3; k++) this.fireOrb(e.pos, aim(0.12), 60, 10, '#9ab0c8', 1);
+        break;
+      case 'mineMother':
+        cd = 3.4;
+        if (n % 2 === 0 && this.summon('mine', 3, 8, ahead(220))) G.ui.notify('Mother Spiky laid mines in your path. Rude.', 'warn', 2.5, 0);
+        else {
+          // Spike nova: evenly spread in every direction.
+          const count = 16;
+          for (let k = 0; k < count; k++) {
+            const y = 1 - (2 * (k + 0.5)) / count, r = Math.sqrt(1 - y * y), a = k * 2.39996;
+            this.fireOrb(e.pos, new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r), 40, 12, '#c8c8d8', 1);
+          }
+        }
+        break;
+      case 'fortGrump': {
+        cd = 2.4;
+        const muzzle = e.pos.clone().add(new THREE.Vector3(0, 6 * e.mesh.scale.x, 0));
+        if (n % 3 === 0 && !e.disarmed) {
+          for (let k = 0; k < 8; k++) this.fireOrb(muzzle, lead(0.5, 70).add(new THREE.Vector3(rand(-40, 40), rand(-25, 25), rand(-40, 40))), 70, 9, '#ffb03a', 1);
+        } else {
+          for (let k = 0; k < (e.disarmed ? 1 : 3); k++) this.fireOrb(muzzle, lead(0.5, 70).add(new THREE.Vector3(rand(-10, 10), rand(-6, 6), rand(-10, 10))), 70, 13, '#ff4d4d', 1.5);
+        }
+        G.audio.tone(110, 0.3, { type: 'square', vol: 0.07, slide: -50 });
+        break;
+      }
     }
+    e.cd = cd * e.cdMul;
   }
 
   // Flat enough for a ground cannon: its barrel must stay clear of the hillside to be shootable.
@@ -196,6 +374,13 @@ export class Enemies {
   }
 
   calm(seconds) { this.calmTimer = Math.max(this.calmTimer, seconds); }
+
+  // Relax mode: everything hostile leaves the sky at once, orbs included.
+  clearAll() {
+    for (let i = this.list.length - 1; i >= 0; i--) { this.G.fx.emit(this.list[i].pos, 10, { colors: ['#ffffff', '#ffd0f4'], speed: 20, life: 0.8, size: 6 }); this.remove(i); }
+    for (const s of this.shots) this.G.scene.remove(s.mesh);
+    this.shots.length = 0;
+  }
 
   spawn(type, pos, opts = {}) {
     const def = TYPES[type];
@@ -219,11 +404,12 @@ export class Enemies {
 
   maybeSpawn(dt) {
     const G = this.G, p = G.player;
-    if (this.calmTimer > 0 || p.dead) return;
+    if (this.calmTimer > 0 || p.dead || G.relax) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    this.spawnTimer = rand(3, 6);
-    const max = 3 + Math.min(7, Math.floor(G.score / 400));
+    // A "Hold The Line" objective turns on frenzy: enemies arrive twice as often, and more of them.
+    this.spawnTimer = this.frenzy ? rand(1.5, 3) : rand(3, 6);
+    const max = 3 + Math.min(7, Math.floor(G.score / 400)) + (this.frenzy ? 4 : 0);
     if (this.list.filter((e) => !e.quest).length >= max) return;
     const avail = Object.entries(TYPES).filter(([, d]) => G.score >= d.minScore && d.weight > 0 && G.zones.allowsEnemy(d));
     let total = avail.reduce((s, [, d]) => s + d.weight, 0), r = Math.random() * total, type = avail[0][0];
@@ -292,6 +478,10 @@ export class Enemies {
         if (G.powerups.has('mega') && !e.boss) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         e.contactCd = 1.5; // big enemies bump you once, not every frame
         p.damage(e.def.dmg);
+        if (e.dash > 0) {
+          e.dash = 0;
+          if (e.kind === 'seagullSteven' && p.boost > 0.1) { p.boost = 0; G.ui.notify('Steven stole your boost. And your chips. Mostly the chips.', 'bad', 3); }
+        }
         if (e.def.kamikaze) { G.fx.explosion(e.pos); this.kill(i, false); continue; }
         e.vel.copy(toP).normalize().multiplyScalar(-60);
       }
@@ -361,16 +551,18 @@ export class Enemies {
     G.score += e.boss ? 40 : 10;
     switch (part.name) {
       case 'rotor': if (e.boss) e.hp -= e.maxHp * 0.06; else if (n >= 2) e.state = 'falling'; break;
-      case 'prop': e.state = 'falling'; break;
+      // A boss doesn't drop out of the sky from one part: it slows down and takes a chunk of damage instead.
+      case 'prop': if (e.boss) { e.slow = 0.7; e.hp -= e.maxHp * 0.1; } else e.state = 'falling'; break;
       case 'gondola': e.noBombs = true; break;
-      case 'barrel': e.disarmed = true; break;
+      case 'barrel': e.disarmed = true; if (e.boss) e.hp -= e.maxHp * 0.1; break;
+      case 'fin': if (e.boss) e.hp -= e.maxHp * 0.03; break;
       case 'tentacle': if (n >= total) e.noZap = true; break;
       case 'puff': e.radius *= 0.9; if (!e.boss && n >= total) e.hp = 0; else if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crown': e.vulnerable = 1.3; break;
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
-    const text = BREAK_TEXT[part.name];
+    const text = (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
     if (text && (e.boss || ['prop', 'gondola', 'barrel', 'rotor'].includes(part.name))) G.ui.notify(text, 'good', 3, e.boss ? 1 : 0);
   }
 
@@ -490,9 +682,10 @@ export class Enemies {
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
     if (u.barrel) u.barrel.lookAt(this.G.player.pos);
     if (e.boss) {
-      if (e.kind === 'gooseQueen') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
-      else if (e.kind === 'megaUfo') e.mesh.rotation.y += dt * 1.2;
-      else e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
+      const face = e.def.face, pp = this.G.player.pos;
+      if (face === 'vel' && e.vel.lengthSq() > 1) e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
+      else if (face === 'spin') e.mesh.rotation.y += dt * e.def.spin;
+      else if (face === 'player') e.mesh.lookAt(pp.x, e.pos.y, pp.z);
       return;
     }
     if (e.type === 'cannon' || e.type === 'jelly') return;
