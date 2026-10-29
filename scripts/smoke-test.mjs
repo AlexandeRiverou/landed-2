@@ -90,6 +90,70 @@ try {
     out.bossDroppedPowerup = drops === 1;
     G.powerups.drop = drop;
 
+    // Weak points and breakable parts, hit with real bullets placed on the part.
+    // Isolate these checks: no new spawns, so no stray enemy can fly through a target part and eat the bullets.
+    G.powerups.active.clear();
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh)); // flying through one would change the bullets
+    G.powerups.timer = 1e9;
+    G.enemies.spawnTimer = 1e9;
+    G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
+    const ahead = () => G.player.pos.clone().addScaledVector(G.player.forward, 120).setY(G.player.pos.y + 40);
+    const at = new G.player.pos.constructor();
+    const shots = [];
+    const shootAt = (part) => {
+      part.obj.getWorldPosition(at);
+      // Bullets still in flight (e.g. from the boss fight, fired straight ahead) would hit the target too.
+      while (G.player.bullets.length) G.player.removeBullet(0);
+      G.player.shootCd = 0;
+      const n = G.player.bullets.length;
+      G.player.fire();
+      const mine = G.player.bullets.slice(n);
+      for (const b of mine) { b.pos.copy(at); b.vel.set(0, 0, 0); }
+      const hp = part.hp;
+      step(1);
+      // Kept in the report so a failure says what happened to each shot.
+      shots.push({ part: part.name, hp: `${hp}->${part.hp}`, bullets: mine.length, unspent: mine.filter((b) => G.player.bullets.includes(b)).length, dead: G.player.dead, active: [...G.powerups.active.keys()].join('+') });
+    };
+    const partOf = (e, name) => e.mesh.userData.parts.find((x) => x.name === name && !x.broken);
+    const dmg = G.player.stats.damage;
+    G.powerups.active.set('freeze', 999); // hold enemies still so a placed bullet stays on its part
+    // New enemies turn to face the plane on their first update, so let each settle before aiming at its parts.
+    const blimp = G.enemies.spawn('blimp', ahead());
+    blimp.hp = 100;
+    step(1);
+    const hp0 = blimp.hp;
+    shootAt(partOf(blimp, 'gondola'));
+    out.weakPointDamage = hp0 - blimp.hp;          // 2 bullets × weak multiplier 2
+    out.weakPointExpected = 4 * dmg;
+    shootAt(partOf(blimp, 'gondola'));
+    out.gondolaStopsBombs = !!blimp.noBombs;
+    const drone = G.enemies.spawn('drone', ahead());
+    drone.hp = 100;
+    step(1);
+    shootAt(partOf(drone, 'rotor'));
+    shootAt(partOf(drone, 'rotor'));
+    out.droneFalling = drone.state === 'falling';
+    G.powerups.active.delete('freeze');
+    for (let i = 0; i < 30 * 30 && !drone.dead; i++) step(1);
+    out.droneCrashed = drone.dead;
+    G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
+    G.powerups.active.clear();
+    // Like the game, only put the cannon on gentle ground (on a steep slope its barrel sinks into the hill).
+    let cannonPos = ahead();
+    for (let k = 0; k < 40 && !G.enemies.isGentleGround(cannonPos.x, cannonPos.z); k++) {
+      cannonPos = ahead().addScaledVector(G.player.right, (k % 2 ? 1 : -1) * 20 * (1 + (k >> 1)));
+    }
+    cannonPos.y = G.terrain.surfaceHeight(cannonPos.x, cannonPos.z);
+    const cannon = G.enemies.spawn('cannon', cannonPos);
+    cannon.hp = 100;
+    G.powerups.active.set('freeze', 999);
+    step(1);
+    for (let k = 0; k < 3 && !cannon.disarmed; k++) shootAt(partOf(cannon, 'barrel'));
+    out.cannonDisarmed = !!cannon.disarmed;
+    if (!out.cannonDisarmed || !out.gondolaStopsBombs) out.partShots = shots;
+    G.powerups.active.delete('freeze');
+    G.enemies.spawnTimer = 5;
+
     // Power-ups: a pickup spawns ahead, flying into it activates it, and every type runs and expires.
     G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     G.powerups.timer = 0;
@@ -184,6 +248,9 @@ try {
     [report.bossDefeated, 'boss can be defeated'],
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
+    [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
+    [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],
+    [report.droneFalling && report.droneCrashed, 'a drone that loses its rotors falls and crashes'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],

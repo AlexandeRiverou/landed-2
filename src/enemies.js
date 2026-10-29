@@ -15,7 +15,7 @@ const TYPES = {
   bee: { hp: 1, radius: 3, dmg: 6, speed: 44, make: makeBee, score: 15, minScore: 80, weight: 1.6, kamikaze: true, name: 'Bee Swarm', intro: 'A bee swarm! Not the bees! Okay, the bees.' },
   blimp: { hp: 6, radius: 15, dmg: 15, speed: 12, make: makeBlimp, score: 110, minScore: 220, weight: 1, kamikaze: false, name: 'Ad Blimp', intro: 'An Ad Blimp is dropping "special offers". They explode.' },
   jelly: { hp: 3, radius: 8, dmg: 10, speed: 8, make: makeJelly, score: 70, minScore: 180, weight: 1.2, kamikaze: false, name: 'Sky Jellyfish', intro: 'Sky Jellyfish ahead. Do not hug. They zap up close.' },
-  cannon: { hp: 4, radius: 8, dmg: 10, speed: 0, make: makeCannon, score: 100, minScore: 300, weight: 1, kamikaze: false, ground: true, name: 'Grumpy Ground Cannon', intro: 'Grumpy Ground Cannons are shooting at the sky. The sky did nothing wrong.' },
+  cannon: { hp: 4, radius: 8, dmg: 10, speed: 0, make: makeCannon, score: 100, minScore: 300, weight: 1, kamikaze: false, ground: true, armor: 0.5, name: 'Grumpy Ground Cannon', intro: 'Grumpy Ground Cannons are shooting at the sky. The sky did nothing wrong.' },
   rival: { hp: 3, radius: 6, dmg: 20, speed: 62, make: makeRivalJet, score: 150, minScore: 450, weight: 0.9, kamikaze: false, name: 'Rival Pilot Gary', intro: 'Rival Pilot Gary has entered the sky. Nobody likes Gary.' },
 };
 const SWARMS = { gull: 4, bee: 6 };
@@ -73,7 +73,21 @@ export const BOSSES = {
   },
 };
 
-const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _pp = new THREE.Vector3();
+
+// What happens when a breakable part is shot off. Regular enemies and bosses share these.
+const BREAK_TEXT = {
+  rotor: 'Rotor down! It can\'t stay up much longer.',
+  turret: 'Turret destroyed! Fewer orbs incoming.',
+  gondola: 'Gondola gone! No more "special offers" from that blimp.',
+  fin: 'Fin snapped off. Very aerodynamic of you.',
+  tentacle: 'Tentacle severed. Rude, but effective.',
+  barrel: 'Barrel destroyed! That cannon is just a sad bucket now.',
+  prop: 'Propeller shot off! Gary is going down. Bye, Gary.',
+  puff: 'You popped a piece of cloud. The cloud is shrinking.',
+  wing: 'Wing clipped! She\'s flying slower now.',
+  crown: 'CROWN KNOCKED OFF! It takes 30% more damage now. Also, embarrassment.',
+};
 
 export class Enemies {
   constructor(G) {
@@ -96,6 +110,8 @@ export class Enemies {
     const crown = makeCrown(def.crownS);
     crown.position.y = def.crownY;
     body.add(crown);
+    (body.userData.parts ||= []).push({ obj: crown, r: 2.4 * def.crownS, mult: 2, hp: 10, name: 'crown' });
+    for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown') part.hp *= 6;
     mesh.add(body);
     mesh.scale.setScalar(def.scale);
     mesh.userData = body.userData;
@@ -128,7 +144,7 @@ export class Enemies {
     }
     const ang = e.t * (e.kind === 'gooseQueen' ? 0.45 : 0.28);
     _w.set(Math.cos(ang) * d.orbit, 25 + Math.sin(e.t * 0.7) * 15, Math.sin(ang) * d.orbit).add(p.pos).sub(e.pos);
-    e.vel.lerp(_w.clampLength(0, d.speed * (e.enraged ? 1.25 : 1)), 1 - Math.exp(-dt * 1.2));
+    e.vel.lerp(_w.clampLength(0, d.speed * (e.enraged ? 1.25 : 1) * 0.7 ** (e.broken?.wing || 0)), 1 - Math.exp(-dt * 1.2));
 
     e.tauntT -= dt;
     if (e.tauntT <= 0) { e.tauntT = rand(12, 18); G.ui.notify(pick(d.taunts), 'warn', 3.5, 0); if (e.kind === 'gooseQueen') G.audio.honk(); }
@@ -141,7 +157,7 @@ export class Enemies {
       case 'kingDrone':
         e.cd = 3;
         for (let k = -1; k <= 1; k++) this.fireOrb(e.pos, aim(0).applyAxisAngle(new THREE.Vector3(0, 1, 0), k * 0.15), 60, 14, '#ff5a3a', 1.3);
-        if (e.attacks % 2 === 0 && this.list.filter((x) => x.type === 'drone').length < 4) {
+        if (e.attacks % 2 === 0 && (e.broken?.rotor || 0) < 2 && this.list.filter((x) => x.type === 'drone').length < 4) {
           for (const s of [-1, 1]) this.spawn('drone', e.pos.clone().add(new THREE.Vector3(s * 25, -10, 0)));
           G.ui.notify('King Drone summoned minions. They look nervous.', 'warn', 2.5, 0);
         }
@@ -156,7 +172,7 @@ export class Enemies {
         break;
       case 'megaUfo':
         e.cd = 3.4;
-        for (let k = 0; k < 7; k++) this.fireOrb(e.pos, aim(0.22), 52, 12, '#7aff5a', 1.1);
+        for (let k = 0; k < Math.max(2, 7 - (e.broken?.turret || 0)); k++) this.fireOrb(e.pos, aim(0.22), 52, 12, '#7aff5a', 1.1);
         G.audio.tone(200, 0.4, { type: 'sine', vol: 0.08, slide: 500 });
         break;
       case 'thunder':
@@ -171,6 +187,12 @@ export class Enemies {
         }
         break;
     }
+  }
+
+  // Flat enough for a ground cannon: its barrel must stay clear of the hillside to be shootable.
+  isGentleGround(x, z) {
+    const h = (dx, dz) => this.G.terrain.surfaceHeight(x + dx, z + dz);
+    return Math.abs(h(8, 0) - h(-8, 0)) < 5 && Math.abs(h(0, 8) - h(0, -8)) < 5;
   }
 
   calm(seconds) { this.calmTimer = Math.max(this.calmTimer, seconds); }
@@ -217,6 +239,7 @@ export class Enemies {
     const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), G.world.seaLevel);
     if (TYPES[type].ground) {
       if (G.terrain.surfaceHeight(pos.x, pos.z) < G.world.seaLevel) return; // cannons can't swim
+      if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
     } else pos.y = Math.max(p.pos.y + rand(-15, 35), g + 45);
     if (SWARMS[type]) {
@@ -241,6 +264,11 @@ export class Enemies {
       if (calm) {
         e.vel.lerp(_w.copy(toP).multiplyScalar(-1).setY(0).normalize().multiplyScalar(60).setY(30), 1 - Math.exp(-dt));
         if (dist > 500) { this.remove(i); continue; }
+      } else if (e.state === 'falling') {
+        e.vel.y -= 35 * dt;
+        e.vel.x *= Math.exp(-dt * 0.5); e.vel.z *= Math.exp(-dt * 0.5);
+        e.mesh.rotation.z += dt * 4;
+        if (Math.random() < 0.5) G.fx.emit(e.pos, 1, { color: '#555555', speed: 4, life: 1.2, size: 6 });
       } else if (e.boss) this.bossBehave(e, toP, dist, dt);
       else this.behave(e, toP, dist, dt);
 
@@ -248,6 +276,7 @@ export class Enemies {
       if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else {
         const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), G.world.seaLevel) + (e.boss ? e.radius : 12);
+        if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
       }
       this.animate(e, dt);
@@ -266,19 +295,83 @@ export class Enemies {
         if (e.def.kamikaze) { G.fx.explosion(e.pos); this.kill(i, false); continue; }
         e.vel.copy(toP).normalize().multiplyScalar(-60);
       }
-      // Bullets.
+      // Bullets: weak points and breakable parts first, then the body.
+      const broad = (e.radius * 1.8 + 3) ** 2;
       for (let b = p.bullets.length - 1; b >= 0; b--) {
-        if (p.bullets[b].pos.distanceToSquared(e.pos) < (e.radius + 2) ** 2) {
-          e.hp -= p.bullets[b].dmg || 1;
-          p.removeBullet(b);
-          G.fx.sparkle(e.pos, '#ffaa55');
+        const bp = p.bullets[b].pos;
+        if (bp.distanceToSquared(e.pos) > broad) continue;
+        const part = this.hitPart(e, bp);
+        if (!part && bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2) continue;
+        const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1);
+        p.removeBullet(b);
+        if (part) this.damagePart(e, part, dmg, bp);
+        else {
+          e.hp -= dmg * (e.def.armor ?? 1);
+          G.fx.sparkle(bp, e.def.armor ? '#9aa0a6' : '#ffaa55');
           G.audio.hit();
-          if (e.hp <= 0) break;
         }
+        if (e.hp <= 0) break;
       }
       if (e.hp <= 0) { G.fx.explosion(e.pos); G.fx.confetti(e.pos); this.kill(i, true); }
     }
     this.updateShots(dt);
+  }
+
+  hitPart(e, pos) {
+    const parts = e.mesh.userData.parts;
+    if (!parts) return null;
+    const s = e.mesh.scale.x;
+    let best = null, bd = Infinity;
+    for (const part of parts) {
+      if (part.broken) continue;
+      part.obj.getWorldPosition(_pp);
+      const d = _pp.distanceToSquared(pos), r = part.r * s + 1.5;
+      if (d < r * r && d < bd) { bd = d; best = part; }
+    }
+    return best;
+  }
+
+  damagePart(e, part, dmg, pos) {
+    const G = this.G;
+    e.hp -= dmg * part.mult;
+    if (part.mult > 1) {
+      G.fx.sparkle(pos, '#ffd23a');
+      G.fx.emit(pos, 12, { colors: ['#ffffff', '#ffd23a'], speed: 45, life: 0.4, size: 5 });
+      G.audio.tone(1500, 0.07, { type: 'triangle', vol: 0.05 });
+      if (!this.weakTip) { this.weakTip = true; G.ui.notify('WEAK SPOT! Glowing parts take extra damage. Aim there.', 'good', 4, 1); }
+    } else {
+      G.fx.sparkle(pos, '#ffaa55');
+      G.audio.hit();
+    }
+    if (!Number.isFinite(part.hp)) return;
+    part.hp -= dmg;
+    if (part.hp <= 0) this.breakPart(e, part);
+  }
+
+  breakPart(e, part) {
+    const G = this.G;
+    part.broken = true;
+    part.obj.visible = false;
+    part.obj.getWorldPosition(_pp);
+    G.fx.explosion(_pp);
+    G.audio.pop();
+    (e.broken ||= {})[part.name] = (e.broken[part.name] || 0) + 1;
+    const n = e.broken[part.name];
+    const total = e.mesh.userData.parts.filter((x) => x.name === part.name).length;
+    G.score += e.boss ? 40 : 10;
+    switch (part.name) {
+      case 'rotor': if (e.boss) e.hp -= e.maxHp * 0.06; else if (n >= 2) e.state = 'falling'; break;
+      case 'prop': e.state = 'falling'; break;
+      case 'gondola': e.noBombs = true; break;
+      case 'barrel': e.disarmed = true; break;
+      case 'tentacle': if (n >= total) e.noZap = true; break;
+      case 'puff': e.radius *= 0.9; if (!e.boss && n >= total) e.hp = 0; else if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'crown': e.vulnerable = 1.3; break;
+      case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
+    }
+    // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
+    const text = BREAK_TEXT[part.name];
+    if (text && (e.boss || ['prop', 'gondola', 'barrel', 'rotor'].includes(part.name))) G.ui.notify(text, 'good', 3, e.boss ? 1 : 0);
   }
 
   behave(e, toP, dist, dt) {
@@ -336,7 +429,7 @@ export class Enemies {
         _w.copy(p.pos).addScaledVector(p.forward, 120).setY(p.pos.y + 70).sub(e.pos);
         steer(_w.clampLength(0, d.speed), 0.5);
         e.cd -= dt;
-        if (e.cd <= 0 && dist < 350) {
+        if (e.cd <= 0 && dist < 350 && !e.noBombs) {
           e.cd = 3;
           const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 45) * 0.5);
           this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, -8, 0)), lead.sub(e.pos), 45, 14, '#ff9a3a', 1.3);
@@ -345,7 +438,7 @@ export class Enemies {
       case 'jelly':
         steer(_w.copy(toP).setY(0).normalize().multiplyScalar(d.speed).setY(Math.sin(e.t * 0.8) * 6), 0.5);
         e.cd -= dt;
-        if (e.cd <= 0 && dist < 55 && !p.dead) {
+        if (e.cd <= 0 && dist < 55 && !p.dead && !e.noZap) {
           e.cd = 1.5;
           G.fx.lightning(e.pos, p.pos);
           G.audio.zap();
@@ -354,7 +447,7 @@ export class Enemies {
         break;
       case 'cannon':
         e.cd -= dt;
-        if (e.cd <= 0 && dist < 420 && !p.dead) {
+        if (e.cd <= 0 && dist < 420 && !p.dead && !e.disarmed) {
           e.cd = 2.6;
           const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 60) * 0.5);
           this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, 5, 0)), lead.sub(e.pos), 60, 12, '#ff4d4d', 1.2);
@@ -389,6 +482,7 @@ export class Enemies {
 
   animate(e, dt) {
     const u = e.mesh.userData;
+    if (u.parts) for (const part of u.parts) if (part.glow) { const k = Math.sin(e.t * 6); part.glow.material.opacity = 0.45 + 0.25 * k; part.glow.scale.setScalar(1 + 0.12 * k); }
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
     if (u.wings) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
