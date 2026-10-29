@@ -51,6 +51,16 @@ html, body {
 #xp-next { font-size: 10px; opacity: 0.65; }
 #topleft.levelup { animation: levelup 1.2s ease-out; }
 @keyframes levelup { 0% { transform: scale(1.25); box-shadow: 0 0 0 6px var(--accent); } 100% { transform: none; } }
+#zone { font-size: 10px; margin-top: 3px; font-weight: 600; color: #2a7a5a; }
+/* Zone title: high up and brief, so it never covers the plane. */
+#zone-card {
+  position: absolute; top: 9%; left: 50%; transform: translate(-50%, -20px); opacity: 0;
+  transition: opacity 0.6s, transform 0.6s; text-align: center; pointer-events: none; width: min(560px, 90vw);
+}
+#zone-card.show { opacity: 1; transform: translate(-50%, 0); }
+#zone-card .zone-step { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+#zone-card .zone-name { font-size: clamp(26px, 5vw, 42px); font-weight: 700; color: var(--accent); -webkit-text-stroke: 1.5px var(--ink); text-shadow: 0 3px 0 var(--ink); }
+#zone-card .zone-blurb { font-size: 14px; font-weight: 600; color: #fff; text-shadow: 0 1px 0 var(--ink), 0 0 6px var(--ink); }
 #best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
 #best:empty { display: none; }
 

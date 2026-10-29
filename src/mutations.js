@@ -197,8 +197,12 @@ export class Mutations {
       setTimeout(() => G.fx.firework(pos), k * 220);
     }
 
+    // Every few objectives you fly on into a whole new zone; that *is* this round's world change.
+    const zone = G.zones.onObjectiveComplete();
+    if (zone) return zone;
+
     const count = forced ? 2 : Math.min(6, 3 + Math.floor(G.objectives.completed / 2));
-    const pool = MUTATIONS.filter((m) => !m.can || m.can(G));
+    const pool = MUTATIONS.filter((m) => (!m.can || m.can(G)) && G.zones.allowsMutation(m.group));
     const chosen = [], groups = new Set();
     while (chosen.length < count && pool.length) {
       const m = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];

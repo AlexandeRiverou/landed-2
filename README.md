@@ -70,6 +70,13 @@ blimps that drop "special offers", zapping sky jellyfish, grumpy ground cannons,
 storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows. Enemies spawn in a narrow cone straight
 ahead of you and carry a small red marker, so you see them coming.
 
+**The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
+colours, props, sky, weather and music mood. In order: Meadowlands → Canyon Country → Frozen Peaks → Volcano Land
+(lava seas, falling ash) → Tropical Archipelago → Mushroom Forest → Candy Kingdom → Sky Islands → Stratosphere (above
+a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt (asteroids you can shoot apart) → The Moon
+(craters, Earthrise) → Alien World. Then it loops for lap 2. The current zone and how many objectives until the next
+show under your rank. Random world changes still happen inside a zone, but can't break its identity.
+
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Each lasts a few seconds, shown with a countdown in the
 bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,

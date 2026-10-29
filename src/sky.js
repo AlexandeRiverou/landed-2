@@ -12,6 +12,9 @@ export const TOD = {
   alien: { top: '#0c5a3c', horizon: '#b8ff7a', bottom: '#4a8a3a', sun: '#eaff8a', sunI: 2.0, hemiSky: '#c8ff9a', hemiGround: '#3a2a5a', hemiI: 1.0, elev: 45, stars: 0.2 },
   candy: { top: '#ff6fbf', horizon: '#ffe1f3', bottom: '#ffd0ea', sun: '#ffffff', sunI: 2.1, hemiSky: '#ffd0f0', hemiGround: '#a06aa0', hemiI: 1.1, elev: 50, stars: 0 },
   eclipse: { top: '#07070d', horizon: '#ff5e1a', bottom: '#3a1a0a', sun: '#ff4a1a', sunI: 0.8, hemiSky: '#8a4a3a', hemiGround: '#1a1010', hemiI: 0.65, elev: 30, stars: 0.7 },
+  volcano: { top: '#1a0606', horizon: '#c2401a', bottom: '#3a1008', sun: '#ff7a3a', sunI: 1.2, hemiSky: '#c2603a', hemiGround: '#2a1010', hemiI: 0.8, elev: 20, stars: 0.2 },
+  stratosphere: { top: '#020418', horizon: '#6a9ae0', bottom: '#d8e8ff', sun: '#ffffff', sunI: 2.4, hemiSky: '#a8c8ff', hemiGround: '#e8f0ff', hemiI: 1.1, elev: 30, stars: 0.6 },
+  space: { top: '#000000', horizon: '#04050c', bottom: '#000000', sun: '#ffffff', sunI: 2.4, hemiSky: '#8a90b0', hemiGround: '#1a1a24', hemiI: 0.55, elev: 25, stars: 1 },
   storm: { top: '#3a4048', horizon: '#8d949c', bottom: '#5a6068', sun: '#d8dde2', sunI: 0.9, hemiSky: '#a0a8b0', hemiGround: '#3a3f44', hemiI: 0.95, elev: 50, stars: 0 },
 };
 const COLOR_KEYS = ['top', 'horizon', 'bottom', 'sun', 'hemiSky', 'hemiGround'];
@@ -136,6 +139,8 @@ export const WEATHER = {
   confetti: { colors: ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff'], size: 2.8, fall: 22, sway: 10, count: 2400, opacity: 1 },
   bubbles: { colors: ['#c8f6ff', '#e8ffff'], size: 3.4, fall: -14, sway: 5, count: 1400, opacity: 0.55 },
   leaves: { colors: ['#e07a2a', '#c94f1f', '#e8b33a'], size: 2.8, fall: 15, sway: 14, count: 1600, opacity: 1 },
+  ash: { colors: ['#5a5a5a', '#8a8a8a', '#3a3a3a'], size: 2.2, fall: 9, sway: 4, count: 2600, opacity: 0.85 },
+  stardust: { colors: ['#ffffff', '#a8c8ff', '#ffe8c8'], size: 1.1, fall: 1.5, sway: 1, count: 1600, opacity: 0.9 },
   glitter: { colors: ['#fff1a8', '#ffd700', '#ffffff'], size: 1.6, fall: 8, sway: 3, count: 3000, opacity: 1 },
 };
 
@@ -239,9 +244,11 @@ class Clouds {
     this.initialized = false;
   }
 
-  setStyle(color, count) {
+  setStyle(color, count, altitude) {
     this.target.set(color);
     this.count = Math.max(0, Math.min(MAX_CLOUDS, count));
+    // Zones can move the cloud layer, e.g. below you in the stratosphere.
+    if (altitude !== undefined) for (const c of this.list) c.pos.y = altitude + rand(-80, 80);
   }
 
   update(dt, pp, sky) {

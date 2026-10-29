@@ -44,7 +44,7 @@ try {
   await page.click('#start');
   await page.evaluate(async () => { window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS; });
 
-  const report = await page.evaluate(() => {
+  const report = await page.evaluate(async () => {
     const G = window.G;
     const step = (n) => { for (let i = 0; i < n; i++) { G.player.invuln = 99; G.step(1 / 30); } };
     const out = {};
@@ -98,6 +98,9 @@ try {
     out.pickupSpawned = !!pickup;
     if (pickup) { G.player.pos.copy(pickup.pos); step(2); }
     out.pickupCollected = G.powerups.active.size > 0 || G.player.health === G.player.maxHealth;
+    // No more pickups during the wear-off wait: flying into a fresh one would keep a power-up active.
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     for (const id of Object.keys(window.POWERUPS_FOR_TEST || {})) { G.powerups.activate(id); }
     G.input.keys.add('Space');
     step(30 * 5);
@@ -105,6 +108,36 @@ try {
     out.powerupsActiveMidway = G.powerups.active.size;
     step(30 * 60);
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
+
+    // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
+    const zone0 = G.zones.index;
+    G.zones.sinceZone = 2; // one objective away from the next zone
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.objectives.completed = 1;
+    G.objectives.next();
+    G.objectives.complete(false);
+    out.zoneAdvanced = G.zones.index === zone0 + 1;
+    out.zones = [];
+    const zoneCount = (await import('./src/zones.js')).ZONES.length;
+    for (let i = 0; i < zoneCount; i++) {
+      G.zones.enter(i);
+      step(90);
+      const z = G.zones.current;
+      out.zones.push({ name: z.name, ground: Math.round(G.terrain.surfaceHeight(G.player.pos.x, G.player.pos.z)), asteroids: G.zones.asteroids.list.length });
+      if (z.name === 'Meteor Belt') {
+        // A big asteroid shot apart breaks into smaller ones.
+        const a = G.zones.asteroids;
+        a.spawn(G.player.pos.clone().addScaledVector(G.player.forward, 150), 30);
+        const rock = a.list[a.list.length - 1], before = a.list.length;
+        rock.hp = 1;
+        G.player.shootCd = 0;
+        const nb = G.player.bullets.length;
+        G.player.fire();
+        for (const b of G.player.bullets.slice(nb)) { b.pos.copy(rock.pos); b.vel.set(0, 0, 0); }
+        step(1);
+        out.asteroidSplit = !a.list.includes(rock) && a.list.length >= before + 1;
+      }
+    }
 
     // Progression: score is XP; ranks and perks unlock as it grows.
     const hull = G.player.maxHealth;
@@ -129,6 +162,10 @@ try {
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [report.zoneAdvanced, 'completing objectives advances to the next zone'],
+    [report.zones.length >= 10, 'every zone loads'],
+    [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
+    [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
