@@ -79,11 +79,22 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. In order: Meadowlands → Canyon Country → Frozen Peaks → Volcano Land
-(lava seas, falling ash) → Tropical Archipelago → Mushroom Forest → Candy Kingdom → Sky Islands → Stratosphere (above
-a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt (asteroids you can shoot apart) → The Moon
-(craters, Earthrise) → Alien World. Then it loops for lap 2. The current zone and how many objectives until the next
-show under your rank. Random world changes still happen inside a zone, but can't break its identity.
+colours, props, sky, weather and music mood. There are 20, in order:
+
+- Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
+- **Crystal Caverns:** a real cave. A rock roof with stalactites hangs over everything, the lakes glow, and glowing
+  mushrooms and stalagmites grow on the floor. Hit the roof and you crash.
+- Volcano Land (lava seas, falling ash) → Tropical Archipelago → **Giant's Garden** (everything is 3× bigger) →
+  Mushroom Forest
+- **Princess Kingdom:** pink fairy-tale castles, heart-shaped trees, unicorns, pumpkin carriages and falling petals.
+- Candy Kingdom → Sky Islands → Stratosphere (above a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt
+  (asteroids you can shoot apart) → The Moon (craters, Earthrise) → **Mars** (red canyons, dust, two tiny moons)
+- **Planet Pebble:** a planet so small the ground visibly curves away toward a close horizon (`src/curve.js` bends
+  every vertex down by its squared distance from the camera; gameplay stays flat).
+- Alien World. Then it loops for lap 2.
+
+The current zone and how many objectives until the next show under your rank. Random world changes still happen inside
+a zone, but can't break its identity.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double

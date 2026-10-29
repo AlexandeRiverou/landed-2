@@ -55,6 +55,7 @@ export class Player {
     const G = this.G;
     const g = Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel);
     this.pos.set(x, g + 140, z);
+    this.pos.y = Math.max(g + 20, Math.min(this.pos.y, G.terrain.ceilingHeight(x, z) - 40)); // in a cave, mid-gap
     this.prevPos.copy(this.pos);
     this.quat.setFromAxisAngle(Y, yaw);
     this.speed = this.baseSpeed;
@@ -153,6 +154,13 @@ export class Player {
       if (ghost) this.pos.y = sea + 0.6;
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = sea + 25;
       else return this.crash('water');
+    }
+    // Cave roof. Right after the world changes (or with Ghost Mode) you're moved into the open gap instead.
+    const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z);
+    if (this.pos.y > roof - 2.5) {
+      if (ghost) this.pos.y = roof - 2.5;
+      else if (this.grace > 0 || this.invuln > 0) this.pos.y = Math.max(ground + 12, roof - 25);
+      else return this.crash('roof');
     }
 
     // Shooting.

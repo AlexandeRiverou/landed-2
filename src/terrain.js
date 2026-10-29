@@ -1,7 +1,7 @@
 // Infinite chunked terrain. Chunks build nearest-first a few per frame; a rebuild
 // (after the world mutates) swaps chunks in progressively so the world "morphs".
 import * as THREE from 'three';
-import { world, heightAt, terrainInfo, CAT, addCrater, craterDepthAt } from './world.js';
+import { world, heightAt, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt } from './world.js';
 import { mulberry32, hash3 } from './noise.js';
 import { PROPS, propMaterial } from './models.js';
 
@@ -12,6 +12,9 @@ const GW = SEG + 3; // height grid width incl. one-vertex border for normals
 export const RADIUS = 4;
 const AIRBORNE = new Set(['floatingIsland', 'hotAirBalloon']);
 const SCORCH = (() => { const c = new THREE.Color('#4a3424'); return [c.r, c.g, c.b]; })();
+const rgb = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
+const CEIL_ROCK = [rgb('#6a6080'), rgb('#5a5470'), rgb('#7a7090')];
+const CEIL_GLOW = [rgb('#7af0ff'), rgb('#c07aff'), rgb('#7aff9a')];
 
 const TABLES = {
   [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], [null, 2]],
@@ -42,6 +45,18 @@ export const THEMES = {
   tropical: { appleTree: 'palm', snowman: 'parasol', igloo: 'sandcastle', pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
   construction: { haybale: 'trafficCone', tumbleweed: 'trafficCone', rock: 'trafficCone', bush: 'trafficCone', cactus: 'trafficCone', rockB: 'trafficCone', gnome: 'trafficCone' },
   lunar: { roundTree: 'rock', pine: 'rockB', birch: 'rock', bush: 'rockB', palm: 'rock', snowPine: 'rockB', cactus: 'rock', deadTree: 'rockB', appleTree: 'rock', flowers: null, haybale: 'rockB', sheep: null, cow: null, scarecrow: null, house: 'crystal', gnome: null },
+  princess: {
+    roundTree: 'heartTree', appleTree: 'heartTree', birch: 'heartTree', pine: 'heartTree', snowPine: 'heartTree', palm: 'heartTree', cactus: 'heartTree', deadTree: 'heartTree',
+    sheep: 'unicorn', cow: 'unicorn', scarecrow: 'unicorn', haybale: 'carriage', house: 'carriage', well: 'flowers', rock: 'flowers', bush: 'flowers', tumbleweed: 'flowers', log: 'flowers', tent: 'carriage',
+    castleTower: 'fairyCastle', windmill: 'fairyCastle', barn: 'fairyCastle', radioTower: 'fairyCastle', pyramid: 'fairyCastle', moai: 'fairyCastle', ruins: 'fairyCastle', igloo: 'fairyCastle',
+  },
+  cave: {
+    roundTree: 'glowShroom', appleTree: 'glowShroom', birch: 'glowShroom', palm: 'glowShroom', bush: 'glowShroom', flowers: 'glowShroom', mushroom: 'glowShroom',
+    pine: 'stalagmite', snowPine: 'stalagmite', cactus: 'stalagmite', deadTree: 'stalagmite', tumbleweed: 'rockB', totemPole: 'crystal', iceberg: 'crystal',
+    house: 'tent', haybale: 'rock', sheep: null, cow: null, scarecrow: null, well: null, parasol: null, sandcastle: null, boat: null, sailboat: null, buoy: null, whale: null,
+    windmill: 'crystal', castleTower: 'ruins', barn: 'stalagmite', ferrisWheel: null, radioTower: 'stalagmite', lighthouse: 'crystal', pyramid: 'ruins', igloo: 'crystal',
+  },
+  garden: { pine: 'roundTree', snowPine: 'roundTree', birch: 'flowers', bush: 'flowers', rock: 'mushroom', rockB: 'gnome', haybale: 'flowers', log: 'flowers', deadTree: 'appleTree', cactus: 'flowers' },
   duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
 
@@ -125,6 +140,7 @@ export class Terrain {
   unload(c) {
     this.G.scene.remove(c.mesh, c.props);
     c.mesh.geometry.dispose();
+    if (c.ceil) { this.G.scene.remove(c.ceil); c.ceil.geometry.dispose(); }
     for (const m of c.props.children) m.dispose();
   }
 
@@ -176,9 +192,50 @@ export class Terrain {
 
     const chunk = { cx, cz, hs, mesh, version: this.version };
     chunk.props = this.buildProps(chunk, cats);
+    if (world.cave) {
+      chunk.cs = new Float32Array(GW * GW);
+      for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) chunk.cs[j * GW + i] = ceilingAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP, hs[j * GW + i]);
+      chunk.ceil = this.buildCeiling(chunk, index);
+    }
     if (old) this.unload(old);
     this.G.scene.add(mesh, chunk.props);
+    if (chunk.ceil) this.G.scene.add(chunk.ceil);
     this.chunks.set(k, chunk);
+  }
+
+  // The cave roof for one chunk: the floor's grid, flipped to face down, in dark rock with glowing veins.
+  buildCeiling(chunk, floorIndex) {
+    const { cx, cz, cs } = chunk, V = SEG + 1, ox = cx * CHUNK, oz = cz * CHUNK;
+    const pos = new Float32Array(V * V * 3), col = new Float32Array(V * V * 3);
+    for (let j = 0; j < V; j++) {
+      for (let i = 0; i < V; i++) {
+        const idx = j * V + i, x = ox + i * STEP, z = oz + j * STEP;
+        pos[idx * 3] = x; pos[idx * 3 + 1] = cs[(j + 1) * GW + (i + 1)]; pos[idx * 3 + 2] = z;
+        const h = hash3(Math.round(x / STEP), Math.round(z / STEP), world.seed);
+        const c = h % 23 === 0 ? CEIL_GLOW[(h >>> 5) % 3] : CEIL_ROCK[(h >>> 5) % 3];
+        col[idx * 3] = c[0]; col[idx * 3 + 1] = c[1]; col[idx * 3 + 2] = c[2];
+      }
+    }
+    const index = new Uint16Array(floorIndex.length);
+    for (let k = 0; k < index.length; k += 3) { index[k] = floorIndex[k]; index[k + 1] = floorIndex[k + 2]; index[k + 2] = floorIndex[k + 1]; } // reversed: faces point down
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, this.material);
+    mesh.matrixAutoUpdate = false;
+    return mesh;
+  }
+
+  // Height of the rendered cave roof above (x, z); Infinity outside caves.
+  ceilingHeight(x, z) {
+    if (!world.cave) return Infinity;
+    const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+    const ch = this.chunks.get(key(cx, cz));
+    if (!ch || !ch.cs) return ceilingAt(x, z);
+    return gridHeight(ch.cs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP);
   }
 
   // Exact height of the rendered (triangulated) surface; falls back to the noise.
@@ -228,11 +285,11 @@ export class Terrain {
         if (type) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
       }
     }
-    if (rng() < world.floatingIslands) {
+    if (rng() < world.floatingIslands && !world.cave) {
       const u = rng() * SEG, v = rng() * SEG;
       place('floatingIsland', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 140 + rng() * 240, oz + v * STEP);
     }
-    if (rng() < 0.07) {
+    if (rng() < 0.07 * world.balloons && !world.cave) { // nothing floats above a cave roof
       const u = rng() * SEG, v = rng() * SEG;
       place('hotAirBalloon', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 90 + rng() * 200, oz + v * STEP);
     }
@@ -276,7 +333,7 @@ const BLACK = new THREE.Color(0, 0, 0);
 
 class Water {
   constructor(G) {
-    const geo = new THREE.PlaneGeometry(12000, 12000, 1, 1);
+    const geo = new THREE.PlaneGeometry(12000, 12000, 60, 60); // subdivided so it can bend with the tiny-planet curvature
     geo.rotateX(-Math.PI / 2);
     this.mat = new THREE.MeshPhongMaterial({ color: world.palette.waterHex, transparent: true, opacity: 0.82, shininess: 90, specular: '#ffffff' });
     this.mesh = new THREE.Mesh(geo, this.mat);

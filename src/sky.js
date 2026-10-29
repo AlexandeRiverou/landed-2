@@ -15,6 +15,10 @@ export const TOD = {
   volcano: { top: '#1a0606', horizon: '#c2401a', bottom: '#3a1008', sun: '#ff7a3a', sunI: 1.2, hemiSky: '#c2603a', hemiGround: '#2a1010', hemiI: 0.8, elev: 20, stars: 0.2 },
   stratosphere: { top: '#020418', horizon: '#6a9ae0', bottom: '#d8e8ff', sun: '#ffffff', sunI: 2.4, hemiSky: '#a8c8ff', hemiGround: '#e8f0ff', hemiI: 1.1, elev: 30, stars: 0.6 },
   space: { top: '#000000', horizon: '#04050c', bottom: '#000000', sun: '#ffffff', sunI: 2.4, hemiSky: '#8a90b0', hemiGround: '#1a1a24', hemiI: 0.55, elev: 25, stars: 1 },
+  cave: { top: '#0a0812', horizon: '#2a2248', bottom: '#0a0812', sun: '#b0a0ff', sunI: 1.1, hemiSky: '#9a8ad0', hemiGround: '#7a9ad0', hemiI: 1.7, elev: 70, stars: 0 },
+  royal: { top: '#a07aff', horizon: '#ffd8f0', bottom: '#ffe8f4', sun: '#fff0f8', sunI: 2.0, hemiSky: '#ffe0f4', hemiGround: '#a07ab0', hemiI: 1.1, elev: 40, stars: 0 },
+  mars: { top: '#a8603a', horizon: '#e8b080', bottom: '#c08a5a', sun: '#fff0d8', sunI: 1.8, hemiSky: '#f0c8a0', hemiGround: '#6a3a2a', hemiI: 0.9, elev: 35, stars: 0.1 },
+  pebble: { top: '#020418', horizon: '#3a5aa0', bottom: '#0a1430', sun: '#ffffff', sunI: 2.3, hemiSky: '#c8d8ff', hemiGround: '#4a5a3a', hemiI: 1.0, elev: 40, stars: 0.9 },
   storm: { top: '#3a4048', horizon: '#8d949c', bottom: '#5a6068', sun: '#d8dde2', sunI: 0.9, hemiSky: '#a0a8b0', hemiGround: '#3a3f44', hemiI: 0.95, elev: 50, stars: 0 },
 };
 const COLOR_KEYS = ['top', 'horizon', 'bottom', 'sun', 'hemiSky', 'hemiGround'];
@@ -142,6 +146,9 @@ export const WEATHER = {
   ash: { colors: ['#5a5a5a', '#8a8a8a', '#3a3a3a'], size: 2.2, fall: 9, sway: 4, count: 2600, opacity: 0.85 },
   stardust: { colors: ['#ffffff', '#a8c8ff', '#ffe8c8'], size: 1.1, fall: 1.5, sway: 1, count: 1600, opacity: 0.9 },
   glitter: { colors: ['#fff1a8', '#ffd700', '#ffffff'], size: 1.6, fall: 8, sway: 3, count: 3000, opacity: 1 },
+  petals: { colors: ['#ffb0d8', '#ffd0ec', '#ffffff'], size: 2.6, fall: 10, sway: 10, count: 1400, opacity: 1 },
+  dust: { colors: ['#e0b080', '#c89060', '#f0d0a0'], size: 2, fall: 3, sway: 12, count: 1600, opacity: 0.6 },
+  spores: { colors: ['#7af0ff', '#c07aff', '#7aff9a'], size: 1.8, fall: -4, sway: 4, count: 1200, opacity: 0.9 },
 };
 
 function dotTexture() {

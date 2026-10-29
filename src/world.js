@@ -29,6 +29,9 @@ export const PALETTES = [
 // Palettes only zones use (random world changes never pick these).
 export const ZONE_PALETTES = {
   volcanic: palette('Volcanic', { grass: '#3a3030', grass2: '#4a3a34', forest: '#2a2424', sand: '#5a4a40', desert: '#6a3a2a', desert2: '#4a2a20', rock: '#2a2628', rock2: '#1a1618', snow: '#8a8484', seabed: '#ff6a1a', water: '#ff4a0a', waterGlow: true, bands: ['#3a2a2a', '#5a2a1a', '#2a1a1a', '#7a3a1a'] }),
+  princess: palette('Royal Pastel', { grass: '#b8f0c8', grass2: '#d8ffd8', forest: '#ff9ad0', sand: '#fff4d0', desert: '#ffd8f0', desert2: '#f0c0e8', rock: '#c8b0f0', rock2: '#a890e0', snow: '#ffffff', seabed: '#f0d0f0', water: '#9ad8ff', bands: ['#ffb0d8', '#d8c0ff', '#ffe8a0', '#ffd0e8'] }),
+  cavern: palette('Cavern', { grass: '#4a6a5a', grass2: '#5a7a6a', forest: '#3a5a60', sand: '#7a7088', desert: '#6a6078', desert2: '#5a5068', rock: '#5a5070', rock2: '#4a4260', snow: '#a0e8ff', seabed: '#1a3a4a', water: '#1a9ac0', waterGlow: true, bands: ['#5a4a7a', '#3a5a7a', '#6a4a8a', '#2a4a5a'] }),
+  dunes: palette('Dunes', { grass: '#e8c890', grass2: '#f0d8a0', forest: '#d8b070', sand: '#f4e0b0', desert: '#e8c080', desert2: '#d8a868', rock: '#b08a5a', rock2: '#9a7448', snow: '#fff4e0', seabed: '#c8a878', water: '#3aa8c8', bands: ['#d89a5a', '#e8b878', '#c0804a', '#f0cc98'] }),
   lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
 };
 
@@ -52,6 +55,9 @@ export const world = {
   floor: 0,          // whole-terrain vertical offset (space zones drop the ground far below)
   tempBias: 0,       // + pushes everything toward desert, - toward snow and green
   craters: 0,        // natural impact craters (the Moon)
+  cave: 0,           // 1 = a rock ceiling over everything (the caverns)
+  balloons: 1,       // hot-air balloon chance multiplier
+  curve: 0,          // tiny-planet curvature: vertices drop by curve·d² away from the camera (see curve.js)
 };
 export const WORLD_DEFAULTS = { ...world };
 
@@ -121,6 +127,18 @@ export function heightAt(x, z) {
   }
   if (W.craters > 0) h -= moonCraters(x, z) * W.craters;
   return h + W.floor - craterDepthAt(x, z);
+}
+
+// The cave roof: a lumpy rock ceiling that follows the floor at a safe distance, with stalactites
+// hanging from it. Infinity when there's no cave.
+export const CAVE_MIN_GAP = 55;
+export function ceilingAt(x, z, floor = heightAt(x, z)) {
+  if (!world.cave) return Infinity;
+  let c = 185 + fbm(N.c, x * 0.0016 + 91, z * 0.0016 - 37, 3) * 70;
+  c = Math.max(c, floor + 95);
+  const s = N.f(x * 0.011 - 41, z * 0.011 + 90);
+  if (s > 0.55) c -= (s - 0.55) * 260; // stalactites
+  return Math.max(c, floor + CAVE_MIN_GAP);
 }
 
 // Natural impact craters: one per 140 m cell at a random spot, bowl + raised rim.

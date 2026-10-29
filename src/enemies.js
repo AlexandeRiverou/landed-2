@@ -427,7 +427,7 @@ export class Enemies {
       if (G.terrain.surfaceHeight(pos.x, pos.z) < G.world.seaLevel) return; // cannons can't swim
       if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
-    } else pos.y = Math.max(p.pos.y + rand(-15, 35), g + 45);
+    } else pos.y = Math.min(Math.max(p.pos.y + rand(-15, 35), g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
     if (SWARMS[type]) {
       for (let k = 0; k < SWARMS[type]; k++) this.spawn(type, pos.clone().add(new THREE.Vector3(rand(-25, 25), rand(-8, 8), rand(-25, 25))));
     } else this.spawn(type, pos);
@@ -464,6 +464,8 @@ export class Enemies {
         const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), G.world.seaLevel) + (e.boss ? e.radius : 12);
         if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
+        const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z) - (e.boss ? e.radius : 10);
+        if (e.pos.y > roof) { e.pos.y = Math.max(roof, g); if (e.vel.y > 0) e.vel.y = 0; }
       }
       this.animate(e, dt);
       if (e.marker) {

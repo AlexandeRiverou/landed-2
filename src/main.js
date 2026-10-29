@@ -16,6 +16,9 @@ import { PowerUps } from './powerups.js';
 import { Progress } from './progression.js';
 import { Zones } from './zones.js';
 import { pick, T } from './texts.js';
+import { installCurvature } from './curve.js';
+
+installCurvature(); // before anything compiles a shader
 
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
