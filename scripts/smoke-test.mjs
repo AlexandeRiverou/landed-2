@@ -93,17 +93,26 @@ try {
     // Weak points and breakable parts, hit with real bullets placed on the part.
     // Isolate these checks: no new spawns, so no stray enemy can fly through a target part and eat the bullets.
     G.powerups.active.clear();
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh)); // flying through one would change the bullets
+    G.powerups.timer = 1e9;
     G.enemies.spawnTimer = 1e9;
     G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
     const ahead = () => G.player.pos.clone().addScaledVector(G.player.forward, 120).setY(G.player.pos.y + 40);
     const at = new G.player.pos.constructor();
+    const shots = [];
     const shootAt = (part) => {
       part.obj.getWorldPosition(at);
+      // Bullets still in flight (e.g. from the boss fight, fired straight ahead) would hit the target too.
+      while (G.player.bullets.length) G.player.removeBullet(0);
       G.player.shootCd = 0;
       const n = G.player.bullets.length;
       G.player.fire();
-      for (const b of G.player.bullets.slice(n)) { b.pos.copy(at); b.vel.set(0, 0, 0); }
+      const mine = G.player.bullets.slice(n);
+      for (const b of mine) { b.pos.copy(at); b.vel.set(0, 0, 0); }
+      const hp = part.hp;
       step(1);
+      // Kept in the report so a failure says what happened to each shot.
+      shots.push({ part: part.name, hp: `${hp}->${part.hp}`, bullets: mine.length, unspent: mine.filter((b) => G.player.bullets.includes(b)).length, dead: G.player.dead, active: [...G.powerups.active.keys()].join('+') });
     };
     const partOf = (e, name) => e.mesh.userData.parts.find((x) => x.name === name && !x.broken);
     const dmg = G.player.stats.damage;
@@ -137,6 +146,7 @@ try {
     step(1);
     for (let k = 0; k < 3 && !cannon.disarmed; k++) shootAt(partOf(cannon, 'barrel'));
     out.cannonDisarmed = !!cannon.disarmed;
+    if (!out.cannonDisarmed || !out.gondolaStopsBombs) out.partShots = shots;
     G.powerups.active.delete('freeze');
     G.enemies.spawnTimer = 5;
 
@@ -148,6 +158,9 @@ try {
     out.pickupSpawned = !!pickup;
     if (pickup) { G.player.pos.copy(pickup.pos); step(2); }
     out.pickupCollected = G.powerups.active.size > 0 || G.player.health === G.player.maxHealth;
+    // No more pickups during the wear-off wait: flying into a fresh one would keep a power-up active.
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     for (const id of Object.keys(window.POWERUPS_FOR_TEST || {})) { G.powerups.activate(id); }
     G.input.keys.add('Space');
     step(30 * 5);
