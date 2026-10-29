@@ -10,7 +10,7 @@ export const ZONE_EVERY = 3; // completed objectives per zone
 // Random world changes that would break a zone's identity are locked while you're in it.
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
 const SPACE_LOCK = [...LOCK, 'sea', 'clouds', 'weather', 'amp', 'shape', 'islands', 'fog', 'canyon', 'mesa', 'spikes'];
-const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz']);
+const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye']);
 
 export const ZONES = [
   {

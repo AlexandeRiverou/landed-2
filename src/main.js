@@ -25,7 +25,7 @@ renderer.setSize(innerWidth, innerHeight);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.5, 9000);
 
-const G = { scene, camera, renderer, world, score: 0, stats: { crashes: 0, kills: 0 }, time: 0, paused: true, started: false };
+const G = { scene, camera, renderer, world, score: 0, stats: { crashes: 0, kills: 0 }, time: 0, paused: true, started: false, relax: false };
 window.G = G; // handy for poking at the world from the console
 
 buildProps();
@@ -97,9 +97,30 @@ function start() {
   G.paused = false;
   if (!G.started) {
     G.started = true;
+    $('relax-btn').classList.remove('hidden');
     updateCamera(0, true);
     setTimeout(() => G.ui.notify(pick(T.intro), 'info', 5), 400);
     setTimeout(() => G.ui.notify('Objectives appear top-right. Ignore them at your own risk. They get clingy.', 'persuade', 6), 2200);
+  }
+}
+
+// Cloud Nine: objectives and enemies leave, the HUD fades, cinema bars slide in. Like what you see? Stay a while.
+function setRelax(on) {
+  if (!G.started || G.relax === on) return;
+  G.relax = on;
+  document.body.classList.toggle('relax', on);
+  $('relax-btn').querySelector('.ico').textContent = on ? '⚡' : '☁️';
+  $('relax-btn').querySelector('.lbl').textContent = on ? 'Back to the action' : 'Cloud Nine';
+  if (on) {
+    G.objectives.suspend();
+    G.enemies.clearAll();
+    G.ui.bossBar(null);
+    G.audio.music?.setMood(G.zones.current.mood === 'space' ? 'space' : 'dream');
+    G.ui.notify(pick(T.relaxOn), 'info', 5, 2);
+  } else {
+    G.enemies.spawnTimer = 8;
+    G.audio.music?.setMood(G.zones.current.mood);
+    G.ui.notify(pick(T.relaxOff), 'good', 4, 2);
   }
 }
 
@@ -114,6 +135,8 @@ function setPaused(v) {
 
 $('start').addEventListener('click', start);
 $('resume').addEventListener('click', () => setPaused(false));
+$('relax-btn').addEventListener('click', (e) => { setRelax(!G.relax); e.currentTarget.blur(); }); // blur: Space must keep shooting, not re-click
+G.input.on('KeyR', () => setRelax(!G.relax));
 G.input.on('Enter', () => { if (!G.started) start(); });
 G.input.on('KeyP', () => setPaused(!G.paused));
 G.input.on('Escape', () => setPaused(!G.paused));
@@ -167,4 +190,5 @@ function step(dt) {
 }
 
 G.step = step; // console/debug: advance the simulation without rendering
+G.setRelax = setRelax;
 frame();

@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
+import { BOSSES, BOSS_MODS } from './enemies.js';
+import * as C from './challenges.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -10,7 +12,7 @@ const _dummy = new THREE.Object3D();
 
 export const groundAt = (G, x, z) => Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel);
 
-function clearance(G, x, z, r = 30) {
+export function clearance(G, x, z, r = 30) {
   let g = groundAt(G, x, z);
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * Math.PI * 2;
@@ -35,7 +37,7 @@ export function pointAhead(G, dMin, dMax, spread = 0.9, hMin = 40, hMax = 120) {
   return new THREE.Vector3(x, y, z);
 }
 
-function inFront(G, d, minClear = 35) {
+export function inFront(G, d, minClear = 35) {
   const f = flatForward(G), p = G.player.pos;
   const v = new THREE.Vector3(p.x + f.x * d, p.y, p.z + f.z * d);
   v.y = Math.max(v.y, clearance(G, v.x, v.z, 25) + minClear);
@@ -54,7 +56,7 @@ export function crossRing(ring, prev, cur, radius, halfOnly = false) {
   return r < radius * 2.2 ? 'miss' : null;
 }
 
-function faceFlat(o3, from, dt = 0) {
+export function faceFlat(o3, from, dt = 0) {
   _dummy.position.copy(o3.position);
   _dummy.lookAt(from.x, o3.position.y, from.z);
   if (dt) o3.quaternion.slerp(_dummy.quaternion, 1 - Math.exp(-dt * 2));
@@ -62,26 +64,26 @@ function faceFlat(o3, from, dt = 0) {
 }
 
 // Smoothly ease toward userData.tpos / userData.tscale.
-function anim(o3, dt) {
+export function anim(o3, dt) {
   const u = o3.userData;
   if (u.tpos) o3.position.lerp(u.tpos, 1 - Math.exp(-dt * 2.5));
   if (u.tscale) o3.scale.setScalar(THREE.MathUtils.lerp(o3.scale.x, u.tscale, 1 - Math.exp(-dt * 3)));
 }
 
-function moveToward(G, o3, f, minClear = 35) {
+export function moveToward(G, o3, f, minClear = 35) {
   const from = o3.userData.tpos || o3.position;
   const np = from.clone().lerp(G.player.pos, f);
   np.y = Math.max(np.y, clearance(G, np.x, np.z, 25) + minClear);
   o3.userData.tpos = np;
 }
 
-function spinRing(ring, dt, t) {
+export function spinRing(ring, dt, t) {
   const u = ring.userData;
   u.studs.rotation.z += dt * 0.8;
   u.glowMat.opacity = 0.22 + Math.sin(t * 4) * 0.1;
 }
 
-function objective(o) {
+export function objective(o) {
   const obj = Object.assign({
     t: 0, caps: new Set(), reward: 100, noun: 'the objective', progress: '', hints: null, signText: null, virtual: false, progressed: false,
     target() { return null; }, grow() {}, approach() {}, teleport() {}, easier() {}, magnet() {},
@@ -148,36 +150,62 @@ const mkTimedHoop = (G) => mkHoop(G, {
   desc: pick(['You have 28 seconds. The hoop has a dinner reservation.', 'Fly through it before it gets bored. It bores easily.']),
 });
 
-function mkChain(G) {
-  const n = 4 + Math.floor(Math.random() * 3);
+// Ring chains come in styles: a classic slalom, a corkscrew, a climbing staircase, a long dive,
+// or a slalom against the clock.
+const CHAIN_STYLES = {
+  slalom: { titles: ['Ring Chain', 'The Hoop Highway', 'Slalom Of Destiny'], desc: (n) => `${n} rings in a row. Gold is next. Blue is later. Missing is forever.` },
+  spiral: { titles: ['Corkscrew Alley', 'The Spiral Of Mild Nausea', 'Twisty Rings'], desc: (n) => `${n} rings arranged in a corkscrew. Roll with it. Literally.` },
+  stairs: { titles: ['Stairway To Heaven', 'Ring Ladder', 'Going Up!'], desc: (n) => `${n} rings, each one higher than the last. Climb, little plane, climb.` },
+  dive: { titles: ['The Waterslide', 'Downhill Ring Run', 'Plummet With Style'], desc: (n) => `${n} rings stepping down toward the ground. Dive through them. Pull up after. Please.` },
+  trial: { titles: ['Ring Time Trial', 'Hoops Against The Clock', 'Speedrun Any%'], desc: (n) => `${n} rings before the timer runs out. Boost is your friend.` },
+};
+
+export function mkChain(G, style = 'slalom') {
+  const S = CHAIN_STYLES[style];
+  const n = style === 'spiral' ? 7 : 4 + Math.floor(Math.random() * 3);
   const rings = [];
-  let p = pointAhead(G, 300, 450, 0.7, 50, 100);
+  let p = pointAhead(G, 300, 450, 0.7, style === 'dive' ? 170 : 50, style === 'dive' ? 220 : 100);
   const dir = new THREE.Vector3().subVectors(p, G.player.pos).setY(0).normalize();
+  const side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const axis = p.clone();
   for (let k = 0; k < n; k++) {
     const r = makeRing(15, k === 0 ? '#ffc23a' : '#7ad8ff');
     r.position.copy(p);
     G.scene.add(r);
     rings.push(r);
     const prev = p.clone();
-    dir.applyAxisAngle(Y, rand(-0.4, 0.4));
-    p = p.clone().addScaledVector(dir, rand(120, 150));
-    p.y = Math.max(prev.y + rand(-30, 30), clearance(G, p.x, p.z) + 35);
+    if (style === 'spiral') {
+      axis.addScaledVector(dir, 95);
+      const a = (k + 1) * 1.1;
+      p = axis.clone().addScaledVector(side, Math.cos(a) * 40).add(new THREE.Vector3(0, Math.sin(a) * 40, 0));
+      p.y = Math.max(p.y, clearance(G, p.x, p.z) + 35);
+    } else {
+      dir.applyAxisAngle(Y, rand(-0.4, 0.4) * (style === 'slalom' || style === 'trial' ? 1 : 0.5));
+      p = p.clone().addScaledVector(dir, rand(120, 150));
+      const dy = style === 'stairs' ? rand(28, 38) : style === 'dive' ? -rand(25, 35) : rand(-30, 30);
+      p.y = Math.max(prev.y + dy, clearance(G, p.x, p.z) + 35);
+    }
     _dummy.position.copy(r.position);
     _dummy.lookAt(k === 0 ? G.player.pos.clone().setY(r.position.y) : rings[k - 1].position);
     r.quaternion.copy(_dummy.quaternion);
   }
-  let idx = 0;
+  let idx = 0, timeLimit = style === 'trial' ? 20 + n * 9 : 0, warned = false;
   const mark = () => rings.forEach((r, k) => { r.visible = k >= idx; setRingColor(r, k === idx ? '#ffc23a' : '#7ad8ff'); });
   mark();
   return objective({
-    type: 'chain', reward: 80 + n * 25, noun: 'the ring chain',
-    title: pick(['Ring Chain', 'The Hoop Highway', 'Slalom Of Destiny']),
-    desc: `${n} rings in a row. Gold is next. Blue is later. Missing is forever.`,
-    caps: new Set(['grow', 'approach', 'teleport']),
+    type: style === 'slalom' ? 'chain' : style, reward: 80 + n * 25 + (style === 'trial' ? 40 : 0), noun: 'the ring chain',
+    title: pick(S.titles), desc: S.desc(n),
+    caps: new Set(['grow', 'approach', 'teleport', ...(timeLimit ? ['easier'] : [])]),
     signText: ['RINGS', 'THAT WAY →', '(SEVERAL!)'],
     target() { return rings[idx].position; },
     onUpdate(dt, G) {
       this.progress = `Ring ${idx + 1} / ${n}`;
+      if (timeLimit) {
+        const left = timeLimit - this.t;
+        this.progress += ` · ⏱ ${Math.max(0, left).toFixed(1)}s`;
+        if (left < 8 && !warned) { warned = true; G.ui.notify('8 seconds left! The rings are tapping their feet.', 'warn'); }
+        if (left <= 0) return 'fail';
+      }
       for (const r of rings) { spinRing(r, dt, this.t); anim(r, dt); }
       const r = crossRing(rings[idx], G.player.prevPos, G.player.pos, 15);
       if (r === 'hit') {
@@ -205,22 +233,33 @@ function mkChain(G) {
       for (const r of rings) { r.userData.tpos = null; r.position.add(delta); r.position.y = Math.max(r.position.y, clearance(G, r.position.x, r.position.z) + 35); }
       faceFlat(rings[idx], G.player.pos);
     },
+    easier() { timeLimit += 15; warned = false; return 'The clock got 15 extra seconds. The clock is a softie.'; },
     dispose(G) { for (const r of rings) { G.scene.remove(r); disposeTree(r); } },
   });
 }
 
 // ---------- collectibles ----------
 
+// kind 'stars' / 'balloons' scatter around a spot; 'trail' lays a long wiggly line of stars to follow.
 function mkCollect(G, kind) {
-  const stars = kind === 'stars';
-  const n = stars ? 6 : 5;
+  const trail = kind === 'trail';
+  const stars = kind === 'stars' || trail;
+  const n = trail ? 10 : stars ? 6 : 5;
   const center = pointAhead(G, 420, 620, 0.8, 60, 130);
   const items = [];
   const colors = ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff'];
+  const start = trail ? pointAhead(G, 260, 340, 0.5, 50, 90) : null;
+  const dir = trail ? new THREE.Vector3().subVectors(start, G.player.pos).setY(0).normalize() : null;
   for (let k = 0; k < n; k++) {
     const m = stars ? makeStar() : makeBalloon(colors[k % colors.length]);
-    const a = (k / n) * Math.PI * 2 + rand(-0.3, 0.3), r = rand(60, 190);
-    m.position.set(center.x + Math.cos(a) * r, center.y + rand(-30, 50), center.z + Math.sin(a) * r);
+    if (trail) {
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);
+      m.position.copy(start).addScaledVector(dir, k * 55).addScaledVector(side, Math.sin(k * 0.8) * 45);
+      m.position.y += Math.sin(k * 0.55) * 30;
+    } else {
+      const a = (k / n) * Math.PI * 2 + rand(-0.3, 0.3), r = rand(60, 190);
+      m.position.set(center.x + Math.cos(a) * r, center.y + rand(-30, 50), center.z + Math.sin(a) * r);
+    }
     m.position.y = Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25);
     m.userData.phase = Math.random() * 10;
     G.scene.add(m);
@@ -229,9 +268,9 @@ function mkCollect(G, kind) {
   let got = 0, scale = 1, magnet = false;
   const alive = () => items.filter((m) => !m.userData.got);
   return objective({
-    type: kind, reward: stars ? 150 : 140, noun: stars ? 'the stars' : 'the balloons',
-    title: stars ? pick(['Star Collector', 'Twinkle Twinkle Grab That Star', 'Shiny Things Department']) : pick(['Balloon Popper', 'Party Pooper', 'Pop Goes The Balloon']),
-    desc: stars ? `Collect ${n} stars. They're not real stars. Please don't tell them.` : `Pop ${n} balloons by flying into them. They knew the risks.`,
+    type: kind, reward: trail ? 180 : stars ? 150 : 140, noun: trail ? 'the star trail' : stars ? 'the stars' : 'the balloons',
+    title: trail ? pick(['Star Trail', 'Follow The Shiny Road', 'Twinkle Highway']) : stars ? pick(['Star Collector', 'Twinkle Twinkle Grab That Star', 'Shiny Things Department']) : pick(['Balloon Popper', 'Party Pooper', 'Pop Goes The Balloon']),
+    desc: trail ? `A wiggly trail of ${n} stars. Follow it like breadcrumbs, but shinier.` : stars ? `Collect ${n} stars. They're not real stars. Please don't tell them.` : `Pop ${n} balloons by flying into them. They knew the risks.`,
     caps: new Set(['grow', 'approach', 'teleport', 'magnet']),
     signText: stars ? ['STARS!', 'THAT WAY →'] : ['BALLOONS', 'NEED POPPING →'],
     target() {
@@ -391,7 +430,7 @@ function mkAltitude(G) {
 
 // ---------- landmarks ----------
 
-const BUZZ = [
+export const BUZZ = [
   ['gnome', 'Giant Gnome', 'He knows what you did. Fly close and stare him down.'],
   ['duck', 'Colossal Rubber Duck', 'It squeaks at 140 decibels. Buzz it anyway.'],
   ['moai', 'Suspicious Stone Head', 'It has been judging everyone for 800 years. Fly by and judge it back.'],
@@ -481,7 +520,7 @@ function mkHunt(G) {
   let scale = 1;
   const alive = () => list.filter((e) => !e.dead);
   return objective({
-    type: 'hunt', reward: 200, noun: 'the evil pigeons',
+    type: 'hunt', reward: 200, noun: 'the evil pigeons', needsEnemies: true,
     title: pick(['Pigeon Patrol', 'The Pigeon Problem', 'Coo-ntermeasures']),
     desc: `${n} evil pigeons are plotting something. Shoot them (Space / click). They wear tiny top hats. It's not cute. It's evil.`,
     caps: new Set(['grow', 'approach', 'teleport']),
@@ -507,44 +546,85 @@ function mkHunt(G) {
 
 // ---------- bosses ----------
 
-const BOSS_ORDER = ['kingDrone', 'gooseQueen', 'megaUfo', 'thunder'];
-export const BOSS_EVERY = 4;
+export const BOSS_EVERY = 3;
+// The first two bosses are the gentler classics; after that, anything goes.
+const OPENERS = ['kingDrone', 'gooseQueen'];
 
-function mkBoss(G, level) {
-  const kind = BOSS_ORDER[level % BOSS_ORDER.length];
-  const e = G.enemies.spawnBoss(kind, pointAhead(G, 420, 560, 0.4, 70, 110), level);
-  const d = e.def;
-  G.ui.bossBar(e);
-  G.ui.notify(`⚠ BOSS INCOMING: ${d.name}!`, 'bad', 5);
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  return list;
+}
+
+// Where a boss appears: in the air ahead, or (for the fort) on flat, dry land ahead. Null when there's none.
+function bossSpot(G, def) {
+  if (!def.ground) return pointAhead(G, 420, 560, 0.4, 70, 110);
+  if (G.zones.current.noGround) return null;
+  const flat = (x, z) => G.enemies.isGentleGround(x, z) && [[15, 0], [-15, 0], [0, 15], [0, -15]].every(([dx, dz]) => G.enemies.isGentleGround(x + dx, z + dz));
+  for (let k = 0; k < 80; k++) {
+    const s = pointAhead(G, 380, 750, 1.1);
+    const g = G.terrain.surfaceHeight(s.x, s.z);
+    if (g > G.world.seaLevel + 2 && flat(s.x, s.z)) return s.setY(g);
+  }
+  return null;
+}
+
+function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
+  const def = BOSSES[kind], M = BOSS_MODS[mod] || null;
+  const side = new THREE.Vector3(-G.player.forward.z, 0, G.player.forward.x).normalize();
+  const list = duo
+    ? [-1, 1].map((s, k) => G.enemies.spawnBoss(kind, spot.clone().addScaledVector(side, s * 60), level, { mod, hp: 0.6, size: 0.8, phase: k * Math.PI }))
+    : [G.enemies.spawnBoss(kind, spot, level, { mod })];
+  const lead = list[0];
+  const name = duo ? `The ${lead.short} Twins` : lead.name;
+  const alive = () => list.filter((e) => !e.dead);
+  const bar = () => {
+    let hp = 0, maxHp = 0;
+    for (const e of list) { maxHp += e.maxHp; if (!e.dead) hp += Math.max(0, e.hp); }
+    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged) };
+  };
+  G.ui.bossBar(bar());
+  G.ui.notify(`⚠ BOSS INCOMING: ${name}!${M ? ` ${M.text}` : ''}${duo ? ' There are TWO of them.' : ''}`, 'bad', 5);
   G.audio.zap();
   return objective({
-    type: 'boss', reward: 400 + level * 100, noun: d.noun,
-    title: `BOSS: ${d.short}`, desc: `${d.desc} Shoot it with Space / click!`,
+    type: 'boss', boss: kind, needsEnemies: true, noun: duo ? `the ${lead.short} twins` : def.noun,
+    reward: Math.round((400 + level * 100) * (M?.score || 1) * (duo ? 1.5 : 1)),
+    title: `BOSS: ${duo ? `${lead.short} ×2` : lead.short}`,
+    desc: `${duo ? 'Double trouble! Two of them, each a bit smaller. ' : ''}${def.desc} Shoot it with Space / click!`,
     caps: new Set(['grow', 'approach', 'easier']),
     signText: ['BOSS FIGHT', 'THAT WAY →'],
-    hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Your hull repairs itself if you avoid hits for 4 seconds.'],
-    target() { return e.dead ? null : e.pos; },
-    onUpdate(dt, G) {
-      G.ui.bossBar(e);
-      this.progress = `❤️ Boss HP ${Math.max(0, Math.ceil(e.hp))} / ${e.maxHp}`;
-      if (e.hp !== this.lastHp) { if (this.lastHp !== undefined) this.progressed = true; this.lastHp = e.hp; }
-      return e.dead ? 'done' : null;
+    hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Your hull repairs itself if you avoid hits for 4 seconds.', 'Glowing parts are weak spots. Knock the crown off for extra damage.'],
+    target() {
+      let best = null, bd = Infinity;
+      for (const e of alive()) { const d = e.pos.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = e; } }
+      return best ? best.pos : null;
     },
-    grow(f) { const k = Math.min(f, 1.4); e.radius *= k; e.mesh.scale.multiplyScalar(k); },
-    approach(G, f) { e.pos.lerp(G.player.pos, f * 0.6); },
-    easier() { e.hp = Math.max(1, Math.ceil(e.hp * 0.7)); return `${d.short} pulled a muscle. Boss HP -30%. Embarrassing for them, great for you.`; },
-    dispose(G) { G.ui.bossBar(null); if (!e.dead) G.enemies.removeEnemy(e); },
+    onUpdate(dt, G) {
+      const b = bar();
+      G.ui.bossBar(b);
+      this.progress = `❤️ Boss HP ${Math.ceil(b.hp)} / ${b.maxHp}`;
+      if (b.hp !== this.lastHp) { if (this.lastHp !== undefined) this.progressed = true; this.lastHp = b.hp; }
+      return alive().length ? null : 'done';
+    },
+    grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } },
+    approach(G, f) { for (const e of alive()) e.pos.lerp(G.player.pos, f * 0.6); },
+    easier() { for (const e of alive()) e.hp = Math.max(1, Math.ceil(e.hp * 0.7)); return `${lead.short} pulled a muscle. Boss HP -30%. Embarrassing for them, great for you.`; },
+    dispose(G) { G.ui.bossBar(null); for (const e of alive()) G.enemies.removeEnemy(e); },
   });
 }
 
 // ---------- manager ----------
 
 const TYPES = [
-  ['hoop', 3, mkHoop], ['chain', 2, mkChain], ['tiny', 1, mkTinyHoop], ['timed', 1, mkTimedHoop],
-  ['stars', 2, (G) => mkCollect(G, 'stars')], ['balloons', 1.6, (G) => mkCollect(G, 'balloons')],
-  ['goose', 1.5, mkGoose], ['loop', 1.6, mkLoop], ['lowfly', 1, mkLowFly], ['altitude', 0.9, mkAltitude],
-  ['buzz', 1.5, mkBuzz], ['hunt', 1.2, mkHunt], ['gate', 1.4, mkGate],
+  ['hoop', 3, mkHoop], ['chain', 1.6, (G) => mkChain(G, 'slalom')], ['tiny', 1, mkTinyHoop], ['timed', 1, mkTimedHoop],
+  ['spiral', 1, (G) => mkChain(G, 'spiral')], ['stairs', 0.9, (G) => mkChain(G, 'stairs')], ['dive', 0.9, (G) => mkChain(G, 'dive')],
+  ['trial', 0.9, (G) => mkChain(G, 'trial')], ['moving', 1.3, C.mkMovingHoop], ['shrink', 1.1, C.mkShrinkHoop],
+  ['stars', 1.6, (G) => mkCollect(G, 'stars')], ['balloons', 1.3, (G) => mkCollect(G, 'balloons')], ['trail', 1.3, (G) => mkCollect(G, 'trail')],
+  ['gallery', 1.3, C.mkGallery], ['goose', 1.4, mkGoose], ['follow', 1.3, C.mkFollow],
+  ['loop', 1.4, mkLoop], ['inverted', 1, C.mkInverted], ['speed', 1, C.mkSpeed], ['lowfly', 1, mkLowFly], ['altitude', 0.9, mkAltitude],
+  ['buzz', 1.4, mkBuzz], ['tour', 1, C.mkTour], ['gate', 1.3, mkGate], ['bullseye', 1.1, C.mkBullseye],
+  ['hunt', 1.1, mkHunt], ['pest', 1, C.mkPest], ['survive', 0.8, C.mkSurvive],
 ];
+export const OBJECTIVE_TYPES = TYPES.map((t) => t[0]);
 
 export class Objectives {
   constructor(G) {
@@ -555,13 +635,37 @@ export class Objectives {
     this.cooldown = 4;
     this.bossLevel = 0;
     this.bossAt = 0;
+    this.bossDeck = [...shuffle([...OPENERS]), ...shuffle(Object.keys(BOSSES).filter((k) => !OPENERS.includes(k)))];
+    this.pendingBoss = false; // a boss interrupted by Cloud Nine comes back first
+  }
+
+  // Next boss from the deck that fits the current zone (no fort in space). Reshuffles when it runs out.
+  makeBoss(kind = null, opts = null) {
+    const G = this.G;
+    let spot = null;
+    if (kind) spot = bossSpot(G, BOSSES[kind]);
+    else {
+      if (!this.bossDeck.length) this.bossDeck = shuffle(Object.keys(BOSSES));
+      for (let i = 0; i < this.bossDeck.length && !spot; i++) {
+        spot = bossSpot(G, BOSSES[this.bossDeck[i]]);
+        if (spot) kind = this.bossDeck.splice(i, 1)[0];
+      }
+    }
+    if (!spot) { kind = 'kingDrone'; spot = bossSpot(G, BOSSES[kind]); }
+    const level = this.bossLevel++;
+    opts ??= {
+      mod: level >= 2 && Math.random() < 0.5 ? pick(Object.keys(BOSS_MODS)) : null,
+      duo: level >= 3 && !BOSSES[kind].ground && Math.random() < 0.3,
+    };
+    return mkBoss(G, level, kind, spot, opts);
   }
 
   next() {
     const G = this.G;
-    if (this.completed > 0 && this.completed % BOSS_EVERY === 0 && this.bossAt !== this.completed) {
+    if (this.pendingBoss || (this.completed > 0 && this.completed % BOSS_EVERY === 0 && this.bossAt !== this.completed)) {
       this.bossAt = this.completed;
-      return this.start(mkBoss(G, this.bossLevel++), 'boss');
+      this.pendingBoss = false;
+      return this.start(this.makeBoss(), 'boss');
     }
     const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]) && G.zones.allowsObjective(t[0]));
     const [type, , make] = weightedPick(pool, (t) => t[1]);
@@ -570,7 +674,7 @@ export class Objectives {
 
   start(obj, type) {
     const G = this.G;
-    this.recent = [type, ...this.recent].slice(0, 3);
+    this.recent = [type, ...this.recent].slice(0, 4);
     this.current = obj;
     G.persuasion.reset(obj);
     G.ui.setObjective(obj);
@@ -578,7 +682,20 @@ export class Objectives {
     G.audio.ding(0.8);
   }
 
+  // Cloud Nine: the objective quietly leaves (no penalty). An interrupted boss returns first afterwards.
+  suspend() {
+    const G = this.G, obj = this.current;
+    this.cooldown = 3;
+    if (!obj) return;
+    if (obj.type === 'boss') { this.pendingBoss = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
+    G.persuasion.reset(null);
+    obj.dispose(G);
+    this.current = null;
+    G.ui.setObjective(null);
+  }
+
   update(dt) {
+    if (this.G.relax) return;
     if (!this.current) {
       if (this.G.player.dead) return;
       this.cooldown -= dt;
@@ -589,7 +706,6 @@ export class Objectives {
     if (r === 'done') this.complete(false);
     else if (r === 'fail') this.fail();
   }
-
   complete(forced) {
     const G = this.G, obj = this.current;
     if (!obj) return;

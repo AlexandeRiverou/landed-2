@@ -42,7 +42,11 @@ try {
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.click('#start');
-  await page.evaluate(async () => { window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS; });
+  await page.evaluate(async () => {
+    window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
+    window.OBJ_FOR_TEST = await import('./src/objectives.js');
+    window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
+  });
 
   const report = await page.evaluate(async () => {
     const G = window.G;
@@ -59,23 +63,27 @@ try {
     out.persuasionStages = stages;
     out.completedAfterTrophy = G.objectives.completed;
 
-    // Every objective type once, then completed normally (each triggers world mutations).
-    const types = ['hoop', 'chain', 'tiny', 'timed', 'stars', 'balloons', 'goose', 'loop', 'lowfly', 'altitude', 'buzz', 'hunt', 'gate'];
+    // Every objective type once, run for a bit, then completed normally (each triggers world mutations).
+    // Stay in the first zone: space zones don't offer the ground objectives.
+    const { OBJECTIVE_TYPES: types, BOSS_EVERY } = window.OBJ_FOR_TEST;
+    out.objectiveTypes = types.length;
     for (const t of types) {
-      step(150);
+      step(60);
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
       G.objectives.completed = 1;
+      G.zones.sinceZone = 0;
       G.objectives.recent = types.filter((x) => x !== t);
       G.objectives.next();
       if (G.objectives.current.type !== t) throw new Error(`expected objective ${t}, got ${G.objectives.current.type}`);
-      step(30);
+      step(90);
       G.objectives.complete(false);
     }
     step(150);
 
     // A boss fight: fly at the boss with guns blazing until it falls.
     if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
-    G.objectives.completed = 4;
+    G.objectives.completed = BOSS_EVERY;
+    G.objectives.bossDeck = ['kingDrone'];
     G.objectives.next();
     const boss = G.enemies.list.find((e) => e.boss);
     if (!boss) throw new Error('boss did not spawn');
@@ -89,6 +97,63 @@ try {
     out.bossDefeated = boss.dead;
     out.bossDroppedPowerup = drops === 1;
     G.powerups.drop = drop;
+    step(30);
+
+    // Every boss: spawns, fights for a while (attacks, summons, dashes), then falls and completes the objective.
+    out.bosses = {};
+    const startBoss = (kind, opts) => {
+      if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+      G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
+      return G.enemies.list.filter((e) => e.boss);
+    };
+    for (const kind of Object.keys(window.BOSSES_FOR_TEST)) {
+      // A Time Freeze or Slow-Mo grabbed from the last boss's drop would stop this one from attacking.
+      G.powerups.active.clear();
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      G.powerups.timer = 1e9;
+      // The fort needs flat land: calm the mountains for its turn so the test never depends on the terrain roll.
+      // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
+      const ground = window.BOSSES_FOR_TEST[kind].ground, { amp, seaLevel } = G.world;
+      if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
+      const done0 = G.objectives.completed;
+      const list = startBoss(kind, { mod: null, duo: false });
+      const e = list[0];
+      for (let i = 0; i < 30 * 10; i++) { G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(e.pos, 2, 1 / 30); step(1); }
+      const attacks = e.attacks;
+      e.hp = 0;
+      step(3);
+      out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
+      if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
+      G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    }
+    // Twins with a modifier: two bosses share one objective; it only completes when both are down.
+    const twins = startBoss('gooseQueen', { mod: 'turbo', duo: true });
+    step(30);
+    twins[0].hp = 0;
+    step(3);
+    const halfDone = G.objectives.current?.type === 'boss';
+    twins[1].hp = 0;
+    step(3);
+    out.twins = { count: twins.length, name: twins[0].short, halfDone, done: !G.objectives.current };
+    G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh)); // the twins' drops: leftovers, not Cloud Nine spawns
+    G.powerups.timer = 5;
+
+    // Cloud Nine (relax mode): objectives, enemies and pickups go away and stay away; an interrupted boss comes back.
+    startBoss('megaUfo', { mod: null, duo: false });
+    G.enemies.spawn('drone', G.player.pos.clone().addScaledVector(G.player.forward, 200));
+    G.setRelax(true);
+    G.powerups.timer = 0;
+    step(30 * 30);
+    out.relax = {
+      objective: !!G.objectives.current, enemies: G.enemies.list.length, pickups: G.powerups.pickups.length,
+      bodyClass: document.body.classList.contains('relax'), panelHidden: getComputedStyle(document.getElementById('objective')).display === 'none',
+    };
+    G.setRelax(false);
+    step(30 * 6);
+    out.relax.backObjective = G.objectives.current?.type;
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.enemies.list.filter((x) => !x.quest).forEach((x) => G.enemies.removeEnemy(x));
 
     // Weak points and breakable parts, hit with real bullets placed on the part.
     // Isolate these checks: no new spawns, so no stray enemy can fly through a target part and eat the bullets.
@@ -125,13 +190,12 @@ try {
     shootAt(partOf(blimp, 'gondola'));
     out.weakPointDamage = hp0 - blimp.hp;          // 2 bullets × weak multiplier 2
     out.weakPointExpected = 4 * dmg;
-    shootAt(partOf(blimp, 'gondola'));
+    if (partOf(blimp, 'gondola')) shootAt(partOf(blimp, 'gondola')); // with the double-damage perk, the first shot already broke it
     out.gondolaStopsBombs = !!blimp.noBombs;
     const drone = G.enemies.spawn('drone', ahead());
     drone.hp = 100;
     step(1);
-    shootAt(partOf(drone, 'rotor'));
-    shootAt(partOf(drone, 'rotor'));
+    for (let k = 0; k < 2 && partOf(drone, 'rotor'); k++) shootAt(partOf(drone, 'rotor'));
     out.droneFalling = drone.state === 'falling';
     G.powerups.active.delete('freeze');
     for (let i = 0; i < 30 * 30 && !drone.dead; i++) step(1);
@@ -170,7 +234,9 @@ try {
     step(30 * 5);
     G.input.keys.delete('Space');
     out.powerupsActiveMidway = G.powerups.active.size;
-    step(30 * 60);
+    const longest = Math.max(...Object.values(window.POWERUPS_FOR_TEST).map((d) => d.dur)) * G.progress.durationMul;
+    out.longestPowerup = longest;
+    step(30 * Math.ceil(longest - 5 + 3));
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
 
     // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
@@ -248,6 +314,13 @@ try {
     [report.bossDefeated, 'boss can be defeated'],
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
+    [report.objectiveTypes >= 28, 'all objective types are on the menu'],
+    [Object.keys(report.bosses).length >= 12, 'at least 12 bosses'],
+    [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
+    [report.twins.count === 2 && report.twins.halfDone && report.twins.done && report.twins.name.startsWith('Turbo'), 'boss twins with a modifier both have to go down'],
+    [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Cloud Nine clears objectives, enemies and pickups'],
+    [report.relax.backObjective === 'boss', 'leaving Cloud Nine brings back the interrupted boss'],
+    [report.longestPowerup >= 45, 'power-ups last longer'],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
     [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],
     [report.droneFalling && report.droneCrashed, 'a drone that loses its rotors falls and crashes'],

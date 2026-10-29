@@ -29,7 +29,8 @@ npm run check     # syntax check every module
 npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN needed)
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
-                  # world mutations and a boss fight; fails on any error
+                  # world mutations, every objective, every boss and Cloud Nine;
+                  # fails on any error
 ```
 
 The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs the same steps:
@@ -55,6 +56,7 @@ server.
 | Boost | `Shift` |
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
+| Cloud Nine (relax mode) | `R` or the ☁️ button at the top |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right |
 
 ## What's in it
@@ -84,8 +86,8 @@ a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt (asteroi
 show under your rank. Random world changes still happen inside a zone, but can't break its identity.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
-40 s; never more than one waiting), and every boss drops one. Each lasts a few seconds, shown with a countdown in the
-bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,
+40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double
+Points and Objective Radar 45 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,
 Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and Objective Radar.
 
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
@@ -93,14 +95,45 @@ Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and
 recharge, higher fire rate, longer and more frequent power-ups, harder-hitting bullets... The XP bar is under your
 score, and your best run is remembered on the title screen.
 
-**Bosses** (`src/enemies.js`, `src/objectives.js`): every 4 completed objectives a crowned boss shows up, cycling
-through King Drone the Unpleasant (summons minions), Her Royal Honkness the Goose Queen (golden eggs), The Mothership
-(orb shotguns) and Thunderclaus (lightning up close, hail from afar). Bosses circle you, taunt you, and get ENRAGED below
-half health. Each boss cycle adds HP. Defeating one pays 400+ points and reshapes the world like any other win.
+**Bosses** (`src/enemies.js`, `src/objectives.js`): every 3 completed objectives a crowned boss shows up. There are 12,
+drawn from a shuffled deck so you meet them all before any repeats:
 
-**13 objective types** (`src/objectives.js`): hoop, ring chain, tiny precision hoop, timed speed hoop, star collection,
-balloon popping, catching the golden goose, loop-de-loop (a real maneuver, detected from your pitch rotation), crop
-dusting (low flying), climbing to an altitude, buzzing a giant landmark, the pigeon hunt, and flying under a stone arch.
+- King Drone the Unpleasant (summons minions)
+- Her Royal Honkness the Goose Queen (golden eggs)
+- The Mothership (orb shotguns)
+- Thunderclaus (lightning up close, hail from afar)
+- Baron von Blimpenstein (carpet-bombs your flight path, drops "special offer" mines)
+- Empress Wobblina (rings of goo with a safe hole in the middle, zaps up close)
+- Gary Prime, Gary's dad (strafing runs and rapid bursts)
+- Queen Bee-atrice (stinger fans, calls in the swarm)
+- Don Pigeone the Godfeather (sends "associates", air mail from above)
+- Steven the Seagull Overlord (dive-bombs; a hit steals your boost)
+- The Mother of All Spiky Balloons (spike novas, mines in your path)
+- Fort Grumpington (a ground boss: mortars and flak; never in space)
+
+From the third boss on, they can roll a modifier (Jumbo, Turbo, Furious But Fragile, Shiny for double points). From the
+fourth on, they can show up as twins that share one health bar. Bosses circle you, taunt you, and get ENRAGED below
+half health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him,
+the fort's barrel cuts its mortars). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
+other win.
+
+**28 objective types** (`src/objectives.js`, `src/challenges.js`):
+
+- *Hoops:* hoop, tiny precision hoop, timed speed hoop, a hoop that wanders around, a hoop that shrinks until it's gone.
+- *Ring chains:* slalom, corkscrew, climbing staircase, downhill dive, and a time trial.
+- *Collecting:* stars, balloons to fly into, a long wiggly star trail, a shooting gallery of balloons you have to shoot.
+- *Chases:* catching the golden goose, following Larry (Gary's nice cousin) or Professor Honk in formation.
+- *Stunts:* loop-de-loop (detected from your pitch rotation), flying upside down, going really fast, crop dusting (low
+  flying), climbing to an altitude.
+- *Places:* buzzing a giant landmark, a three-stop sightseeing tour, flying under a stone arch, shooting a bullseye
+  painted on the ground.
+- *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
+  arrive twice as fast).
+
+**Cloud Nine** (`src/main.js`): press `R` or the ☁️ Cloud Nine button to take a break. Objectives and enemies leave,
+no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, so
+if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
+back first.
 
 **Persuasion engine** (`src/persuasion.js`): a "neglect" meter fills while you're not making progress. It fills faster
 when you fly away and barely moves while you close in. Each time it fills, the game escalates through 27 tactics

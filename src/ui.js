@@ -95,12 +95,13 @@ export class UI {
     e.objDesc.textContent = obj.desc;
   }
 
-  bossBar(e) {
+  // b: { name, hp, maxHp, enraged } for the current boss fight (twins share one bar), or null.
+  bossBar(b) {
     const bar = document.getElementById('boss-bar');
-    if (!e) { bar.classList.add('hidden'); return; }
+    if (!b) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
-    document.getElementById('boss-name').textContent = `👑 ${e.def.name}${e.enraged ? ' (ENRAGED)' : ''}`;
-    document.getElementById('boss-fill').style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
+    document.getElementById('boss-name').textContent = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}`;
+    document.getElementById('boss-fill').style.width = `${Math.max(0, (b.hp / b.maxHp) * 100)}%`;
   }
 
   flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }
