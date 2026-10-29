@@ -127,9 +127,9 @@ const MUTATIONS = [
     G.player.setSkin(s);
     return `Your plane got a new paint job: "${s.name}". It's... a choice.`;
   } },
-  { id: 'speed', group: 'speed', can: (G) => G.player.baseSpeed < 74, apply(G) {
-    G.player.baseSpeed = Math.min(76, G.player.baseSpeed + 5);
-    return 'Engine upgrade: +5 speed! Warranty void.';
+  { id: 'speed', group: 'speed', can: (G) => G.player.baseSpeed < 60, apply(G) {
+    G.player.baseSpeed = Math.min(62, G.player.baseSpeed + 4);
+    return 'Engine upgrade: +4 speed! Warranty void.';
   } },
   { id: 'clouds', group: 'clouds', apply(G) {
     const [color, count, text] = pick([

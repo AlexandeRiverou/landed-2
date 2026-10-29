@@ -19,6 +19,8 @@ const TYPES = {
   rival: { hp: 3, radius: 6, dmg: 20, speed: 62, make: makeRivalJet, score: 150, minScore: 450, weight: 0.9, kamikaze: false, name: 'Rival Pilot Gary', intro: 'Rival Pilot Gary has entered the sky. Nobody likes Gary.' },
 };
 const SWARMS = { gull: 4, bee: 6 };
+// Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
+const PACE = 0.85;
 
 let markerMat = null;
 function makeMarker() {
@@ -224,6 +226,7 @@ export class Enemies {
 
   update(dt) {
     const G = this.G, p = G.player;
+    dt *= PACE * G.powerups.enemyTimeScale(); // Slow-Mo / Time Freeze power-ups
     this.calmTimer = Math.max(0, this.calmTimer - dt);
     this.maybeSpawn(dt);
 
@@ -255,7 +258,9 @@ export class Enemies {
 
       // Player contact.
       e.contactCd = Math.max(0, (e.contactCd || 0) - dt);
-      if (!p.dead && !calm && dist < e.radius + 4 && e.contactCd <= 0) {
+      if (!p.dead && !calm && dist < e.radius + 4 * p.sizeScale && e.contactCd <= 0) {
+        // Mega Plane flattens anything smaller than a boss.
+        if (G.powerups.has('mega') && !e.boss) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         e.contactCd = 1.5; // big enemies bump you once, not every frame
         p.damage(e.def.dmg);
         if (e.def.kamikaze) { G.fx.explosion(e.pos); this.kill(i, false); continue; }
@@ -264,8 +269,8 @@ export class Enemies {
       // Bullets.
       for (let b = p.bullets.length - 1; b >= 0; b--) {
         if (p.bullets[b].pos.distanceToSquared(e.pos) < (e.radius + 2) ** 2) {
+          e.hp -= p.bullets[b].dmg || 1;
           p.removeBullet(b);
-          e.hp--;
           G.fx.sparkle(e.pos, '#ffaa55');
           G.audio.hit();
           if (e.hp <= 0) break;
@@ -409,7 +414,7 @@ export class Enemies {
       const s = this.shots[i];
       s.life -= dt;
       s.pos.addScaledVector(s.vel, dt);
-      const hit = !p.dead && s.pos.distanceToSquared(p.pos) < s.r2;
+      const hit = !p.dead && s.pos.distanceToSquared(p.pos) < s.r2 * p.sizeScale * p.sizeScale;
       if (hit) p.damage(s.dmg);
       if (hit || s.life <= 0) { this.G.scene.remove(s.mesh); this.shots.splice(i, 1); }
     }
@@ -421,6 +426,7 @@ export class Enemies {
     if (e.boss) {
       for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-20, 20), rand(-15, 15), rand(-20, 20)))), k * 150);
       G.stats.kills++;
+      G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
     } else if (byPlayer) {
       G.score += e.def.score;
       G.stats.kills++;

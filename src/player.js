@@ -6,7 +6,7 @@ import { pick, T } from './texts.js';
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
 
-const PITCH_RATE = 1.25, ROLL_RATE = 2.2, YAW_RATE = 0.5, TURN = 1.1, MAX_BANK = 0.9, BANK_RESPONSE = 4;
+const PITCH_RATE = 1.1, ROLL_RATE = 2.0, YAW_RATE = 0.45, TURN = 0.95, MAX_BANK = 0.9, BANK_RESPONSE = 4;
 
 export class Player {
   constructor(G) {
@@ -22,11 +22,15 @@ export class Player {
     this.up = new THREE.Vector3(0, 1, 0);
     this.right = new THREE.Vector3(1, 0, 0);
     this.wind = new THREE.Vector3();
-    this.baseSpeed = 52;
-    this.speed = 52;
+    this.baseSpeed = 44;
+    this.speed = 44;
     this.boost = 1;
     this.freeBoost = 0;
     this.health = 100;
+    this.maxHealth = 100;
+    // Permanent upgrades from levelling up (see progression.js).
+    this.stats = { fireRate: 1, boostRegen: 1, boostDrain: 1, regen: 5, damage: 1 };
+    this.sizeScale = 1;    // Mega / Tiny Plane power-ups
     this.sinceHit = 99;
     this.invuln = 0;
     this.grace = 0;        // after the world mutates: terrain pushes you up instead of killing you
@@ -52,7 +56,7 @@ export class Player {
     this.prevPos.copy(this.pos);
     this.quat.setFromAxisAngle(Y, yaw);
     this.speed = this.baseSpeed;
-    this.health = 100;
+    this.health = this.maxHealth;
     this.dead = false;
     this.invuln = 3;
     this.model.group.visible = true;
@@ -82,7 +86,7 @@ export class Player {
     this.grace = Math.max(0, this.grace - dt);
     if (this.grace <= 0) this.graceNotified = false;
     this.sinceHit += dt;
-    if (this.sinceHit > 4 && this.health < 100) this.health = Math.min(100, this.health + dt * 5);
+    if (this.sinceHit > 4 && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen);
 
     // Rotation in local space. Roll input sets a target bank angle (casual: let go → wings level).
     const q = this.quat;
@@ -118,11 +122,12 @@ export class Player {
     if (Math.abs(this.loopAccum) >= Math.PI * 2 * this.loopRequirement) { this.events.push('loop'); this.loopAccum = 0; }
 
     // Speed + boost.
-    const boosting = this.freeBoost > 0 || (input.boost && this.boost > 0.02);
+    const turbo = G.powerups.has('turbo');
+    const boosting = turbo || this.freeBoost > 0 || (input.boost && this.boost > 0.02);
     if (this.freeBoost > 0) this.freeBoost -= dt;
-    else if (boosting) this.boost = Math.max(0, this.boost - dt * 0.35);
-    else this.boost = Math.min(1, this.boost + dt * 0.15);
-    const target = (boosting ? this.baseSpeed * 1.8 : this.baseSpeed) - this.forward.y * 12;
+    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * 0.35 * this.stats.boostDrain);
+    else this.boost = Math.min(1, this.boost + dt * 0.15 * this.stats.boostRegen);
+    const target = (boosting ? this.baseSpeed * 1.7 : this.baseSpeed) - this.forward.y * 10;
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
     this.boosting = boosting;
 
@@ -132,8 +137,10 @@ export class Player {
     // Terrain + water.
     const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z);
     const sea = G.world.seaLevel;
+    const ghost = G.powerups.has('ghost');
     if (this.pos.y < ground + 1.8) {
-      if (this.grace > 0 || this.invuln > 0) {
+      if (ghost) this.pos.y = ground + 1.8; // Ghost Mode: skim the ground instead of hitting it
+      else if (this.grace > 0 || this.invuln > 0) {
         this.pos.y = ground + 30;
         if (this.grace > 0 && !this.graceNotified) {
           this.graceNotified = true;
@@ -141,7 +148,8 @@ export class Player {
         }
       } else return this.crash('ground');
     } else if (ground < sea && this.pos.y < sea + 0.6) {
-      if (this.grace > 0 || this.invuln > 0) this.pos.y = sea + 25;
+      if (ghost) this.pos.y = sea + 0.6;
+      else if (this.grace > 0 || this.invuln > 0) this.pos.y = sea + 25;
       else return this.crash('water');
     }
 
@@ -153,20 +161,26 @@ export class Player {
     const g = this.model.group;
     g.position.copy(this.pos);
     g.quaternion.copy(this.quat);
+    g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, this.sizeScale, 1 - Math.exp(-dt * 4)));
     g.visible = this.invuln <= 0 || Math.floor(G.time * 12) % 2 === 0;
     this.model.prop.rotation.z += dt * (30 + this.speed * 0.5);
     if (boosting && Math.random() < 0.6) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -6), '#7ad8ff');
   }
 
   fire() {
-    const G = this.G;
-    this.shootCd = 0.14;
-    for (const side of [-1, 1]) {
+    const G = this.G, P = G.powerups;
+    this.shootCd = 0.14 / this.stats.fireRate / (P.has('rapid') ? 2.5 : 1);
+    const guns = [[-1, 0], [1, 0]];
+    if (P.has('triple')) guns.push([-1, -0.12], [1, 0.12]);
+    const homing = P.has('homing'), s = this.sizeScale;
+    for (const [side, spread] of guns) {
       const m = new THREE.Mesh(this.bulletGeo, this.bulletMat);
-      const p = this.pos.clone().addScaledVector(this.right, side * 3.5).addScaledVector(this.forward, 2);
+      m.scale.setScalar(s);
+      const p = this.pos.clone().addScaledVector(this.right, side * 3.5 * s).addScaledVector(this.forward, 2);
       m.position.copy(p);
       G.scene.add(m);
-      this.bullets.push({ mesh: m, pos: p, vel: this.forward.clone().multiplyScalar(this.speed + 380), life: 1.6 });
+      const vel = this.forward.clone().applyAxisAngle(this.up, -spread).multiplyScalar(this.speed + 380);
+      this.bullets.push({ mesh: m, pos: p, vel, life: 1.6, dmg: this.stats.damage, homing });
     }
     G.audio.shoot();
   }
@@ -175,10 +189,25 @@ export class Player {
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
       b.life -= dt;
+      if (b.homing) this.steerBullet(b, dt);
       b.pos.addScaledVector(b.vel, dt);
       b.mesh.position.copy(b.pos);
       if (b.life <= 0 || b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z)) this.removeBullet(i);
     }
+  }
+
+  // Homing Bullets power-up: curve toward the nearest enemy in front of the bullet.
+  steerBullet(b, dt) {
+    let best = null, bd = 260 * 260;
+    for (const e of this.G.enemies.list) {
+      _v.subVectors(e.pos, b.pos);
+      const d = _v.lengthSq();
+      if (d < bd && _v.dot(b.vel) > 0) { bd = d; best = e; }
+    }
+    if (!best) return;
+    const speed = b.vel.length();
+    _v.subVectors(best.pos, b.pos).setLength(speed);
+    b.vel.lerp(_v, 1 - Math.exp(-dt * 6)).setLength(speed);
   }
 
   removeBullet(i) {
@@ -189,6 +218,7 @@ export class Player {
   damage(n) {
     if (this.dead || this.invuln > 0) return;
     const G = this.G;
+    if (G.powerups.has('shield')) { G.powerups.shieldHit(); return; }
     this.health -= n;
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);

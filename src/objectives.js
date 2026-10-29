@@ -292,7 +292,7 @@ function mkGoose(G) {
       wander.applyAxisAngle(Y, rand(-1, 1) * dt);
       const desired = d < 350 ? away.normalize().multiplyScalar(0.75).addScaledVector(wander, 0.5) : wander.clone().multiplyScalar(0.4);
       desired.y *= 0.3;
-      desired.normalize().multiplyScalar(40 * speedMul * (d < 350 ? 1 : 0.4));
+      desired.normalize().multiplyScalar(34 * speedMul * (d < 350 ? 1 : 0.4));
       vel.lerp(desired, 1 - Math.exp(-dt * 1.5));
       goose.position.addScaledVector(vel, dt);
       anim(goose, dt);

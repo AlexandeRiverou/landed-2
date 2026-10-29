@@ -12,6 +12,8 @@ import { Enemies } from './enemies.js';
 import { Objectives } from './objectives.js';
 import { Persuasion } from './persuasion.js';
 import { Mutations } from './mutations.js';
+import { PowerUps } from './powerups.js';
+import { Progress } from './progression.js';
 import { pick, T } from './texts.js';
 
 const canvas = document.getElementById('game');
@@ -37,6 +39,8 @@ G.enemies = new Enemies(G);
 G.objectives = new Objectives(G);
 G.persuasion = new Persuasion(G);
 G.mutations = new Mutations(G);
+G.progress = new Progress(G);
+G.powerups = new PowerUps(G);
 G.input = new Input(canvas);
 
 G.player.spawn(0, 0, Math.random() * Math.PI * 2);
@@ -131,12 +135,17 @@ function step(dt) {
   G.time += dt;
   const input = G.input.state(dt);
   const p = G.player;
+  const scoreBefore = G.score;
   p.update(dt, input);
   G.terrain.update(p.pos, G.terrain.stale ? 4 : 2);
   G.enemies.update(dt);
   G.objectives.update(dt);
   G.persuasion.update(dt);
+  G.powerups.update(dt);
   p.events.length = 0;
+  // Double Points: whatever was earned this frame counts twice.
+  if (G.powerups.has('double') && G.score > scoreBefore) G.score += G.score - scoreBefore;
+  G.progress.update(dt);
   G.fx.update(dt);
   updateCamera(dt);
   G.sky.update(dt);

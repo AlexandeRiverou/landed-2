@@ -116,8 +116,9 @@ export class UI {
       if (Math.round(this.shownScore) !== before) e.score.textContent = Math.round(this.shownScore);
     }
     e.stats.textContent = `✔ ${G.objectives.completed}  💥 ${G.stats.crashes}  🎯 ${G.stats.kills}`;
-    e.hp.style.width = `${Math.max(0, p.health)}%`;
-    e.hp.style.background = p.health > 50 ? 'var(--good)' : p.health > 25 ? 'var(--warn)' : 'var(--bad)';
+    e.hp.style.width = `${Math.max(0, (p.health / p.maxHealth) * 100)}%`;
+    const hpPct = p.health / p.maxHealth;
+    e.hp.style.background = hpPct > 0.5 ? 'var(--good)' : hpPct > 0.25 ? 'var(--warn)' : 'var(--bad)';
     e.boost.style.width = `${p.freeBoost > 0 ? 100 : p.boost * 100}%`;
     e.boost.style.background = p.freeBoost > 0 ? '#ff4dc4' : '#3aa8ff';
     const alt = Math.max(0, Math.round(p.pos.y - Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel)));
@@ -137,7 +138,8 @@ export class UI {
       return;
     }
     const dist = Math.round(p.pos.distanceTo(t));
-    e.objDist.textContent = this.showDistance ? `📍 ${dist} m away` : obj.virtual ? '' : '📍 Distance: classified';
+    this.radar = G.powerups.has('radar'); // Objective Radar power-up = free GPS + arrow
+    e.objDist.textContent = this.showDistance || this.radar ? `📍 ${dist} m away` : obj.virtual ? '' : '📍 Distance: classified';
     this.updatePointer(t, dist);
   }
 
@@ -149,7 +151,8 @@ export class UI {
     const camX = _v.x, camY = _v.y;
     _v.copy(t).project(cam);
     const onScreen = !behind && Math.abs(_v.x) < 0.92 && Math.abs(_v.y) < 0.88;
-    const label = this.showDistance ? `${dist} m` : '';
+    const label = this.showDistance || this.radar ? `${dist} m` : '';
+    const arrow = Math.max(this.edgeArrow, this.radar ? 1 : 0);
     if (onScreen) {
       e.marker.style.display = 'block';
       e.marker.style.left = `${((_v.x + 1) / 2) * w}px`;
@@ -159,14 +162,14 @@ export class UI {
       return;
     }
     e.marker.style.display = 'none';
-    if (!this.edgeArrow) { e.arrow.style.display = 'none'; return; }
+    if (!arrow) { e.arrow.style.display = 'none'; return; }
     const ang = Math.atan2(camY, camX);
     const rx = w / 2 - 60, ry = h / 2 - 70;
     e.arrow.style.display = 'block';
-    e.arrow.classList.toggle('big', this.edgeArrow > 1);
+    e.arrow.classList.toggle('big', arrow > 1);
     e.arrow.style.left = `${w / 2 + Math.cos(ang) * rx}px`;
     e.arrow.style.top = `${h / 2 - Math.sin(ang) * ry}px`;
     e.arrow.querySelector('.rot').style.transform = `rotate(${-ang}rad)`;
-    e.arrow.querySelector('span').textContent = label || (this.edgeArrow > 1 ? 'THIS WAY!!!' : '');
+    e.arrow.querySelector('span').textContent = label || (arrow > 1 ? 'THIS WAY!!!' : '');
   }
 }

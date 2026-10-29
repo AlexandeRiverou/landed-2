@@ -42,6 +42,25 @@ html, body {
 #score-label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; }
 #stats { font-size: 11px; opacity: 0.7; margin-top: 4px; }
 #score.bump { animation: bump 0.4s ease-out; }
+#topleft { min-width: 170px; }
+#rank-box { margin-top: 6px; font-size: 11px; text-align: left; }
+#level { font-weight: 700; color: #7a4cff; }
+#rank { font-weight: 600; }
+#rank-box .track { height: 7px; margin: 3px 0 1px; }
+#xp-fill { height: 100%; width: 0; background: linear-gradient(90deg, #7a4cff, #ff4dc4); transition: width 0.3s; }
+#xp-next { font-size: 10px; opacity: 0.65; }
+#topleft.levelup { animation: levelup 1.2s ease-out; }
+@keyframes levelup { 0% { transform: scale(1.25); box-shadow: 0 0 0 6px var(--accent); } 100% { transform: none; } }
+#best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
+#best:empty { display: none; }
+
+/* Active power-ups, stacked above the hull/boost bars. */
+#powerups { position: absolute; left: 14px; bottom: 120px; display: flex; flex-direction: column-reverse; gap: 5px; width: 220px; }
+.pu { background: rgba(255, 255, 255, 0.85); border: 2px solid var(--ink); border-left: 8px solid var(--pu); border-radius: 9px; padding: 3px 8px; font-size: 12px; font-weight: 700; animation: slidein 0.3s ease-out; }
+.pu-track { height: 5px; background: #e8e4f4; border-radius: 3px; overflow: hidden; margin-top: 2px; }
+.pu-fill { height: 100%; background: var(--pu); }
+.pu.ending { animation: blink 0.4s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
 @keyframes bump { 0% { transform: scale(1.5); color: var(--good); } 100% { transform: scale(1); } }
 
 #objective { top: 14px; right: 14px; width: min(320px, 46vw); }
@@ -65,7 +84,7 @@ html, body {
    panel (top-right) or the plane (center). */
 #notifications {
   position: absolute;
-  top: 118px;
+  top: 172px;
   left: 14px;
   width: min(300px, 36vw);
   display: flex;
@@ -219,9 +238,12 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #objective { width: 46vw; padding: 6px 8px; }
   #obj-title { font-size: 15px; }
   #obj-desc { display: none; }
-  #notifications { top: 100px; left: 8px; width: 44vw; }
+  #notifications { top: 150px; left: 8px; width: 44vw; }
   .note { font-size: 11px; padding: 4px 7px; }
   #bars { width: 160px; }
+  #powerups { width: 160px; bottom: 112px; }
+  #topleft { min-width: 130px; }
+  #rank { display: none; }
   #banner { top: auto; bottom: 110px; width: 62vw; }
   #boss-bar { bottom: 110px; width: 60vw; }
 }
