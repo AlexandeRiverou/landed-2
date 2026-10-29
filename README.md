@@ -26,16 +26,18 @@ npm test          # boots dist/ in headless Chromium and plays through objective
                   # world mutations and a boss fight; fails on any error
 ```
 
-CI/CD (`.github/workflows/ci.yml`) runs the same steps on every push and pull request and uploads the zipped build
-as a workflow artifact. To publish a release, push a version tag:
+The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs the same steps:
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+- **On every pull request into `main`:** check, build and smoke test, with the zipped build attached to the run.
+  Nothing is published.
+- **On every merge into `main`:** the same, then a new **GitHub Release** is published with
+  `loop-de-whoops-vX.Y.Z.zip` attached. Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
+  major release, raise `"version"` in `package.json` (e.g. to `1.1.0`) in your PR, and the merge releases exactly that
+  (logic in `scripts/next-version.mjs`). Re-running the workflow on an already released commit doesn't publish twice.
+- **Pushing a `v*` tag by hand** releases that tag.
 
-The workflow then creates a GitHub Release with `loop-de-whoops-v1.0.0.zip` attached. Unzip it and serve the folder
-with any static server.
+To install a release, download the zip from the Releases page, unzip it, and serve the folder with any static
+server.
 
 ## Controls
 

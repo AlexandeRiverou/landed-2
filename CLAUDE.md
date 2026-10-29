@@ -62,7 +62,7 @@ Until then the task stays open:
 - Push to `main`, force-push shared branches, or change branch protection / repository settings.
 - Reopen a PR a human closed, or re-submit the same change, unless the human asks.
 - Delete branches, tags or releases unless asked to.
-- Create release tags (`v*`) unless asked to. A tag publishes a public GitHub Release through CI.
+- Create release tags (`v*`) by hand unless asked to. Releases come from merges into `main`.
 
 If a rule blocks the task (missing permissions, a failing check that isn't yours, unclear requirements), stop and ask
 the human instead of working around it.
@@ -72,5 +72,6 @@ the human instead of working around it.
 - Loop-de-Whoops: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.
 - `window.G` holds the game state in the browser. `G.step(dt)` advances the simulation without rendering, which is
   useful for scripted tests.
-- CI/CD: `.github/workflows/ci.yml` runs check, build and smoke test on every push and PR. Pushing a `v*` tag publishes
-  a GitHub Release with the zipped build.
+- Build & Release: `.github/workflows/build-release.yml` runs check, build and smoke test on every PR into `main`.
+  **Every merge into `main` publishes a new versioned GitHub Release** (patch bump; raise `version` in `package.json` for
+  minor/major), so a merged PR ships. Pushing a `v*` tag also publishes a release.
