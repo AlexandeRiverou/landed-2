@@ -15,6 +15,12 @@ python3 -m http.server 8000
 
 (Opening `index.html` straight from disk won't work, because browsers block ES modules on `file://`.)
 
+## Test preview
+
+A playable preview lives at https://claude.ai/artifact/6vvTmbwBznvxiT49uftkHL (private to the repo owner). Agents update it after
+every change (see `CLAUDE.md`). `npm run preview` stamps the build and prints the files to publish, and the title card shows
+which build you're playing.
+
 ## Building, testing and releasing
 
 ```bash

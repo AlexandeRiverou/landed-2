@@ -85,6 +85,12 @@ function titleCamera(dt) {
 // ---------- game flow ----------
 const $ = (id) => document.getElementById(id);
 
+// Build badge on the title card. Test previews and release zips ship a VERSION.json; plain dev serving doesn't.
+fetch('VERSION.json')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((v) => { if (v) $('build-info').textContent = `Build ${v.version} · ${new Date(v.builtAt).toLocaleString()}`; })
+  .catch(() => {});
+
 function start() {
   $('title').classList.add('hidden');
   G.audio.init();
