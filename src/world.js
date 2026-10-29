@@ -108,8 +108,56 @@ export function heightAt(x, z) {
     const isl = N.b(x * 0.004 + 50, z * 0.004 + 50);
     h = lerp(h, -45 + Math.max(0, isl - 0.35) * 160, sea);
   }
-  return h;
+  return h - craterDepthAt(x, z);
 }
+
+// ---------- destructible terrain ----------
+// Craters blasted into the ground live in world space, bucketed on a coarse grid so the height
+// function only checks the few near each point. Everything (mesh, collision, props) reads heightAt,
+// so a crater is consistent everywhere as soon as the chunks under it rebuild.
+const CRATER_CELL = 160;
+const craters = new Map();   // cell key → craters overlapping that cell
+const cellKey = (cx, cz) => cx * 100003 + cz;
+export const MAX_CRATER_DEPTH = 18;
+
+export function craterDepthAt(x, z) {
+  if (!craters.size) return 0;
+  const list = craters.get(cellKey(Math.floor(x / CRATER_CELL), Math.floor(z / CRATER_CELL)));
+  if (!list) return 0;
+  let depth = 0;
+  for (const c of list) {
+    const d2 = (x - c.x) ** 2 + (z - c.z) ** 2, r2 = c.r * c.r;
+    if (d2 >= r2 * 1.69) continue;
+    if (d2 < r2) depth += c.d * (1 - d2 / r2); // round bowl, full enough that the nearest 8 m-grid vertex always sinks
+    else { const t = (Math.sqrt(d2) - c.r) / (0.3 * c.r); depth -= c.d * 0.12 * Math.sin(t * Math.PI); } // raised rim
+  }
+  return depth;
+}
+
+// Adds (or deepens) a crater and returns the bounding box it touches, so the caller can rebuild.
+export function addCrater(x, z, r, depth) {
+  const near = craters.get(cellKey(Math.floor(x / CRATER_CELL), Math.floor(z / CRATER_CELL))) || [];
+  let c = near.find((k) => (k.x - x) ** 2 + (k.z - z) ** 2 < (k.r * 0.5) ** 2);
+  if (c) {
+    // Repeated hits dig the same hole deeper and a little wider instead of piling up tiny craters.
+    c.d = Math.min(MAX_CRATER_DEPTH, c.d + depth * 0.5);
+    c.r = Math.min(26, Math.max(c.r, r) + 0.4);
+  } else {
+    c = { x, z, r, d: Math.min(depth, MAX_CRATER_DEPTH) };
+  }
+  const reach = c.r * 1.3;
+  for (let cx = Math.floor((c.x - reach) / CRATER_CELL); cx <= Math.floor((c.x + reach) / CRATER_CELL); cx++) {
+    for (let cz = Math.floor((c.z - reach) / CRATER_CELL); cz <= Math.floor((c.z + reach) / CRATER_CELL); cz++) {
+      const k = cellKey(cx, cz);
+      const list = craters.get(k) || [];
+      if (!list.includes(c)) list.push(c);
+      craters.set(k, list);
+    }
+  }
+  return { minX: c.x - reach, maxX: c.x + reach, minZ: c.z - reach, maxZ: c.z + reach };
+}
+
+export function clearCraters() { craters.clear(); }
 
 export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7 };
 

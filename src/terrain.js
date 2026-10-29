@@ -1,7 +1,7 @@
 // Infinite chunked terrain. Chunks build nearest-first a few per frame; a rebuild
 // (after the world mutates) swaps chunks in progressively so the world "morphs".
 import * as THREE from 'three';
-import { world, heightAt, terrainInfo, CAT } from './world.js';
+import { world, heightAt, terrainInfo, CAT, addCrater, craterDepthAt } from './world.js';
 import { mulberry32, hash3 } from './noise.js';
 import { PROPS, propMaterial } from './models.js';
 
@@ -10,6 +10,8 @@ export const SEG = 40;
 const STEP = CHUNK / SEG;
 const GW = SEG + 3; // height grid width incl. one-vertex border for normals
 export const RADIUS = 4;
+const AIRBORNE = new Set(['floatingIsland', 'hotAirBalloon']);
+const SCORCH = (() => { const c = new THREE.Color('#4a3424'); return [c.r, c.g, c.b]; })();
 
 const TABLES = {
   [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], [null, 2]],
@@ -59,11 +61,23 @@ export class Terrain {
     this.G = G;
     this.chunks = new Map();
     this.version = 0;
+    this.dirty = new Set(); // chunks with fresh craters
+    this.nextDirtyBuild = 0;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.water = new Water(G);
   }
 
   rebuildAll() { this.version++; }
+
+  // Blast a crater: the height function changes at once; the chunks under it rebuild over the next frames.
+  deform(x, z, r, depth) {
+    const box = addCrater(x, z, Math.max(r, STEP), depth); // anything narrower than the vertex grid wouldn't show
+    for (let cx = Math.floor(box.minX / CHUNK); cx <= Math.floor(box.maxX / CHUNK); cx++) {
+      for (let cz = Math.floor(box.minZ / CHUNK); cz <= Math.floor(box.maxZ / CHUNK); cz++) {
+        if (this.chunks.has(key(cx, cz))) this.dirty.add(key(cx, cz));
+      }
+    }
+  }
 
   get stale() {
     for (const c of this.chunks.values()) if (c.version !== this.version) return true;
@@ -85,6 +99,18 @@ export class Terrain {
       }
       if (!best) break;
       this.build(best[0], best[1]);
+    }
+    // Rebuild cratered chunks at most every 0.15 s: sustained fire into the ground then costs one
+    // rebuild per batch of hits instead of one per frame.
+    const now = this.G.time;
+    if (this.dirty.size && now >= this.nextDirtyBuild) {
+      for (const k of this.dirty) {
+        this.dirty.delete(k);
+        const c = this.chunks.get(k);
+        if (c) this.build(c.cx, c.cz);
+        break;
+      }
+      this.nextDirtyBuild = now + 0.15;
     }
     for (const [k, c] of this.chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;
@@ -121,6 +147,11 @@ export class Terrain {
         pos[idx * 3] = x; pos[idx * 3 + 1] = h; pos[idx * 3 + 2] = z;
         nor[idx * 3] = nx; nor[idx * 3 + 1] = ny; nor[idx * 3 + 2] = nz;
         cats[idx] = terrainInfo(x, z, h, ny, tmp);
+        const scorch = craterDepthAt(x, z);
+        if (scorch > 0.3) { // blasted earth: blends toward burnt brown the deeper the crater
+          const k = Math.min(0.8, scorch * 0.14);
+          tmp[0] += (SCORCH[0] - tmp[0]) * k; tmp[1] += (SCORCH[1] - tmp[1]) * k; tmp[2] += (SCORCH[2] - tmp[2]) * k;
+        }
         col[idx * 3] = tmp[0]; col[idx * 3 + 1] = tmp[1]; col[idx * 3 + 2] = tmp[2];
       }
     }
@@ -215,6 +246,8 @@ export class Terrain {
         if (m.nonUniform) _s.set(s * (0.7 + rng() * 0.6), s * (0.5 + rng() * 0.7), s * (0.7 + rng() * 0.6));
         else _s.setScalar(s);
         _p.set(it.x, it.y - m.sink * s, it.z);
+        // Anything standing in a crater was blown away (sky and sea props are out of reach).
+        if (!m.sea && !AIRBORNE.has(type) && craterDepthAt(it.x, it.z) > 1) _s.setScalar(0);
         im.setMatrixAt(i, _m.compose(_p, _q, _s));
         if (m.tints) _c.copy(m.tints[Math.floor(rng() * m.tints.length)]);
         else { const b = 0.85 + rng() * 0.3; _c.setRGB(b, b, b); }

@@ -192,7 +192,13 @@ export class Player {
       if (b.homing) this.steerBullet(b, dt);
       b.pos.addScaledVector(b.vel, dt);
       b.mesh.position.copy(b.pos);
-      if (b.life <= 0 || b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z)) this.removeBullet(i);
+      if (b.life <= 0) { this.removeBullet(i); continue; }
+      if (b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z)) {
+        // Bullets chew small holes in the ground.
+        this.G.terrain.deform(b.pos.x, b.pos.z, 8, 1.6);
+        this.G.fx.emit(b.pos, 6, { colors: ['#8a6a4a', '#b89a70', '#6a5a4a'], speed: 18, life: 0.7, size: 4, gravity: -30, up: 12 });
+        this.removeBullet(i);
+      }
     }
   }
 
@@ -235,7 +241,11 @@ export class Player {
     this.model.group.visible = false;
     this.wind.set(0, 0, 0);
     G.stats.crashes++;
-    if (reason === 'water') G.fx.splash(this.pos); else G.fx.explosion(this.pos);
+    if (reason === 'water') G.fx.splash(this.pos);
+    else {
+      G.fx.explosion(this.pos);
+      if (reason === 'ground') G.terrain.deform(this.pos.x, this.pos.z, 12, 6); // you left a mark
+    }
     G.audio.explode();
     G.ui.flash('#ffffff', 0.7);
     G.ui.notify(pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
