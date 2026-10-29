@@ -6,6 +6,8 @@ import { pick, T } from './texts.js';
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
 
+// Shooting: about 4 volleys a second; slower bullets live longer, so the reach stays ~680 m.
+const FIRE_INTERVAL = 0.26, BULLET_SPEED = 300, BULLET_LIFE = 2;
 const PITCH_RATE = 1.1, ROLL_RATE = 2.0, YAW_RATE = 0.45, TURN = 0.95, MAX_BANK = 0.9, BANK_RESPONSE = 4;
 
 export class Player {
@@ -169,7 +171,7 @@ export class Player {
 
   fire() {
     const G = this.G, P = G.powerups;
-    this.shootCd = 0.14 / this.stats.fireRate / (P.has('rapid') ? 2.5 : 1);
+    this.shootCd = FIRE_INTERVAL / this.stats.fireRate / (P.has('rapid') ? 2.5 : 1);
     const guns = [[-1, 0], [1, 0]];
     if (P.has('triple')) guns.push([-1, -0.12], [1, 0.12]);
     const homing = P.has('homing'), s = this.sizeScale;
@@ -179,8 +181,8 @@ export class Player {
       const p = this.pos.clone().addScaledVector(this.right, side * 3.5 * s).addScaledVector(this.forward, 2);
       m.position.copy(p);
       G.scene.add(m);
-      const vel = this.forward.clone().applyAxisAngle(this.up, -spread).multiplyScalar(this.speed + 380);
-      this.bullets.push({ mesh: m, pos: p, vel, life: 1.6, dmg: this.stats.damage, homing });
+      const vel = this.forward.clone().applyAxisAngle(this.up, -spread).multiplyScalar(this.speed + BULLET_SPEED);
+      this.bullets.push({ mesh: m, pos: p, vel, life: BULLET_LIFE, dmg: this.stats.damage, homing });
     }
     G.audio.shoot();
   }
