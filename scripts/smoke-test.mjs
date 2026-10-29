@@ -109,6 +109,30 @@ try {
     step(30 * 60);
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
 
+    // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
+    const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
+    const ground0 = G.terrain.surfaceHeight(spot.x, spot.z);
+    const snapshot = (c) => { const m = new Map(); for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) m.set(dx + ',' + dz, G.terrain.surfaceHeight(c.x + dx, c.z + dz)); return (x, z) => m.get(Math.round(x - c.x) + ',' + Math.round(z - c.z)); };
+    const bulletBefore = snapshot(spot);
+    G.player.shootCd = 0;
+    const nb = G.player.bullets.length;
+    G.player.fire();
+    for (const b of G.player.bullets.slice(nb)) { b.pos.set(spot.x, ground0 - 1, spot.z); b.vel.set(0, 0, 0); }
+    step(30); // bullets land, the chunk under them rebuilds
+    // Deepest drop on the rendered mesh around the impact (the 8 m vertex grid rarely lines up with the exact spot).
+    const deepestDrop = (c, before) => {
+      let best = 0;
+      for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) best = Math.max(best, before(c.x + dx, c.z + dz) - G.terrain.surfaceHeight(c.x + dx, c.z + dz));
+      return +best.toFixed(2);
+    };
+    out.bulletCrater = deepestDrop(spot, bulletBefore);
+    const orbSpot = spot.clone().addScaledVector(G.player.right, 60);
+    const orbGround0 = G.terrain.surfaceHeight(orbSpot.x, orbSpot.z);
+    const orbBefore = snapshot(orbSpot);
+    G.enemies.fireOrb(orbSpot.clone().setY(orbGround0 + 3), new G.player.pos.constructor(0, -1, 0), 50, 10);
+    step(30);
+    out.orbCrater = deepestDrop(orbSpot, orbBefore);
+
     // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
     const zone0 = G.zones.index;
     G.zones.sinceZone = 2; // one objective away from the next zone
@@ -162,6 +186,7 @@ try {
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
     [report.zones.length >= 10, 'every zone loads'],
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],

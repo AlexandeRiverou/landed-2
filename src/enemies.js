@@ -416,13 +416,22 @@ export class Enemies {
       s.pos.addScaledVector(s.vel, dt);
       const hit = !p.dead && s.pos.distanceToSquared(p.pos) < s.r2 * p.sizeScale * p.sizeScale;
       if (hit) p.damage(s.dmg);
-      if (hit || s.life <= 0) { this.G.scene.remove(s.mesh); this.shots.splice(i, 1); }
+      const ground = !hit && s.pos.y < this.G.terrain.surfaceHeight(s.pos.x, s.pos.z);
+      if (ground) {
+        // Orbs that miss blow holes in the landscape.
+        this.G.terrain.deform(s.pos.x, s.pos.z, 5, 2.5);
+        this.G.fx.emit(s.pos, 25, { colors: ['#ffb03a', '#8a6a4a', '#555555'], speed: 30, life: 0.8, size: 6, up: 15 });
+      }
+      if (hit || ground || s.life <= 0) { this.G.scene.remove(s.mesh); this.shots.splice(i, 1); }
     }
   }
 
   kill(i, byPlayer) {
     const G = this.G, e = this.list[i];
     e.dead = true;
+    // Blowing up close to the ground leaves a crater: bosses leave a big one.
+    const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z);
+    if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
     if (e.boss) {
       for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-20, 20), rand(-15, 15), rand(-20, 20)))), k * 150);
       G.stats.kills++;

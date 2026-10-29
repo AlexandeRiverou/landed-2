@@ -2,7 +2,7 @@
 // sky, weather, music). Every few completed objectives you fly on into the next one, from green
 // meadows up through the stratosphere into orbit, a meteor belt, the Moon and beyond.
 import * as THREE from 'three';
-import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed } from './world.js';
+import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters } from './world.js';
 import { Asteroids } from './asteroids.js';
 
 export const ZONE_EVERY = 3; // completed objectives per zone
@@ -117,6 +117,7 @@ export class Zones {
     Object.assign(world, WORLD_DEFAULTS, params);
     world.palette = ZONE_PALETTES[palette] || PALETTES.find((p) => p.name === palette) || PALETTES[0];
     if (!keepSeed) reseed((Math.random() * 1e9) | 0); // a fresh landscape for every zone
+    clearCraters(); // the old zone's blast holes don't belong in the new world
     G.sky.setPreset(z.sky, instant);
     G.sky.weather.set(z.weather);
     G.sky.clouds.setStyle(z.clouds[0], z.clouds[1], z.clouds[2] ?? 440); // default cloud layer height
