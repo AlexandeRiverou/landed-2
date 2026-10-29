@@ -77,12 +77,16 @@ try {
     G.objectives.next();
     const boss = G.enemies.list.find((e) => e.boss);
     if (!boss) throw new Error('boss did not spawn');
+    // Count drops directly: the plane is usually close enough to grab the drop the moment the boss dies.
+    let drops = 0;
+    const drop = G.powerups.drop.bind(G.powerups);
+    G.powerups.drop = (...args) => { drops++; return drop(...args); };
     G.input.keys.add('Space');
     for (let i = 0; i < 30 * 120 && !boss.dead; i++) { G.player.grace = 1; G.player.nudgeToward(boss.pos, 6, 1 / 30); step(1); }
     G.input.keys.delete('Space');
     out.bossDefeated = boss.dead;
-    step(10);
-    out.bossDroppedPowerup = G.powerups.pickups.length > 0;
+    out.bossDroppedPowerup = drops === 1;
+    G.powerups.drop = drop;
 
     // Power-ups: a pickup spawns ahead, flying into it activates it, and every type runs and expires.
     G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
