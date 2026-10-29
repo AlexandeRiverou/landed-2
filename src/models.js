@@ -287,6 +287,20 @@ function add(group, geo, mat, t = {}) {
   return o;
 }
 
+// Weak points glow orange and multiply damage; breakable parts have their own hp and an effect
+// when destroyed (see Enemies.breakPart). Both are listed in g.userData.parts for hit testing.
+function weak(g, obj, r, mult = 3, extra = {}) {
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(r * 1.35, 12, 8),
+    new THREE.MeshBasicMaterial({ color: '#ff8a1a', transparent: true, opacity: 0.5, depthWrite: false }), // solid halo: shows even over white
+  );
+  obj.add(glow);
+  (g.userData.parts ||= []).push({ obj, r, mult, hp: Infinity, glow, ...extra });
+}
+function breakable(g, obj, r, name, hp, extra = {}) {
+  (g.userData.parts ||= []).push({ obj, r, mult: 1, hp, name, ...extra });
+}
+
 function partyHat(g, y) {
   add(g, Cone(1.4, 3.5, 8), lam('#ff3ad0'), { y, rz: 0.2 });
   add(g, Sph(0.5, 5, 4), lam('#ffd23a'), { x: -0.35, y: y + 1.8 });
@@ -295,14 +309,16 @@ function partyHat(g, y) {
 export function makeDrone(hat) {
   const g = new THREE.Group();
   add(g, Ico(3, 1), lam('#e0453a'));
-  add(g, Sph(1.3, 8, 6), basic('#ffffff'), { z: 2.4, y: 0.4 });
+  const eye = add(g, Sph(1.3, 8, 6), basic('#ffffff'), { z: 2.4, y: 0.4 });
   add(g, Sph(0.6, 6, 4), basic('#111111'), { z: 3.5, y: 0.4 });
+  weak(g, eye, 1.4);
   add(g, Box(2.6, 0.5, 0.4), lam('#111111'), { z: 2.7, y: 1.9, rz: 0.25 });
   const rotors = [];
   for (const [x, z] of [[4, 4], [-4, 4], [4, -4], [-4, -4]]) {
     add(g, Box(Math.abs(x) * 0.9, 0.4, 0.4), lam('#333333'), { x: x / 2, z: z / 2, ry: Math.atan2(-z, x) });
     rotors.push(add(g, Cyl(1.8, 1.8, 0.2, 10), lam('#c8c8c8', { transparent: true, opacity: 0.7 }), { x, y: 0.6, z }));
   }
+  for (const r of rotors) breakable(g, r, 1.9, 'rotor', 1);
   if (hat) partyHat(g, 3.8);
   g.userData.rotors = rotors;
   return g;
@@ -366,12 +382,14 @@ export function makeUfo(hat) {
   add(g, Cyl(8, 10, 2.2, 16), new THREE.MeshPhongMaterial({ color: '#b8c0c8', shininess: 90 }));
   add(g, Cyl(4, 6, 1.5, 12), lam('#4a5058'), { y: -1.6 });
   add(g, new THREE.SphereGeometry(4.2, 12, 8, 0, PI * 2, 0, PI / 2), new THREE.MeshPhongMaterial({ color: '#7affd8', transparent: true, opacity: 0.6 }), { y: 1 });
-  add(g, Sph(1.4, 8, 6), lam('#5aff5a'), { y: 2 });
+  const pilot = add(g, Sph(1.4, 8, 6), lam('#5aff5a'), { y: 2 });
+  weak(g, pilot, 2.6);
   const lights = [];
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * PI * 2;
     lights.push(add(g, Sph(0.6, 5, 4), basic('#ffd23a'), { x: Math.cos(a) * 9, z: Math.sin(a) * 9 }));
   }
+  for (const l of lights) breakable(g, l, 1.2, 'turret', 1);
   if (hat) partyHat(g, 6);
   g.userData.lights = lights;
   return g;
@@ -380,8 +398,9 @@ export function makeUfo(hat) {
 export function makeBlimp(hat) {
   const g = new THREE.Group();
   add(g, Sph(7, 12, 8), lam('#c8ccd4'), { s: [1, 1, 2.6] });
-  for (const [x, y] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) add(g, Box(x ? 4 : 0.4, y ? 4 : 0.4, 4), lam('#e8302a'), { x: x * 2.5, y: y * 2.5, z: -17 });
-  add(g, Box(3, 2, 6), lam('#5a5a6a'), { y: -7.5 });
+  for (const [x, y] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) breakable(g, add(g, Box(x ? 4 : 0.4, y ? 4 : 0.4, 4), lam('#e8302a'), { x: x * 2.5, y: y * 2.5, z: -17 }), 2.5, 'fin', 2);
+  const gondola = add(g, Box(3, 2, 6), lam('#5a5a6a'), { y: -7.5 });
+  weak(g, gondola, 3.2, 2, { hp: 4, name: 'gondola' });
   const tex = makeTextTexture([pick(['BUY MORE LOOPS', 'HOOPS: 50% OFF', 'VOTE GOOSE', 'TRY GROUND!', 'GARY WAS HERE'])], { w: 1024, h: 256, size: 120, bg: '#ffd23a' });
   for (const s of [-1, 1]) add(g, new THREE.PlaneGeometry(24, 6), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }), { x: s * 7.05, ry: s * PI / 2 });
   const prop = add(g, Box(0.3, 5, 0.3), lam('#333'), { z: -19.5 });
@@ -405,13 +424,14 @@ export function makeBee(hat) {
 export function makeJelly(hat) {
   const g = new THREE.Group();
   add(g, new THREE.SphereGeometry(5, 12, 8, 0, PI * 2, 0, PI / 2), new THREE.MeshPhongMaterial({ color: '#ff8ad8', emissive: '#a03a90', transparent: true, opacity: 0.75, shininess: 80 }), { s: [1, 0.8, 1] });
-  add(g, Sph(2, 8, 6), basic('#ffd0f4', { transparent: true, opacity: 0.6 }), { y: 1.2 });
+  const core = add(g, Sph(2, 8, 6), basic('#ffd0f4', { transparent: true, opacity: 0.6 }), { y: 1.2 });
+  weak(g, core, 2.2);
   const tent = [];
   for (let k = 0; k < 7; k++) {
     const a = (k / 7) * PI * 2;
     const t = new THREE.Group();
     t.position.set(Math.cos(a) * 3, 0, Math.sin(a) * 3);
-    add(t, Box(0.4, 9, 0.4), basic('#ffb0ec', { transparent: true, opacity: 0.8 }), { y: -4.5 });
+    breakable(g, add(t, Box(0.4, 9, 0.4), basic('#ffb0ec', { transparent: true, opacity: 0.8 }), { y: -4.5 }), 2.4, 'tentacle', 1);
     g.add(t);
     tent.push(t);
   }
@@ -426,7 +446,7 @@ export function makeCannon(hat) {
   add(g, new THREE.SphereGeometry(3.6, 10, 6, 0, PI * 2, 0, PI / 2), lam('#5a6a4a'), { y: 2.4 });
   const barrel = new THREE.Group();
   barrel.position.y = 4.2;
-  add(barrel, Cyl(0.9, 1.1, 7, 8), lam('#2a2a30'), { z: 3.4, rx: PI / 2 });
+  breakable(g, add(barrel, Cyl(0.9, 1.1, 7, 8), lam('#2a2a30'), { z: 3.4, rx: PI / 2 }), 2.2, 'barrel', 3);
   add(barrel, Cyl(1.2, 1.2, 0.8, 8), lam('#e8302a'), { z: 6.8, rx: PI / 2 });
   g.add(barrel);
   for (const x of [-1.2, 1.2]) add(g, Sph(0.5, 5, 4), basic('#ffffff'), { x, y: 4.6, z: 3 });
@@ -444,15 +464,17 @@ export function makeRivalJet(hat) {
   g.add(p.group);
   if (hat) partyHat(g, 2.2);
   g.userData.spin = [p.prop];
+  breakable(g, p.prop, 2.4, 'prop', 2);
   return g;
 }
 
 export function makeStorm(hat) {
   const g = new THREE.Group();
   const m = lam('#5a5f6c');
-  for (const [x, y, z, r] of [[0, 0, 0, 12], [10, -2, 2, 9], [-10, -1, -1, 9], [4, 5, -3, 8], [-5, 4, 3, 8], [0, -3, 8, 7]]) add(g, Ico(r, 1), m, { x, y, z });
-  add(g, Sph(2.2, 8, 6), basic('#ffffff'), { x: 4, y: 2, z: 11.5 });
-  add(g, Sph(2.2, 8, 6), basic('#ffffff'), { x: -4, y: 2, z: 11.5 });
+  for (const [x, y, z, r] of [[10, -2, 2, 9], [-10, -1, -1, 9], [4, 5, -3, 8], [-5, 4, 3, 8], [0, -3, 8, 7]]) breakable(g, add(g, Ico(r, 1), m, { x, y, z }), r * 0.8, 'puff', 2);
+  add(g, Ico(12, 1), m);
+  weak(g, add(g, Sph(2.2, 8, 6), basic('#ffffff'), { x: 4, y: 2, z: 11.5 }), 2.4);
+  weak(g, add(g, Sph(2.2, 8, 6), basic('#ffffff'), { x: -4, y: 2, z: 11.5 }), 2.4);
   add(g, Sph(1, 6, 4), basic('#000000'), { x: 4, y: 1.5, z: 13.4 });
   add(g, Sph(1, 6, 4), basic('#000000'), { x: -4, y: 1.5, z: 13.4 });
   add(g, Box(4, 0.8, 0.8), basic('#222222'), { x: 4, y: 4.6, z: 12.6, rz: -0.4 });
@@ -517,12 +539,14 @@ export function makeGoose() {
   const gold = new THREE.MeshPhongMaterial({ color: '#ffcc33', emissive: '#8a5a00', emissiveIntensity: 0.4, shininess: 100, specular: '#ffffff', flatShading: true });
   add(g, Sph(3, 8, 6), gold, { s: [1, 0.9, 1.6] });
   add(g, Cyl(0.7, 0.9, 4, 6), gold, { y: 2.6, z: 3.6, rx: 0.5 });
-  add(g, Sph(1.3, 8, 6), gold, { y: 4.6, z: 4.8 });
+  const head = add(g, Sph(1.3, 8, 6), gold, { y: 4.6, z: 4.8 });
+  weak(g, head, 1.6);
   add(g, Cone(0.5, 1.8, 6), lam(C.orange), { y: 4.4, z: 6.6, rx: PI / 2 });
   add(g, Sph(0.3, 4, 3), basic('#000'), { x: 0.8, y: 5, z: 5.5 });
   add(g, Sph(0.3, 4, 3), basic('#000'), { x: -0.8, y: 5, z: 5.5 });
   add(g, Cone(1.2, 2.4, 5), gold, { z: -5, rx: -PI / 2 - 0.4 });
   wings(g, '#ffe080', 6, 3, 1);
+  for (const w of g.userData.wings) breakable(g, w.children[0], 3.2, 'wing', 3);
   const glow = add(g, Sph(8, 10, 8), basic('#fff0a0', { transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false }));
   g.userData.glow = glow;
   return g;
