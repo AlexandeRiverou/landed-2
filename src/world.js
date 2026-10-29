@@ -1,13 +1,14 @@
 // World parameters + the procedural height/colour functions.
 // Everything here is mutable: success events tweak these and the terrain rebuilds.
 import * as THREE from 'three';
-import { createNoise2D, mulberry32, fbm, ridged, smoothstep, lerp } from './noise.js';
+import { createNoise2D, mulberry32, fbm, ridged, smoothstep, lerp, hash3 } from './noise.js';
 
 const hex = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
 function palette(name, o) {
   const p = { name };
   for (const k in o) p[k] = Array.isArray(o[k]) ? o[k].map(hex) : hex(o[k]);
   p.waterHex = o.water;
+  p.waterGlow = !!o.waterGlow;
   return p;
 }
 
@@ -24,6 +25,12 @@ export const PALETTES = [
   palette('Pastel Dream', { grass: '#a8e6b0', grass2: '#c8f0c0', forest: '#7ac8a0', sand: '#fff0c8', desert: '#ffd8b0', desert2: '#ffc0a0', rock: '#b8b0d8', rock2: '#a098c8', snow: '#ffffff', seabed: '#d8c8b0', water: '#a0d8f0', bands: ['#ffc0c8', '#c0e0ff', '#fff0a8', '#d8c0ff'] }),
   palette('Deep Jungle', { grass: '#2f8a2a', grass2: '#4aa83a', forest: '#1a5a20', sand: '#e8d08a', desert: '#a8b04a', desert2: '#8a983a', rock: '#5a6a4a', rock2: '#4a5a3a', snow: '#e8f4e0', seabed: '#6a7a4a', water: '#1a8a7a', bands: ['#7a8a4a', '#9aaa5a', '#5a6a3a', '#b0c070'] }),
 ];
+
+// Palettes only zones use (random world changes never pick these).
+export const ZONE_PALETTES = {
+  volcanic: palette('Volcanic', { grass: '#3a3030', grass2: '#4a3a34', forest: '#2a2424', sand: '#5a4a40', desert: '#6a3a2a', desert2: '#4a2a20', rock: '#2a2628', rock2: '#1a1618', snow: '#8a8484', seabed: '#ff6a1a', water: '#ff4a0a', waterGlow: true, bands: ['#3a2a2a', '#5a2a1a', '#2a1a1a', '#7a3a1a'] }),
+  lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
+};
 
 export const world = {
   seed: 1,
@@ -42,7 +49,11 @@ export const world = {
   propDensity: 1,
   floatingIslands: 0.25,
   propSalt: 0,
+  floor: 0,          // whole-terrain vertical offset (space zones drop the ground far below)
+  tempBias: 0,       // + pushes everything toward desert, - toward snow and green
+  craters: 0,        // natural impact craters (the Moon)
 };
+export const WORLD_DEFAULTS = { ...world };
 
 const N = {};
 export function reseed(seed) {
@@ -108,8 +119,74 @@ export function heightAt(x, z) {
     const isl = N.b(x * 0.004 + 50, z * 0.004 + 50);
     h = lerp(h, -45 + Math.max(0, isl - 0.35) * 160, sea);
   }
-  return h;
+  if (W.craters > 0) h -= moonCraters(x, z) * W.craters;
+  return h + W.floor - craterDepthAt(x, z);
 }
+
+// Natural impact craters: one per 140 m cell at a random spot, bowl + raised rim.
+function moonCraters(x, z) {
+  const S = 140, cx = Math.floor(x / S), cz = Math.floor(z / S);
+  let depth = 0;
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      const hsh = hash3(cx + i, cz + j, world.seed);
+      const r = 18 + (hsh % 47);
+      const ox = ((cx + i) + ((hsh >>> 8) % 1000) / 1000) * S, oz = ((cz + j) + ((hsh >>> 18) % 1000) / 1000) * S;
+      const d = Math.hypot(x - ox, z - oz) / r;
+      if (d < 1) depth += r * 0.35 * (1 - d * d);
+      else if (d < 1.35) depth -= r * 0.08 * Math.sin(((d - 1) / 0.35) * Math.PI);
+    }
+  }
+  return depth;
+}
+
+// ---------- destructible terrain ----------
+// Craters blasted into the ground live in world space, bucketed on a coarse grid so the height
+// function only checks the few near each point. Everything (mesh, collision, props) reads heightAt,
+// so a crater is consistent everywhere as soon as the chunks under it rebuild.
+const CRATER_CELL = 160;
+const craters = new Map();   // cell key → craters overlapping that cell
+const cellKey = (cx, cz) => cx * 100003 + cz;
+export const MAX_CRATER_DEPTH = 18;
+
+export function craterDepthAt(x, z) {
+  if (!craters.size) return 0;
+  const list = craters.get(cellKey(Math.floor(x / CRATER_CELL), Math.floor(z / CRATER_CELL)));
+  if (!list) return 0;
+  let depth = 0;
+  for (const c of list) {
+    const d2 = (x - c.x) ** 2 + (z - c.z) ** 2, r2 = c.r * c.r;
+    if (d2 >= r2 * 1.69) continue;
+    if (d2 < r2) depth += c.d * (1 - d2 / r2); // round bowl, full enough that the nearest 8 m-grid vertex always sinks
+    else { const t = (Math.sqrt(d2) - c.r) / (0.3 * c.r); depth -= c.d * 0.12 * Math.sin(t * Math.PI); } // raised rim
+  }
+  return depth;
+}
+
+// Adds (or deepens) a crater and returns the bounding box it touches, so the caller can rebuild.
+export function addCrater(x, z, r, depth) {
+  const near = craters.get(cellKey(Math.floor(x / CRATER_CELL), Math.floor(z / CRATER_CELL))) || [];
+  let c = near.find((k) => (k.x - x) ** 2 + (k.z - z) ** 2 < (k.r * 0.5) ** 2);
+  if (c) {
+    // Repeated hits dig the same hole deeper and a little wider instead of piling up tiny craters.
+    c.d = Math.min(MAX_CRATER_DEPTH, c.d + depth * 0.5);
+    c.r = Math.min(26, Math.max(c.r, r) + 0.4);
+  } else {
+    c = { x, z, r, d: Math.min(depth, MAX_CRATER_DEPTH) };
+  }
+  const reach = c.r * 1.3;
+  for (let cx = Math.floor((c.x - reach) / CRATER_CELL); cx <= Math.floor((c.x + reach) / CRATER_CELL); cx++) {
+    for (let cz = Math.floor((c.z - reach) / CRATER_CELL); cz <= Math.floor((c.z + reach) / CRATER_CELL); cz++) {
+      const k = cellKey(cx, cz);
+      const list = craters.get(k) || [];
+      if (!list.includes(c)) list.push(c);
+      craters.set(k, list);
+    }
+  }
+  return { minX: c.x - reach, maxX: c.x + reach, minZ: c.z - reach, maxZ: c.z + reach };
+}
+
+export function clearCraters() { craters.clear(); }
 
 export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7 };
 
@@ -122,7 +199,7 @@ function mix(a, b, t, out) {
 // Writes an RGB colour into `out` and returns the biome category.
 export function terrainInfo(x, z, h, ny, out) {
   const W = world, P = W.palette;
-  const temp = N.f(x * 0.00035 + 500, z * 0.00035 - 200);
+  const temp = N.f(x * 0.00035 + 500, z * 0.00035 - 200) + W.tempBias;
   const v = N.b(x * 0.013 + 3, z * 0.013 - 7);
   const sl = W.seaLevel;
   let cat;

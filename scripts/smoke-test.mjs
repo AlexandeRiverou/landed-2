@@ -44,7 +44,7 @@ try {
   await page.click('#start');
   await page.evaluate(async () => { window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS; });
 
-  const report = await page.evaluate(() => {
+  const report = await page.evaluate(async () => {
     const G = window.G;
     const step = (n) => { for (let i = 0; i < n; i++) { G.player.invuln = 99; G.step(1 / 30); } };
     const out = {};
@@ -169,6 +169,60 @@ try {
     step(30 * 60);
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
 
+    // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
+    const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
+    const ground0 = G.terrain.surfaceHeight(spot.x, spot.z);
+    const snapshot = (c) => { const m = new Map(); for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) m.set(dx + ',' + dz, G.terrain.surfaceHeight(c.x + dx, c.z + dz)); return (x, z) => m.get(Math.round(x - c.x) + ',' + Math.round(z - c.z)); };
+    const bulletBefore = snapshot(spot);
+    G.player.shootCd = 0;
+    const nb = G.player.bullets.length;
+    G.player.fire();
+    for (const b of G.player.bullets.slice(nb)) { b.pos.set(spot.x, ground0 - 1, spot.z); b.vel.set(0, 0, 0); }
+    step(30); // bullets land, the chunk under them rebuilds
+    // Deepest drop on the rendered mesh around the impact (the 8 m vertex grid rarely lines up with the exact spot).
+    const deepestDrop = (c, before) => {
+      let best = 0;
+      for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) best = Math.max(best, before(c.x + dx, c.z + dz) - G.terrain.surfaceHeight(c.x + dx, c.z + dz));
+      return +best.toFixed(2);
+    };
+    out.bulletCrater = deepestDrop(spot, bulletBefore);
+    const orbSpot = spot.clone().addScaledVector(G.player.right, 60);
+    const orbGround0 = G.terrain.surfaceHeight(orbSpot.x, orbSpot.z);
+    const orbBefore = snapshot(orbSpot);
+    G.enemies.fireOrb(orbSpot.clone().setY(orbGround0 + 3), new G.player.pos.constructor(0, -1, 0), 50, 10);
+    step(30);
+    out.orbCrater = deepestDrop(orbSpot, orbBefore);
+
+    // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
+    const zone0 = G.zones.index;
+    G.zones.sinceZone = 2; // one objective away from the next zone
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.objectives.completed = 1;
+    G.objectives.next();
+    G.objectives.complete(false);
+    out.zoneAdvanced = G.zones.index === zone0 + 1;
+    out.zones = [];
+    const zoneCount = (await import('./src/zones.js')).ZONES.length;
+    for (let i = 0; i < zoneCount; i++) {
+      G.zones.enter(i);
+      step(90);
+      const z = G.zones.current;
+      out.zones.push({ name: z.name, ground: Math.round(G.terrain.surfaceHeight(G.player.pos.x, G.player.pos.z)), asteroids: G.zones.asteroids.list.length });
+      if (z.name === 'Meteor Belt') {
+        // A big asteroid shot apart breaks into smaller ones.
+        const a = G.zones.asteroids;
+        a.spawn(G.player.pos.clone().addScaledVector(G.player.forward, 150), 30);
+        const rock = a.list[a.list.length - 1], before = a.list.length;
+        rock.hp = 1;
+        G.player.shootCd = 0;
+        const nb = G.player.bullets.length;
+        G.player.fire();
+        for (const b of G.player.bullets.slice(nb)) { b.pos.copy(rock.pos); b.vel.set(0, 0, 0); }
+        step(1);
+        out.asteroidSplit = !a.list.includes(rock) && a.list.length >= before + 1;
+      }
+    }
+
     // Progression: score is XP; ranks and perks unlock as it grows.
     const hull = G.player.maxHealth;
     G.score = Math.max(G.score, 4000);
@@ -195,6 +249,11 @@ try {
     [report.droneFalling && report.droneCrashed, 'a drone that loses its rotors falls and crashes'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
+    [report.zoneAdvanced, 'completing objectives advances to the next zone'],
+    [report.zones.length >= 10, 'every zone loads'],
+    [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
+    [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
