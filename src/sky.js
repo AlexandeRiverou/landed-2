@@ -158,6 +158,9 @@ function dotTexture() {
 }
 
 const BOX = 160, BOXY = 110;
+// Weather is scenery, not a wall: draw only this share of each type's particles.
+const WEATHER_DENSITY = 0.3;
+const weatherCount = (w) => Math.round(w.count * WEATHER_DENSITY);
 
 class Weather {
   constructor(G) {
@@ -185,7 +188,8 @@ class Weather {
     if (!w) return;
     const cam = this.G.camera.position;
     const c = new THREE.Color();
-    for (let i = 0; i < w.count; i++) {
+    const n = weatherCount(w);
+    for (let i = 0; i < n; i++) {
       this.pos[i * 3] = cam.x + rand(-BOX, BOX);
       this.pos[i * 3 + 1] = cam.y + rand(-BOXY, BOXY);
       this.pos[i * 3 + 2] = cam.z + rand(-BOX, BOX);
@@ -193,7 +197,7 @@ class Weather {
       this.col[i * 3] = c.r; this.col[i * 3 + 1] = c.g; this.col[i * 3 + 2] = c.b;
       this.phase[i] = Math.random() * 100;
     }
-    this.geo.setDrawRange(0, w.count);
+    this.geo.setDrawRange(0, n);
     this.geo.attributes.color.needsUpdate = true;
     this.mat.size = w.size;
     this.mat.opacity = w.opacity;
@@ -203,8 +207,8 @@ class Weather {
     const w = WEATHER[this.type];
     if (!w) return;
     this.t += dt;
-    const p = this.pos;
-    for (let i = 0; i < w.count; i++) {
+    const p = this.pos, n = weatherCount(w);
+    for (let i = 0; i < n; i++) {
       const k = i * 3;
       p[k + 1] -= w.fall * dt;
       if (w.sway) { p[k] += Math.sin(this.t * 1.3 + this.phase[i]) * w.sway * dt; p[k + 2] += Math.cos(this.t * 1.1 + this.phase[i]) * w.sway * dt; }

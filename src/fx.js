@@ -22,6 +22,10 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// Bursts (explosions, confetti, sparkles...) spawn this share of their particles, so effects read clearly without
+// filling the screen. Small counts round randomly, so one-particle trails still appear at a matching rate.
+const BURST_DENSITY = 0.5;
+
 const FIREWORK_COLORS = ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff', '#ff9a3a', '#ffffff'];
 
 export class FX {
@@ -56,6 +60,8 @@ export class FX {
   emit(p, n, o = {}) {
     const colors = o.colors || [o.color || '#ffffff'];
     const speed = o.speed ?? 40, life = o.life ?? 1.2, size = o.size ?? 4;
+    n *= BURST_DENSITY;
+    n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
     for (let k = 0; k < n; k++) {
       const i = this.cursor;
       this.cursor = (this.cursor + 1) % this.N;
