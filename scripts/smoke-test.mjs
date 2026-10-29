@@ -89,7 +89,9 @@ try {
     G.powerups.drop = drop;
 
     // Weak points and breakable parts, hit with real bullets placed on the part.
+    // Isolate these checks: no new spawns, so no stray enemy can fly through a target part and eat the bullets.
     G.powerups.active.clear();
+    G.enemies.spawnTimer = 1e9;
     G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
     const ahead = () => G.player.pos.clone().addScaledVector(G.player.forward, 120).setY(G.player.pos.y + 40);
     const at = new G.player.pos.constructor();
@@ -123,6 +125,8 @@ try {
     G.powerups.active.delete('freeze');
     for (let i = 0; i < 30 * 30 && !drone.dead; i++) step(1);
     out.droneCrashed = drone.dead;
+    G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
+    G.powerups.active.clear();
     const cannonPos = ahead();
     cannonPos.y = G.terrain.surfaceHeight(cannonPos.x, cannonPos.z);
     const cannon = G.enemies.spawn('cannon', cannonPos);
@@ -132,6 +136,7 @@ try {
     for (let k = 0; k < 3 && !cannon.disarmed; k++) shootAt(partOf(cannon, 'barrel'));
     out.cannonDisarmed = !!cannon.disarmed;
     G.powerups.active.delete('freeze');
+    G.enemies.spawnTimer = 5;
 
     // Power-ups: a pickup spawns ahead, flying into it activates it, and every type runs and expires.
     G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
