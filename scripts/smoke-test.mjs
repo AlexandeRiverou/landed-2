@@ -50,6 +50,8 @@ try {
     const out = {};
     step(150);
     out.firstObjective = G.objectives.current?.type;
+    out.musicPlaying = !!G.audio.music && G.audio.music.chordIndex > 0;
+    out.engineGain = G.audio.engGain ? G.audio.engGain.gain.value : 0;
 
     // Ignore the objective until persuasion gives up and awards the participation trophy.
     let stages = 0;
@@ -169,6 +171,7 @@ try {
 
   const checks = [
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
+    [report.musicPlaying && report.engineGain < 0.01, 'calm music plays and the engine stays quiet'],
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [report.bossDefeated, 'boss can be defeated'],

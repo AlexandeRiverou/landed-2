@@ -48,7 +48,7 @@ server.
 | Rudder | `Q` `E` |
 | Boost | `Shift` |
 | Shoot | `Space`, `J` or left click |
-| Pause / mute | `P` (or `Esc`) / `M` |
+| Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right |
 
 ## What's in it

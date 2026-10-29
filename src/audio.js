@@ -1,4 +1,5 @@
-// Tiny WebAudio synth: no audio files, just beeps with ambition.
+// Tiny WebAudio synth: no audio files, just beeps with ambition (plus a calm soundtrack, see music.js).
+import { Music } from './music.js';
 export class Sfx {
   constructor() { this.ctx = null; this.muted = false; }
 
@@ -12,7 +13,7 @@ export class Sfx {
 
     this.engFilter = c.createBiquadFilter();
     this.engFilter.type = 'lowpass';
-    this.engFilter.frequency.value = 400;
+    this.engFilter.frequency.value = 150;
     this.engGain = c.createGain();
     this.engGain.gain.value = 0;
     this.eng = c.createOscillator(); this.eng.type = 'sawtooth'; this.eng.frequency.value = 70;
@@ -25,15 +26,18 @@ export class Sfx {
     this.noiseBuf = c.createBuffer(1, len, c.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.music = new Music(c, this.master);
   }
+
+  update() { this.music?.update(); }
 
   setEngine(ratio, on) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.eng.frequency.setTargetAtTime(55 + ratio * 70, t, 0.1);
-    this.eng2.frequency.setTargetAtTime(28 + ratio * 35, t, 0.1);
-    this.engFilter.frequency.setTargetAtTime(280 + ratio * 600, t, 0.1);
-    this.engGain.gain.setTargetAtTime(on ? 0.05 : 0, t, 0.2);
+    this.eng.frequency.setTargetAtTime(50 + ratio * 30, t, 0.3);
+    this.eng2.frequency.setTargetAtTime(25 + ratio * 15, t, 0.3);
+    this.engFilter.frequency.setTargetAtTime(120 + ratio * 160, t, 0.3);
+    this.engGain.gain.setTargetAtTime(on ? 0.006 : 0, t, 0.4); // barely there: no droning
   }
 
   tone(freq, dur, { type = 'sine', vol = 0.2, slide = 0, delay = 0, pan = 0 } = {}) {
@@ -65,7 +69,7 @@ export class Sfx {
   success() { [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.25, { type: 'triangle', vol: 0.18, delay: i * 0.08 })); }
   ding(p = 1) { this.tone(880 * p, 0.3, { type: 'triangle', vol: 0.15 }); this.tone(1320 * p, 0.3, { type: 'sine', vol: 0.08, delay: 0.05 }); }
   pop() { this.tone(600, 0.12, { type: 'square', vol: 0.08, slide: 600 }); this.noise(0.08, { vol: 0.15, freq: 3000 }); }
-  shoot() { this.tone(900, 0.08, { type: 'square', vol: 0.04, slide: -500 }); }
+  shoot() { this.tone(700, 0.06, { type: 'triangle', vol: 0.018, slide: -350 }); }
   hit() { this.noise(0.15, { vol: 0.25, freq: 2000 }); this.tone(160, 0.15, { type: 'sawtooth', vol: 0.1, slide: -80 }); }
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }

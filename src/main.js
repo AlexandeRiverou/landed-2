@@ -101,6 +101,7 @@ function setPaused(v) {
   $('pause').classList.toggle('hidden', !v);
   if (v) $('pause-quip').textContent = pick(T.pause);
   G.audio.setEngine(0, !v);
+  G.audio.music?.duck(v);
 }
 
 $('start').addEventListener('click', start);
@@ -109,6 +110,7 @@ G.input.on('Enter', () => { if (!G.started) start(); });
 G.input.on('KeyP', () => setPaused(!G.paused));
 G.input.on('Escape', () => setPaused(!G.paused));
 G.input.on('KeyM', () => G.ui.notify(G.audio.toggleMute() ? 'Muted. The engine is now imaginary.' : 'Sound on. Vroom.', 'info', 2));
+G.input.on('KeyN', () => { if (G.audio.music) G.ui.notify(G.audio.music.toggle() ? 'Music on. Breathe in. Fly calmly.' : 'Music off. Just you and the wind.', 'info', 2); });
 G.input.on('KeyI', () => { G.input.invert = !G.input.invert; G.ui.notify(G.input.invert ? 'Pitch inverted: W dives, like a real pilot.' : 'Pitch normal: W climbs, like a sensible person.', 'info', 3); });
 addEventListener('visibilitychange', () => { if (document.hidden && G.started && !G.paused) setPaused(true); });
 
@@ -127,6 +129,7 @@ function frame() {
     if (!G.started) titleCamera(dt);
     G.terrain.update(G.player.pos, 1);
     G.sky.update(dt);
+    G.audio.update();
   } else step(dt);
   renderer.render(scene, camera);
 }
@@ -151,6 +154,7 @@ function step(dt) {
   G.sky.update(dt);
   G.ui.update(dt);
   G.audio.setEngine(p.speed / 100, !p.dead);
+  G.audio.update();
 }
 
 G.step = step; // console/debug: advance the simulation without rendering
