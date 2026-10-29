@@ -203,7 +203,7 @@ export class Enemies {
     this.spawnTimer = rand(3, 6);
     const max = 3 + Math.min(7, Math.floor(G.score / 400));
     if (this.list.filter((e) => !e.quest).length >= max) return;
-    const avail = Object.entries(TYPES).filter(([, d]) => G.score >= d.minScore && d.weight > 0);
+    const avail = Object.entries(TYPES).filter(([, d]) => G.score >= d.minScore && d.weight > 0 && G.zones.allowsEnemy(d));
     let total = avail.reduce((s, [, d]) => s + d.weight, 0), r = Math.random() * total, type = avail[0][0];
     for (const [k, d] of avail) { r -= d.weight; if (r <= 0) { type = k; break; } }
 

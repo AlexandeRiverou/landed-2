@@ -41,6 +41,7 @@ export const THEMES = {
   spooky: { appleTree: 'deadTree', flowers: 'rock', scarecrow: 'deadTree', roundTree: 'deadTree', pine: 'deadTree', birch: 'deadTree', palm: 'deadTree', snowPine: 'deadTree', bush: 'rock', house: 'castleTower' },
   tropical: { appleTree: 'palm', snowman: 'parasol', igloo: 'sandcastle', pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
   construction: { haybale: 'trafficCone', tumbleweed: 'trafficCone', rock: 'trafficCone', bush: 'trafficCone', cactus: 'trafficCone', rockB: 'trafficCone', gnome: 'trafficCone' },
+  lunar: { roundTree: 'rock', pine: 'rockB', birch: 'rock', bush: 'rockB', palm: 'rock', snowPine: 'rockB', cactus: 'rock', deadTree: 'rockB', appleTree: 'rock', flowers: null, haybale: 'rockB', sheep: null, cow: null, scarecrow: null, house: 'crystal', gnome: null },
   duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
 
@@ -209,7 +210,8 @@ export class Terrain {
       const table = TABLES[cat];
       let type = table && pickWeighted(rng, table);
       if (!type) continue;
-      type = theme[type] || type;
+      if (type in theme) type = theme[type]; // a theme can swap a prop, or remove it (null)
+      if (!type) continue;
       const x = ox + u * STEP, z = oz + v * STEP;
       const h = gridHeight(hs, u, v);
       if (cat === CAT.SEA && h > world.seaLevel - 3) continue;
@@ -222,8 +224,8 @@ export class Terrain {
       const list = LANDMARKS[cat];
       if (list) {
         let type = list[Math.floor(rng() * list.length)];
-        type = theme[type] || type;
-        place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
+        if (type in theme) type = theme[type];
+        if (type) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
       }
     }
     if (rng() < world.floatingIslands) {
@@ -270,6 +272,8 @@ function gridHeight(hs, fx, fz) {
   return hd + (hb - hd) * (1 - u) + (hc - hd) * (1 - v);
 }
 
+const BLACK = new THREE.Color(0, 0, 0);
+
 class Water {
   constructor(G) {
     const geo = new THREE.PlaneGeometry(12000, 12000, 1, 1);
@@ -286,5 +290,8 @@ class Water {
     this.mesh.position.y += (world.seaLevel - this.mesh.position.y) * 0.03;
     this.target.set(world.palette.waterHex);
     this.mat.color.lerp(this.target, 0.03);
+    // Lava glows; water doesn't. Seas far below a space zone simply aren't drawn.
+    this.mat.emissive.lerp(world.palette.waterGlow ? this.target : BLACK, 0.03);
+    this.mesh.visible = world.seaLevel > -600;
   }
 }

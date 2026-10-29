@@ -29,7 +29,10 @@ export function pointAhead(G, dMin, dMax, spread = 0.9, hMin = 40, hMax = 120) {
   const f = flatForward(G).applyAxisAngle(Y, (Math.random() * 2 - 1) * spread);
   const d = rand(dMin, dMax), p = G.player.pos;
   const x = p.x + f.x * d, z = p.z + f.z * d;
-  return new THREE.Vector3(x, clearance(G, x, z) + rand(hMin, hMax), z);
+  let y = clearance(G, x, z) + rand(hMin, hMax);
+  // No ground worth the name (space zones): put it near the player's altitude instead.
+  if (G.zones.current.noGround) y = Math.max(y, p.y + rand(-50, 60));
+  return new THREE.Vector3(x, y, z);
 }
 
 function inFront(G, d, minClear = 35) {
@@ -560,7 +563,7 @@ export class Objectives {
       this.bossAt = this.completed;
       return this.start(mkBoss(G, this.bossLevel++), 'boss');
     }
-    const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]));
+    const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]) && G.zones.allowsObjective(t[0]));
     const [type, , make] = weightedPick(pool, (t) => t[1]);
     this.start(make(G), type);
   }
