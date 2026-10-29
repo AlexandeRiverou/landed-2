@@ -189,6 +189,12 @@ export class Enemies {
     }
   }
 
+  // Flat enough for a ground cannon: its barrel must stay clear of the hillside to be shootable.
+  isGentleGround(x, z) {
+    const h = (dx, dz) => this.G.terrain.surfaceHeight(x + dx, z + dz);
+    return Math.abs(h(8, 0) - h(-8, 0)) < 5 && Math.abs(h(0, 8) - h(0, -8)) < 5;
+  }
+
   calm(seconds) { this.calmTimer = Math.max(this.calmTimer, seconds); }
 
   spawn(type, pos, opts = {}) {
@@ -233,6 +239,7 @@ export class Enemies {
     const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), G.world.seaLevel);
     if (TYPES[type].ground) {
       if (G.terrain.surfaceHeight(pos.x, pos.z) < G.world.seaLevel) return; // cannons can't swim
+      if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
     } else pos.y = Math.max(p.pos.y + rand(-15, 35), g + 45);
     if (SWARMS[type]) {

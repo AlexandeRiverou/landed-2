@@ -138,7 +138,11 @@ try {
     out.droneCrashed = drone.dead;
     G.enemies.list.filter((e) => !e.boss).forEach((e) => G.enemies.removeEnemy(e));
     G.powerups.active.clear();
-    const cannonPos = ahead();
+    // Like the game, only put the cannon on gentle ground (on a steep slope its barrel sinks into the hill).
+    let cannonPos = ahead();
+    for (let k = 0; k < 40 && !G.enemies.isGentleGround(cannonPos.x, cannonPos.z); k++) {
+      cannonPos = ahead().addScaledVector(G.player.right, (k % 2 ? 1 : -1) * 20 * (1 + (k >> 1)));
+    }
     cannonPos.y = G.terrain.surfaceHeight(cannonPos.x, cannonPos.z);
     const cannon = G.enemies.spawn('cannon', cannonPos);
     cannon.hp = 100;
