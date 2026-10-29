@@ -546,7 +546,9 @@ function mkHunt(G) {
 
 // ---------- bosses ----------
 
-export const BOSS_EVERY = 3;
+// A boss shows up after a random 4–7 completed objectives, re-rolled after each one.
+export const BOSS_GAP = [4, 7];
+const bossGap = () => BOSS_GAP[0] + Math.floor(Math.random() * (BOSS_GAP[1] - BOSS_GAP[0] + 1));
 // The first two bosses are the gentler classics; after that, anything goes.
 const OPENERS = ['kingDrone', 'gooseQueen'];
 
@@ -634,7 +636,7 @@ export class Objectives {
     this.completed = 0;
     this.cooldown = 4;
     this.bossLevel = 0;
-    this.bossAt = 0;
+    this.nextBossAt = bossGap(); // completed-objective count that brings the next boss
     this.bossDeck = [...shuffle([...OPENERS]), ...shuffle(Object.keys(BOSSES).filter((k) => !OPENERS.includes(k)))];
     this.pendingBoss = false; // a boss interrupted by relax mode comes back first
   }
@@ -662,8 +664,8 @@ export class Objectives {
 
   next() {
     const G = this.G;
-    if (this.pendingBoss || (this.completed > 0 && this.completed % BOSS_EVERY === 0 && this.bossAt !== this.completed)) {
-      this.bossAt = this.completed;
+    if (this.pendingBoss || this.completed >= this.nextBossAt) {
+      if (!this.pendingBoss) this.nextBossAt = this.completed + bossGap();
       this.pendingBoss = false;
       return this.start(this.makeBoss(), 'boss');
     }
