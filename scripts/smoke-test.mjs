@@ -98,6 +98,9 @@ try {
     out.pickupSpawned = !!pickup;
     if (pickup) { G.player.pos.copy(pickup.pos); step(2); }
     out.pickupCollected = G.powerups.active.size > 0 || G.player.health === G.player.maxHealth;
+    // No more pickups during the wear-off wait: flying into a fresh one would keep a power-up active.
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     for (const id of Object.keys(window.POWERUPS_FOR_TEST || {})) { G.powerups.activate(id); }
     G.input.keys.add('Space');
     step(30 * 5);
@@ -105,6 +108,30 @@ try {
     out.powerupsActiveMidway = G.powerups.active.size;
     step(30 * 60);
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
+
+    // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
+    const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
+    const ground0 = G.terrain.surfaceHeight(spot.x, spot.z);
+    const snapshot = (c) => { const m = new Map(); for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) m.set(dx + ',' + dz, G.terrain.surfaceHeight(c.x + dx, c.z + dz)); return (x, z) => m.get(Math.round(x - c.x) + ',' + Math.round(z - c.z)); };
+    const bulletBefore = snapshot(spot);
+    G.player.shootCd = 0;
+    const nb = G.player.bullets.length;
+    G.player.fire();
+    for (const b of G.player.bullets.slice(nb)) { b.pos.set(spot.x, ground0 - 1, spot.z); b.vel.set(0, 0, 0); }
+    step(30); // bullets land, the chunk under them rebuilds
+    // Deepest drop on the rendered mesh around the impact (the 8 m vertex grid rarely lines up with the exact spot).
+    const deepestDrop = (c, before) => {
+      let best = 0;
+      for (let dx = -6; dx <= 6; dx += 2) for (let dz = -6; dz <= 6; dz += 2) best = Math.max(best, before(c.x + dx, c.z + dz) - G.terrain.surfaceHeight(c.x + dx, c.z + dz));
+      return +best.toFixed(2);
+    };
+    out.bulletCrater = deepestDrop(spot, bulletBefore);
+    const orbSpot = spot.clone().addScaledVector(G.player.right, 60);
+    const orbGround0 = G.terrain.surfaceHeight(orbSpot.x, orbSpot.z);
+    const orbBefore = snapshot(orbSpot);
+    G.enemies.fireOrb(orbSpot.clone().setY(orbGround0 + 3), new G.player.pos.constructor(0, -1, 0), 50, 10);
+    step(30);
+    out.orbCrater = deepestDrop(orbSpot, orbBefore);
 
     // Progression: score is XP; ranks and perks unlock as it grows.
     const hull = G.player.maxHealth;
@@ -129,6 +156,7 @@ try {
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
