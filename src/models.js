@@ -559,13 +559,6 @@ export function makeArrow3D(color = '#ff4dc4') {
   return g;
 }
 
-export function makeBird() {
-  const g = new THREE.Group();
-  add(g, Box(0.8, 0.6, 2), lam('#2a2a3a'));
-  wings(g, '#2a2a3a', 2.4, 1, 0.1);
-  return g;
-}
-
 // ---------- text ----------
 
 export function makeTextTexture(lines, { w = 1024, h = 512, bg = '#ffd23a', fg = '#1d1b2e', border = '#1d1b2e', size = 110 } = {}) {

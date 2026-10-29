@@ -2,7 +2,7 @@
 // and escalates through increasingly desperate tactics: nagging, arrows, beams, bigger
 // hoops, hoops that come to you, rainbow roads... and finally a participation trophy.
 import * as THREE from 'three';
-import { makeArrow3D, makeSign, makeTextSprite, makeRing, makeBird, disposeTree } from './models.js';
+import { makeArrow3D, makeSign, makeTextSprite, makeRing, disposeTree } from './models.js';
 import { pick, rand, fmt, T, weightedPick } from './texts.js';
 import { crossRing, flatForward, groundAt } from './objectives.js';
 
@@ -84,12 +84,6 @@ export const TACTICS = [
     can: () => true,
     apply: (G, o) => fireworks(G, o),
     texts: ['Fireworks at {noun}! If that\'s not a hint, we don\'t know what is.', '{Noun} is throwing itself a party. You\'re invited. Please come.'],
-  },
-  {
-    id: 'birds', tier: 2, need: 'target',
-    can: () => true,
-    apply: (G, o) => birds(G, o),
-    texts: ['A flock of helpful birds is flying to {noun}. Birds know things.', 'Follow the birds. They\'ve done this before.'],
   },
   {
     id: 'sunMove', tier: 2, need: 'place',
@@ -430,30 +424,6 @@ function fireworks(G, o) {
       t = rand(0.5, 1);
       G.fx.firework(_v.copy(tg).add(new THREE.Vector3(rand(-40, 40), rand(30, 90), rand(-40, 40))));
     },
-  };
-}
-
-function birds(G, o) {
-  const flock = [];
-  for (let k = 0; k < 7; k++) { const b = makeBird(); b.scale.setScalar(2); G.scene.add(b); flock.push({ b, off: new THREE.Vector3(rand(-15, 15), rand(-6, 6), rand(-15, 15)) }); }
-  let t = 99, center = new THREE.Vector3();
-  return {
-    update(dt) {
-      const tg = o.target();
-      if (!tg) return;
-      t += dt;
-      const p = G.player;
-      if (t > 9 || center.distanceTo(tg) < 30) { t = 0; center.copy(p.pos).addScaledVector(p.forward, 40).add(new THREE.Vector3(0, 12, 0)); }
-      _v.subVectors(tg, center).normalize();
-      center.addScaledVector(_v, 60 * dt);
-      for (const f of flock) {
-        f.b.position.copy(center).add(f.off);
-        f.b.lookAt(_v.clone().add(f.b.position));
-        const w = Math.sin(G.time * 14 + f.off.x) * 0.7;
-        f.b.userData.wings[0].rotation.z = -w; f.b.userData.wings[1].rotation.z = w;
-      }
-    },
-    dispose() { for (const f of flock) { G.scene.remove(f.b); disposeTree(f.b); } },
   };
 }
 
