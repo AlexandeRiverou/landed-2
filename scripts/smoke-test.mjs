@@ -98,6 +98,9 @@ try {
     out.pickupSpawned = !!pickup;
     if (pickup) { G.player.pos.copy(pickup.pos); step(2); }
     out.pickupCollected = G.powerups.active.size > 0 || G.player.health === G.player.maxHealth;
+    // No more pickups during the wear-off wait: flying into a fresh one would keep a power-up active.
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     for (const id of Object.keys(window.POWERUPS_FOR_TEST || {})) { G.powerups.activate(id); }
     G.input.keys.add('Space');
     step(30 * 5);
