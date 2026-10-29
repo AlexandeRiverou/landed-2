@@ -126,13 +126,13 @@ export const T = {
     "Even pilots need a juice box.",
   ],
   relaxOn: [
-    "Cloud Nine. The objectives went on vacation. The enemies took the day off. Enjoy the view. (R to return)",
-    "Cloud Nine engaged. Nobody needs anything from you. Breathe. Fly. (R to return)",
-    "Welcome to Cloud Nine. Admission: free. Enemies: not invited. (R to return)",
+    "Relax mode. The objectives went on vacation. The enemies took the day off. Enjoy the view. (R to return)",
+    "Relax mode on. Nobody needs anything from you. Breathe. Fly. (R to return)",
+    "Time to relax. Admission: free. Enemies: not invited. (R to return)",
   ],
   relaxOff: [
     "Break's over! The objectives missed you. They wrote poems.",
     "Back to the action! The enemies are back from lunch. They brought friends.",
-    "Cloud Nine closed for cleaning. Objectives incoming!",
+    "Relaxation over. Objectives incoming!",
   ],
 };

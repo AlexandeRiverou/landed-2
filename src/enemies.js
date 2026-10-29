@@ -375,7 +375,7 @@ export class Enemies {
 
   calm(seconds) { this.calmTimer = Math.max(this.calmTimer, seconds); }
 
-  // Cloud Nine (relax mode): everything hostile leaves the sky at once, orbs included.
+  // Relax mode: everything hostile leaves the sky at once, orbs included.
   clearAll() {
     for (let i = this.list.length - 1; i >= 0; i--) { this.G.fx.emit(this.list[i].pos, 10, { colors: ['#ffffff', '#ffd0f4'], speed: 20, life: 0.8, size: 6 }); this.remove(i); }
     for (const s of this.shots) this.G.scene.remove(s.mesh);

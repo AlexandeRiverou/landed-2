@@ -636,7 +636,7 @@ export class Objectives {
     this.bossLevel = 0;
     this.bossAt = 0;
     this.bossDeck = [...shuffle([...OPENERS]), ...shuffle(Object.keys(BOSSES).filter((k) => !OPENERS.includes(k)))];
-    this.pendingBoss = false; // a boss interrupted by Cloud Nine comes back first
+    this.pendingBoss = false; // a boss interrupted by relax mode comes back first
   }
 
   // Next boss from the deck that fits the current zone (no fort in space). Reshuffles when it runs out.
@@ -682,7 +682,7 @@ export class Objectives {
     G.audio.ding(0.8);
   }
 
-  // Cloud Nine: the objective quietly leaves (no penalty). An interrupted boss returns first afterwards.
+  // Relax mode: the objective quietly leaves (no penalty). An interrupted boss returns first afterwards.
   suspend() {
     const G = this.G, obj = this.current;
     this.cooldown = 3;

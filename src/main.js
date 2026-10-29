@@ -104,13 +104,13 @@ function start() {
   }
 }
 
-// Cloud Nine: objectives and enemies leave, the HUD fades, cinema bars slide in. Like what you see? Stay a while.
+// Relax mode: objectives and enemies leave, the HUD fades, cinema bars slide in. Like what you see? Stay a while.
 function setRelax(on) {
   if (!G.started || G.relax === on) return;
   G.relax = on;
   document.body.classList.toggle('relax', on);
   $('relax-btn').querySelector('.ico').textContent = on ? '⚡' : '☁️';
-  $('relax-btn').querySelector('.lbl').textContent = on ? 'Back to the action' : 'Cloud Nine';
+  $('relax-btn').querySelector('.lbl').textContent = on ? 'Back to the action' : 'Relax';
   if (on) {
     G.objectives.suspend();
     G.enemies.clearAll();

@@ -29,7 +29,7 @@ npm run check     # syntax check every module
 npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN needed)
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
-                  # world mutations, every objective, every boss and Cloud Nine;
+                  # world mutations, every objective, every boss and relax mode;
                   # fails on any error
 ```
 
@@ -56,7 +56,7 @@ server.
 | Boost | `Shift` |
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
-| Cloud Nine (relax mode) | `R` or the ☁️ button at the top |
+| Relax mode | `R` or the ☁️ Relax button at the top |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right |
 
 ## What's in it
@@ -130,7 +130,7 @@ other win.
 - *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
   arrive twice as fast).
 
-**Cloud Nine** (`src/main.js`): press `R` or the ☁️ Cloud Nine button to take a break. Objectives and enemies leave,
+**Relax mode** (`src/main.js`): press `R` or the ☁️ Relax button to take a break. Objectives and enemies leave,
 no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, so
 if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
 back first.

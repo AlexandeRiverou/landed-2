@@ -136,10 +136,10 @@ try {
     step(3);
     out.twins = { count: twins.length, name: twins[0].short, halfDone, done: !G.objectives.current };
     G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
-    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh)); // the twins' drops: leftovers, not Cloud Nine spawns
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh)); // the twins' drops: leftovers, not relax-mode spawns
     G.powerups.timer = 5;
 
-    // Cloud Nine (relax mode): objectives, enemies and pickups go away and stay away; an interrupted boss comes back.
+    // Relax mode: objectives, enemies and pickups go away and stay away; an interrupted boss comes back.
     startBoss('megaUfo', { mod: null, duo: false });
     G.enemies.spawn('drone', G.player.pos.clone().addScaledVector(G.player.forward, 200));
     G.setRelax(true);
@@ -318,8 +318,8 @@ try {
     [Object.keys(report.bosses).length >= 12, 'at least 12 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [report.twins.count === 2 && report.twins.halfDone && report.twins.done && report.twins.name.startsWith('Turbo'), 'boss twins with a modifier both have to go down'],
-    [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Cloud Nine clears objectives, enemies and pickups'],
-    [report.relax.backObjective === 'boss', 'leaving Cloud Nine brings back the interrupted boss'],
+    [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Relax mode clears objectives, enemies and pickups'],
+    [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],
     [report.longestPowerup >= 45, 'power-ups last longer'],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
     [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],
