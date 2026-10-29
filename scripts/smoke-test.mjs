@@ -65,7 +65,7 @@ try {
 
     // Every objective type once, run for a bit, then completed normally (each triggers world mutations).
     // Stay in the first zone: space zones don't offer the ground objectives.
-    const { OBJECTIVE_TYPES: types, BOSS_EVERY } = window.OBJ_FOR_TEST;
+    const { OBJECTIVE_TYPES: types, BOSS_GAP } = window.OBJ_FOR_TEST;
     out.objectiveTypes = types.length;
     for (const t of types) {
       step(60);
@@ -82,9 +82,11 @@ try {
 
     // A boss fight: fly at the boss with guns blazing until it falls.
     if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
-    G.objectives.completed = BOSS_EVERY;
+    out.firstBossGap = G.objectives.nextBossAt;
+    G.objectives.completed = G.objectives.nextBossAt;
     G.objectives.bossDeck = ['kingDrone'];
     G.objectives.next();
+    out.nextBossGap = G.objectives.nextBossAt - G.objectives.completed;
     const boss = G.enemies.list.find((e) => e.boss);
     if (!boss) throw new Error('boss did not spawn');
     // Count drops directly: the plane is usually close enough to grab the drop the moment the boss dies.
@@ -312,6 +314,7 @@ try {
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [report.bossDefeated, 'boss can be defeated'],
+    [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.objectiveTypes >= 28, 'all objective types are on the menu'],

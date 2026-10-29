@@ -110,7 +110,7 @@ function setRelax(on) {
   G.relax = on;
   document.body.classList.toggle('relax', on);
   $('relax-btn').querySelector('.ico').textContent = on ? '⚡' : '☁️';
-  $('relax-btn').querySelector('.lbl').textContent = on ? 'Back to the action' : 'Relax';
+  $('relax-btn').querySelector('.lbl').textContent = on ? 'Back to the action' : 'Relax Mode';
   if (on) {
     G.objectives.suspend();
     G.enemies.clearAll();

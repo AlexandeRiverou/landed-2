@@ -56,7 +56,7 @@ server.
 | Boost | `Shift` |
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
-| Relax mode | `R` or the ☁️ Relax button at the top |
+| Relax Mode | `R` or the ☁️ Relax Mode button at the top |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right |
 
 ## What's in it
@@ -95,8 +95,8 @@ Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and
 recharge, higher fire rate, longer and more frequent power-ups, harder-hitting bullets... The XP bar is under your
 score, and your best run is remembered on the title screen.
 
-**Bosses** (`src/enemies.js`, `src/objectives.js`): every 3 completed objectives a crowned boss shows up. There are 12,
-drawn from a shuffled deck so you meet them all before any repeats:
+**Bosses** (`src/enemies.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
+(a fresh random gap each time). There are 12, drawn from a shuffled deck so you meet them all before any repeats:
 
 - King Drone the Unpleasant (summons minions)
 - Her Royal Honkness the Goose Queen (golden eggs)
@@ -130,7 +130,7 @@ other win.
 - *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
   arrive twice as fast).
 
-**Relax mode** (`src/main.js`): press `R` or the ☁️ Relax button to take a break. Objectives and enemies leave,
+**Relax Mode** (`src/main.js`): press `R` or the ☁️ Relax Mode button to take a break. Objectives and enemies leave,
 no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, so
 if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
 back first.
