@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 
 const $ = (id) => document.getElementById(id);
+const MAX_NOTES = 2;   // on screen at once
+const MAX_QUEUE = 3;   // waiting; anything beyond this is dropped
 const _v = new THREE.Vector3();
 
 export class UI {
@@ -18,19 +20,60 @@ export class UI {
     this.bannerTimer = 0;
     this.flashA = 0;
     this.tintTimer = 0;
+    this.notes = [];       // visible
+    this.queue = [];       // waiting, highest priority first
+    this.seen = new Map(); // text → time, to drop repeats
+    this.lastChatter = -99;
   }
 
-  notify(text, kind = 'info', dur = 4.5) {
+  // prio 0 = chatter (only shown when nothing else is on screen), 1 = normal, 2 = important.
+  notify(text, kind = 'info', dur = 4, prio) {
+    prio ??= kind === 'bad' || kind === 'good' || kind === 'persuade' ? 2 : 1;
+    const now = this.G.time;
+    if (now - (this.seen.get(text) ?? -99) < 15) return;
+    if (this.seen.size > 200) this.seen.clear();
+    this.seen.set(text, now);
+    if (prio === 0) {
+      if (this.notes.length || this.queue.length || now - this.lastChatter < 8) return;
+      this.lastChatter = now;
+    }
+    this.queue.push({ text, kind, dur: Math.min(dur, 4.5), prio });
+    this.queue.sort((a, b) => b.prio - a.prio);
+    if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE;
+    this.pump();
+  }
+
+  pump() {
+    while (this.notes.length < MAX_NOTES && this.queue.length) this.showNote(this.queue.shift());
+    // Important news never waits behind something less important: retire the weaker note early.
+    const head = this.queue[0];
+    if (head) for (const n of this.notes) if (n.prio < head.prio && n.t > 0.4) { n.t = 0.4; break; }
+  }
+
+  showNote(n) {
     const icons = { info: '✈️', warn: '⚠️', bad: '💥', good: '🎉', persuade: '📣' };
-    const n = document.createElement('div');
-    n.className = `note ${kind}`;
+    const el = document.createElement('div');
+    el.className = `note ${n.kind}`;
     const i = document.createElement('span');
     i.className = 'icon';
-    i.textContent = icons[kind] || '✈️';
-    n.append(i, document.createTextNode(text));
-    this.el.notes.prepend(n);
-    while (this.el.notes.children.length > 3) this.el.notes.lastChild.remove();
-    setTimeout(() => { n.classList.add('out'); setTimeout(() => n.remove(), 400); }, dur * 1000);
+    i.textContent = icons[n.kind] || '✈️';
+    el.append(i, document.createTextNode(n.text));
+    this.el.notes.append(el);
+    n.el = el;
+    n.t = n.dur;
+    this.notes.push(n);
+  }
+
+  tickNotes(dt) {
+    for (let k = this.notes.length - 1; k >= 0; k--) {
+      const n = this.notes[k];
+      n.t -= dt;
+      if (n.t > 0) continue;
+      n.el.classList.add('out');
+      setTimeout(() => n.el.remove(), 400);
+      this.notes.splice(k, 1);
+    }
+    if (this.queue.length) this.pump();
   }
 
   banner(title, lines, dur = 5.5) {
@@ -65,6 +108,7 @@ export class UI {
 
   update(dt) {
     const G = this.G, e = this.el, p = G.player;
+    this.tickNotes(dt);
     if (Math.round(this.shownScore) !== G.score) {
       const before = Math.round(this.shownScore);
       this.shownScore += (G.score - this.shownScore) * Math.min(1, dt * 6);

@@ -123,7 +123,7 @@ function mkHoop(G, opt = {}) {
       }
       const r = crossRing(ring, G.player.prevPos, G.player.pos, R);
       if (r === 'hit') return 'done';
-      if (r === 'miss') G.ui.notify(pick(T.nearMiss), 'warn', 2.5);
+      if (r === 'miss') G.ui.notify(pick(T.nearMiss), 'warn', 2.5, 0);
       return null;
     },
     grow(f) { ring.userData.tscale = Math.min((ring.userData.tscale || 1) * f, 7); },
@@ -184,7 +184,7 @@ function mkChain(G) {
         this.progressed = true;
         if (idx >= n) return 'done';
         mark();
-      } else if (r === 'miss') G.ui.notify(pick(T.nearMiss), 'warn', 2.5);
+      } else if (r === 'miss') G.ui.notify(pick(T.nearMiss), 'warn', 2.5, 0);
       return null;
     },
     grow(f) { for (const r of rings) r.userData.tscale = Math.min((r.userData.tscale || 1) * f, 6); },
@@ -302,7 +302,7 @@ function mkGoose(G) {
       goose.lookAt(_a.copy(goose.position).add(vel));
       const f = Math.sin(this.t * 12) * 0.7;
       goose.userData.wings[0].rotation.z = -f; goose.userData.wings[1].rotation.z = f;
-      if (d < 300 && this.t - lastHonk > 7) { lastHonk = this.t; G.ui.notify(pick(T.goose), 'info', 2.5); G.audio.honk(); }
+      if (d < 300 && this.t - lastHonk > 7) { lastHonk = this.t; G.ui.notify(pick(T.goose), 'info', 2.5, 0); G.audio.honk(); }
       this.progress = d < 300 ? '🪿 It knows you are coming.' : '🪿 Goose status: smug';
       return !G.player.dead && d < 10 * scale ? 'done' : null;
     },
@@ -355,7 +355,7 @@ function mkLowFly(G) {
       const p = G.player;
       const alt = p.pos.y - groundAt(G, p.pos.x, p.pos.z);
       const low = !p.dead && alt < thr;
-      if (low) { time += dt; this.progressed = true; if (!wasLow) G.ui.notify('Brrrrrrr (crop dusting noises)', 'info', 2); }
+      if (low) { time += dt; this.progressed = true; if (!wasLow) G.ui.notify('Brrrrrrr (crop dusting noises)', 'info', 2, 0); }
       wasLow = low;
       this.progress = `🌾 ${time.toFixed(1)} / ${need}s below ${thr} m (now ${Math.round(alt)} m)`;
       return time >= need ? 'done' : null;
@@ -397,6 +397,11 @@ const BUZZ = [
   ['mushroom', 'The Mega Mushroom', 'Fly near it. Don\'t eat it. We are serious this time.'],
   ['castleTower', 'Wizard Tower', 'A wizard lives here. He ordered a fly-by.'],
   ['trafficCone', 'The Cone Of Shame', 'A giant traffic cone. No one knows what road it\'s closing.'],
+  ['cow', 'Enormous Cow', 'She has seen things. Fly past and say moo.'],
+  ['snowman', 'Abominable Snowman', 'He is not abominable, he is just big. Go say hi.'],
+  ['ferrisWheel', 'Abandoned Ferris Wheel', 'Ride closed. Fly-bys still allowed.'],
+  ['totemPole', 'Totem Of Many Faces', 'Every face is judging your flying differently.'],
+  ['radioTower', 'Radio Tower Of Bad Music', 'It only plays elevator music. Fly close and complain.'],
 ];
 
 function mkBuzz(G) {
@@ -453,7 +458,7 @@ function mkGate(G) {
       arch.userData.glowMat.opacity = 0.2 + Math.sin(this.t * 4) * 0.1;
       const r = crossRing(arch, G.player.prevPos, G.player.pos, R - 4, true);
       if (r === 'hit') return 'done';
-      if (r === 'miss') G.ui.notify('Over the arch is NOT under the arch. Geometry is hard.', 'warn', 3);
+      if (r === 'miss') G.ui.notify('Over the arch is NOT under the arch. Geometry is hard.', 'warn', 3, 0);
       return null;
     },
     grow(f) { arch.userData.tscale = Math.min((arch.userData.tscale || 1) * f, 4); },

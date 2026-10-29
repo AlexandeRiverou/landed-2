@@ -1,7 +1,8 @@
 // Enemies: chasing drones, spiky balloon mines, dive-bombing seagulls, orb-spitting UFOs,
-// grumpy storm clouds, and (quest-only) evil pigeons.
+// grumpy storm clouds, bee swarms, ad blimps, sky jellyfish, ground cannons, Rival Pilot Gary,
+// and (quest-only) evil pigeons. Regular enemies spawn in a cone in front of the player.
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 
 const TYPES = {
@@ -11,7 +12,31 @@ const TYPES = {
   ufo: { hp: 4, radius: 10, dmg: 15, speed: 34, make: makeUfo, score: 120, minScore: 350, weight: 1.2, kamikaze: false, name: 'UFO' },
   storm: { hp: 6, radius: 22, dmg: 12, speed: 16, make: makeStorm, score: 150, minScore: 650, weight: 0.8, kamikaze: false, name: 'Grumpy Cloud' },
   pigeon: { hp: 2, radius: 5, dmg: 10, speed: 36, make: makePigeon, score: 80, minScore: Infinity, weight: 0, kamikaze: true, name: 'Evil Pigeon' },
+  bee: { hp: 1, radius: 3, dmg: 6, speed: 44, make: makeBee, score: 15, minScore: 80, weight: 1.6, kamikaze: true, name: 'Bee Swarm', intro: 'A bee swarm! Not the bees! Okay, the bees.' },
+  blimp: { hp: 6, radius: 15, dmg: 15, speed: 12, make: makeBlimp, score: 110, minScore: 220, weight: 1, kamikaze: false, name: 'Ad Blimp', intro: 'An Ad Blimp is dropping "special offers". They explode.' },
+  jelly: { hp: 3, radius: 8, dmg: 10, speed: 8, make: makeJelly, score: 70, minScore: 180, weight: 1.2, kamikaze: false, name: 'Sky Jellyfish', intro: 'Sky Jellyfish ahead. Do not hug. They zap up close.' },
+  cannon: { hp: 4, radius: 8, dmg: 10, speed: 0, make: makeCannon, score: 100, minScore: 300, weight: 1, kamikaze: false, ground: true, name: 'Grumpy Ground Cannon', intro: 'Grumpy Ground Cannons are shooting at the sky. The sky did nothing wrong.' },
+  rival: { hp: 3, radius: 6, dmg: 20, speed: 62, make: makeRivalJet, score: 150, minScore: 450, weight: 0.9, kamikaze: false, name: 'Rival Pilot Gary', intro: 'Rival Pilot Gary has entered the sky. Nobody likes Gary.' },
 };
+const SWARMS = { gull: 4, bee: 6 };
+
+let markerMat = null;
+function makeMarker() {
+  if (!markerMat) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#ff3a4a'; c.strokeStyle = '#ffffff'; c.lineWidth = 6;
+    c.beginPath(); c.moveTo(8, 10); c.lineTo(56, 10); c.lineTo(32, 54); c.closePath(); c.stroke(); c.fill();
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    markerMat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthTest: false, transparent: true, fog: false });
+  }
+  const m = new THREE.Sprite(markerMat);
+  m.scale.set(0.022, 0.022, 1);
+  m.renderOrder = 15;
+  return m;
+}
 
 // Bosses: one shows up every few completed objectives. They orbit you, attack in patterns,
 // and get ENRAGED (faster attacks) below half health.
@@ -104,7 +129,7 @@ export class Enemies {
     e.vel.lerp(_w.clampLength(0, d.speed * (e.enraged ? 1.25 : 1)), 1 - Math.exp(-dt * 1.2));
 
     e.tauntT -= dt;
-    if (e.tauntT <= 0) { e.tauntT = rand(12, 18); G.ui.notify(pick(d.taunts), 'warn', 3.5); if (e.kind === 'gooseQueen') G.audio.honk(); }
+    if (e.tauntT <= 0) { e.tauntT = rand(12, 18); G.ui.notify(pick(d.taunts), 'warn', 3.5, 0); if (e.kind === 'gooseQueen') G.audio.honk(); }
 
     e.cd -= dt * (e.enraged ? 1.6 : 1);
     if (e.cd > 0 || dist > 650 || p.dead) return;
@@ -116,7 +141,7 @@ export class Enemies {
         for (let k = -1; k <= 1; k++) this.fireOrb(e.pos, aim(0).applyAxisAngle(new THREE.Vector3(0, 1, 0), k * 0.15), 60, 14, '#ff5a3a', 1.3);
         if (e.attacks % 2 === 0 && this.list.filter((x) => x.type === 'drone').length < 4) {
           for (const s of [-1, 1]) this.spawn('drone', e.pos.clone().add(new THREE.Vector3(s * 25, -10, 0)));
-          G.ui.notify('King Drone summoned minions. They look nervous.', 'warn', 2.5);
+          G.ui.notify('King Drone summoned minions. They look nervous.', 'warn', 2.5, 0);
         }
         break;
       case 'gooseQueen':
@@ -158,10 +183,12 @@ export class Enemies {
       t: Math.random() * 10, cd: rand(1, 3), state: 'idle', stateT: 0, quest: !!opts.quest, anchor: opts.anchor ? opts.anchor.clone() : pos.clone(), dead: false,
     };
     if (opts.scale) mesh.scale.setScalar(opts.scale);
+    e.marker = makeMarker();
+    this.G.scene.add(e.marker);
     this.list.push(e);
     if (!e.quest && !this.introduced.has(type)) {
       this.introduced.add(type);
-      this.G.ui.notify(`New enemy spotted: ${def.name}. It seems upset about something.`, 'warn');
+      this.G.ui.notify(def.intro || `New enemy spotted: ${def.name}. It seems upset about something.`, 'warn', 4, 1);
     }
     return e;
   }
@@ -182,12 +209,16 @@ export class Enemies {
     if (_v.lengthSq() < 0.01) _v.set(0, 0, -1);
     _v.normalize();
     _w.set(-_v.z, 0, _v.x);
-    const d = rand(380, 650), side = rand(-300, 300);
+    // Straight ahead, inside the camera's view, so you see them coming.
+    const d = rand(300, 500), side = rand(-130, 130);
     const pos = p.pos.clone().addScaledVector(_v, d).addScaledVector(_w, side);
     const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), G.world.seaLevel);
-    pos.y = Math.max(p.pos.y + rand(-40, 60), g + 45);
-    if (type === 'gull') {
-      for (let k = 0; k < 4; k++) this.spawn('gull', pos.clone().add(new THREE.Vector3(rand(-25, 25), rand(-8, 8), rand(-25, 25))));
+    if (TYPES[type].ground) {
+      if (G.terrain.surfaceHeight(pos.x, pos.z) < G.world.seaLevel) return; // cannons can't swim
+      pos.y = g;
+    } else pos.y = Math.max(p.pos.y + rand(-15, 35), g + 45);
+    if (SWARMS[type]) {
+      for (let k = 0; k < SWARMS[type]; k++) this.spawn(type, pos.clone().add(new THREE.Vector3(rand(-25, 25), rand(-8, 8), rand(-25, 25))));
     } else this.spawn(type, pos);
   }
 
@@ -211,9 +242,16 @@ export class Enemies {
       else this.behave(e, toP, dist, dt);
 
       e.pos.addScaledVector(e.vel, dt);
-      const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), G.world.seaLevel) + (e.boss ? e.radius : 12);
-      if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
+      if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
+      else {
+        const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), G.world.seaLevel) + (e.boss ? e.radius : 12);
+        if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
+      }
       this.animate(e, dt);
+      if (e.marker) {
+        e.marker.position.set(e.pos.x, e.pos.y + e.radius * (e.mesh.scale.x || 1) + 6, e.pos.z);
+        e.marker.visible = dist > 70 && !calm;
+      }
 
       // Player contact.
       e.contactCd = Math.max(0, (e.contactCd || 0) - dt);
@@ -286,6 +324,52 @@ export class Enemies {
           p.damage(d.dmg);
         }
         break;
+      case 'bee':
+        steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(new THREE.Vector3(Math.sin(e.t * 9) * 18, Math.cos(e.t * 7) * 10, Math.cos(e.t * 8) * 18)), 2.5);
+        break;
+      case 'blimp':
+        _w.copy(p.pos).addScaledVector(p.forward, 120).setY(p.pos.y + 70).sub(e.pos);
+        steer(_w.clampLength(0, d.speed), 0.5);
+        e.cd -= dt;
+        if (e.cd <= 0 && dist < 350) {
+          e.cd = 3;
+          const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 45) * 0.5);
+          this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, -8, 0)), lead.sub(e.pos), 45, 14, '#ff9a3a', 1.3);
+        }
+        break;
+      case 'jelly':
+        steer(_w.copy(toP).setY(0).normalize().multiplyScalar(d.speed).setY(Math.sin(e.t * 0.8) * 6), 0.5);
+        e.cd -= dt;
+        if (e.cd <= 0 && dist < 55 && !p.dead) {
+          e.cd = 1.5;
+          G.fx.lightning(e.pos, p.pos);
+          G.audio.zap();
+          p.damage(d.dmg);
+        }
+        break;
+      case 'cannon':
+        e.cd -= dt;
+        if (e.cd <= 0 && dist < 420 && !p.dead) {
+          e.cd = 2.6;
+          const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 60) * 0.5);
+          this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, 5, 0)), lead.sub(e.pos), 60, 12, '#ff4d4d', 1.2);
+          G.audio.tone(140, 0.25, { type: 'square', vol: 0.06, slide: -60 });
+        }
+        break;
+      case 'rival':
+        if (e.state !== 'extend') {
+          steer(_w.copy(toP).normalize().multiplyScalar(d.speed), 1.6);
+          e.cd -= dt;
+          if (e.cd <= 0 && dist < 260 && e.vel.dot(toP) > 0.8 * e.vel.length() * dist) {
+            e.cd = 1.8;
+            for (let k = 0; k < 3; k++) setTimeout(() => !e.dead && this.fireOrb(e.pos, _w.copy(p.pos).sub(e.pos), 110, 6, '#ff3ad0', 0.6), k * 120);
+          }
+          if (dist < 40 || e.stateT > 7) { e.state = 'extend'; e.stateT = 0; }
+        } else {
+          steer(_w.copy(toP).normalize().multiplyScalar(-d.speed).setY(8), 1.2);
+          if (e.stateT > 4) { e.state = 'idle'; e.stateT = 0; }
+        }
+        break;
       case 'pigeon':
         if (dist < 170 && e.stateT < 4) steer(_w.copy(toP).normalize().multiplyScalar(d.speed), 2);
         else {
@@ -303,12 +387,16 @@ export class Enemies {
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
     if (u.wings) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
+    if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
+    if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
+    if (u.barrel) u.barrel.lookAt(this.G.player.pos);
     if (e.boss) {
       if (e.kind === 'gooseQueen') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
       else if (e.kind === 'megaUfo') e.mesh.rotation.y += dt * 1.2;
       else e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
       return;
     }
+    if (e.type === 'cannon' || e.type === 'jelly') return;
     if (e.type === 'mine' || e.type === 'storm') e.mesh.rotation.y += dt * 0.4;
     if (e.type === 'ufo') e.mesh.rotation.y += dt * 1.5;
     if (e.type === 'drone' || e.type === 'storm') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
@@ -336,7 +424,7 @@ export class Enemies {
     } else if (byPlayer) {
       G.score += e.def.score;
       G.stats.kills++;
-      if (Math.random() < 0.3) G.ui.notify(`${pick(T.kill)} +${e.def.score}`, 'good', 2.5);
+      if (Math.random() < 0.3) G.ui.notify(`${pick(T.kill)} +${e.def.score}`, 'good', 2.5, 0);
     }
     G.audio.explode();
     this.remove(i);
@@ -346,6 +434,7 @@ export class Enemies {
     const e = this.list[i];
     e.dead = true;
     this.G.scene.remove(e.mesh);
+    if (e.marker) this.G.scene.remove(e.marker);
     disposeTree(e.mesh);
     this.list.splice(i, 1);
   }

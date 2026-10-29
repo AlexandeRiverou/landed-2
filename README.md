@@ -36,10 +36,15 @@ islands, and beaches, deserts, forests and snow caps. Chunks build nearest-first
 **Assets** (`src/models.js`): 30+ low-poly props built from primitives and drawn with one `InstancedMesh` per type per chunk.
 They include pines, round trees, birches, palms, dead trees, cacti, bushes, rocks, houses, windmills, lighthouses, castle
 towers, moai heads, pyramids, boats, buoys, floating islands, hot-air balloons, plus the themed ones: mushrooms,
-crystals, lollipops, donuts, gnomes, traffic cones and giant rubber ducks.
+crystals, lollipops, donuts, gnomes, traffic cones and giant rubber ducks. Farms bring apple trees, flowers, hay bales,
+sheep, cows, scarecrows, wells and barns. Elsewhere there are logs and tents, tumbleweeds and totem poles, snowmen and
+igloos, beach parasols and sandcastles, icebergs, whales and sailboats. Landmarks include ferris wheels, stone circles,
+ruins and radio towers.
 
-**Enemies** (`src/enemies.js`): angry drones, spiky balloon mines, a seagull gang, orb-spitting UFOs, grumpy storm
-clouds that zap you, and evil top-hat pigeons. Harder types unlock as your score grows.
+**Enemies** (`src/enemies.js`): angry drones, spiky balloon mines, a seagull gang, bee swarms, orb-spitting UFOs, ad
+blimps that drop "special offers", zapping sky jellyfish, grumpy ground cannons, Rival Pilot Gary (strafing runs), grumpy
+storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows. Enemies spawn in a narrow cone straight
+ahead of you and carry a small red marker, so you see them coming.
 
 **Bosses** (`src/enemies.js`, `src/objectives.js`): every 4 completed objectives a crowned boss shows up, cycling
 through King Drone the Unpleasant (summons minions), Her Royal Honkness the Goose Queen (golden eggs), The Mothership

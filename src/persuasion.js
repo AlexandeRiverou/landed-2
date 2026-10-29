@@ -240,7 +240,7 @@ export class Persuasion {
       }
       if (d < 220 && !this.closeShown && this.stage >= 1) {
         this.closeShown = true;
-        G.ui.notify(fmt(pick(T.close), obj.noun), 'good', 3);
+        G.ui.notify(fmt(pick(T.close), obj.noun), 'good', 3, 0);
       }
     }
     if (obj.progressed) { obj.progressed = false; rate = 0; this.neglect = Math.max(0, this.neglect - 4); }

@@ -61,27 +61,27 @@ html, body {
 #boost-fill { height: 100%; background: #3aa8ff; width: 100%; }
 #speed { font-size: 12px; margin-top: 4px; opacity: 0.8; }
 
+/* Messages live in a narrow column on the left, under the score: never over the objective
+   panel (top-right) or the plane (center). */
 #notifications {
   position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(460px, 60vw);
+  top: 118px;
+  left: 14px;
+  width: min(300px, 36vw);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
 }
 .note {
-  background: var(--paper);
-  border: 3px solid var(--ink);
-  border-radius: 12px;
-  padding: 7px 12px;
-  font-size: 15px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  padding: 5px 10px;
+  font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
-  animation: slidein 0.35s cubic-bezier(.2, 1.6, .4, 1);
-  text-align: center;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2);
+  animation: slidein 0.3s cubic-bezier(.2, 1.4, .4, 1);
   max-width: 100%;
 }
 .note.out { animation: fadeout 0.4s forwards; }
@@ -90,8 +90,8 @@ html, body {
 .note.good { background: #e4ffef; border-color: var(--good); }
 .note.persuade { background: #efe8ff; border-color: var(--persuade); }
 .note .icon { margin-right: 6px; }
-@keyframes slidein { from { transform: translateY(-30px) scale(0.8); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes fadeout { to { transform: translateY(-10px); opacity: 0; } }
+@keyframes slidein { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fadeout { to { transform: translateX(-30px); opacity: 0; } }
 
 /* Success card: tucked into the top-right corner so it never covers the flight path. */
 #banner {
@@ -219,8 +219,8 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #objective { width: 46vw; padding: 6px 8px; }
   #obj-title { font-size: 15px; }
   #obj-desc { display: none; }
-  #notifications { top: 90px; width: 92vw; }
-  .note { font-size: 13px; }
+  #notifications { top: 100px; left: 8px; width: 44vw; }
+  .note { font-size: 11px; padding: 4px 7px; }
   #bars { width: 160px; }
   #banner { top: auto; bottom: 110px; width: 62vw; }
   #boss-bar { bottom: 110px; width: 60vw; }

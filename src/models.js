@@ -2,6 +2,7 @@
 // geometry each so terrain chunks can draw them with a single InstancedMesh per type.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { pick } from './texts.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 const _p = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -147,6 +148,79 @@ export function buildProps() {
     P(Sph(9, 10, 8), '#ffffff', { y: 18, sy: 1.15 }), P(Cone(5.5, 7, 10), '#ffffff', { y: 8.5, rx: PI }),
     P(Box(3, 2.5, 3), C.brown, { y: 1.5 }), P(Box(0.2, 5, 0.2), C.black, { x: 1.2, y: 4.5, z: 1.2 }), P(Box(0.2, 5, 0.2), C.black, { x: -1.2, y: 4.5, z: -1.2 }),
   ], { scale: [0.9, 1.3], sink: 0, tints: ['#ff5a5a', '#ffd23a', '#5ad0ff', '#a05aff', '#5aff8a', '#ff8ad8'] });
+  buildMoreProps();
+}
+
+// ---------- the countryside, the beach, the snow, and some questionable landmarks ----------
+function buildMoreProps() {
+  const apple = [P(Cyl(0.8, 1.2, 5), C.trunk, { y: 2.5 }), P(Ico(5, 1), '#4f9a3a', { y: 8 })];
+  for (let k = 0; k < 7; k++) { const a = k * 2.4; apple.push(P(Ico(0.6), '#e8302a', { x: Math.cos(a) * 4.2, y: 7 + (k % 3) * 1.6, z: Math.sin(a) * 4.2 })); }
+  def('appleTree', apple, { scale: [0.8, 1.3] });
+  def('haybale', [P(Cyl(2, 2, 3, 10), '#e0c060', { y: 2, rz: PI / 2 }), P(Cyl(2.05, 2.05, 0.4, 10), '#b89a40', { y: 2, rz: PI / 2 })], { scale: [0.9, 1.3], sink: 0.3 });
+  const legs = (w, l, h, c) => [[w, l], [-w, l], [w, -l], [-w, -l]].map(([x, z]) => P(Box(0.5, h, 0.5), c, { x, y: h / 2, z }));
+  def('sheep', [P(Ico(2, 1), '#f4f4ee', { y: 3, sz: 1.3 }), P(Box(1.2, 1.4, 1.6), C.black, { y: 3.6, z: 2.6 }), ...legs(1, 1.3, 2, C.black)], { scale: [1.6, 2.2], sink: 0.1 });
+  def('cow', [
+    P(Box(3, 2.4, 5), '#ffffff', { y: 3.4 }), P(Box(1.4, 1.2, 1.6), C.black, { x: 0.9, y: 4.2, z: 0.6 }), P(Box(1.6, 1, 1.2), C.black, { x: -0.8, y: 3, z: -1.4 }),
+    P(Box(1.8, 1.8, 2), '#ffffff', { y: 4.4, z: 3.2 }), P(Box(1.9, 0.8, 0.8), '#ffb0b0', { y: 3.8, z: 4.3 }),
+    P(Cone(0.3, 1, 4), '#f0e8d0', { x: 0.8, y: 5.6, z: 3, rz: -0.4 }), P(Cone(0.3, 1, 4), '#f0e8d0', { x: -0.8, y: 5.6, z: 3, rz: 0.4 }),
+    ...legs(1.1, 1.8, 2.2, '#ffffff'),
+  ], { scale: [1.5, 2] , sink: 0.1 });
+  def('scarecrow', [P(Box(0.4, 9, 0.4), C.trunk, { y: 4.5 }), P(Box(6, 0.4, 0.4), C.trunk, { y: 6.5 }), P(Box(3, 3, 1.2), '#5a7ad0', { y: 6 }), P(Sph(1.2, 7, 5), '#e8c890', { y: 8.6 }), P(Cone(1.8, 2, 8), '#c89a50', { y: 10 })], { scale: [0.9, 1.2] });
+  const fl = [];
+  [['#ff4d6d', 0, 0], ['#ffd23a', 1.6, 0.8], ['#c77dff', -1.4, 1.2], ['#ffffff', 0.8, -1.5], ['#ff9a3a', -1.2, -1], ['#4dd6ff', 2, -0.6]].forEach(([c, x, z]) => {
+    fl.push(P(Box(0.15, 1.6, 0.15), '#3a8a2a', { x, y: 0.8, z }), P(Ico(0.55), c, { x, y: 1.7, z }));
+  });
+  def('flowers', fl, { scale: [1.4, 2.2], sink: 0 });
+  def('barn', [
+    P(Box(12, 8, 16), '#c0392b', { y: 4 }), P(Box(13, 0.6, 9.6), '#5a3a2a', { y: 10.2, z: 0, x: 3.1, rz: -0.62 }), P(Box(13, 0.6, 9.6), '#5a3a2a', { y: 10.2, x: -3.1, rz: 0.62 }),
+    P(Box(4, 5, 0.3), '#f4f0e0', { y: 2.5, z: 8.05 }), P(Cyl(3, 3, 16, 10), '#d0d4d8', { x: 9.5, y: 8 }), P(Sph(3, 10, 6), '#8a9098', { x: 9.5, y: 16, sy: 0.6 }),
+  ], { scale: [1, 1.3] });
+  def('well', [P(Cyl(2.5, 2.5, 2, 10), '#9a948a', { y: 1 }), P(Box(0.4, 5, 0.4), C.trunk, { x: 2, y: 3.5 }), P(Box(0.4, 5, 0.4), C.trunk, { x: -2, y: 3.5 }), P(Cone(3.4, 2, 4), C.roof, { y: 6.6, ry: PI / 4 })], { scale: [1, 1.3] });
+  def('log', [P(Cyl(1, 1, 8, 7), '#7a5232', { y: 0.9, rz: PI / 2 }), P(Cyl(0.9, 0.9, 8.05, 7), '#c8a070', { y: 0.9, rz: PI / 2, sy: 1.001 }), P(Ico(0.8), C.leaf2, { x: 2, y: 2 })], { scale: [0.8, 1.4], sink: 0.2 });
+  def('tent', [P(Cone(4, 5, 4), '#ff8a1f', { y: 2.5, ry: PI / 4 }), P(Box(1.5, 2.5, 0.2), '#5a3a1a', { y: 1.2, z: 2.1 }), P(Ico(0.8), '#ff5a1a', { x: 4, y: 0.5 })], { scale: [1, 1.3], sink: 0.2 });
+  const totem = [];
+  ['#c0392b', '#2a7ad0', '#e8b030', '#2a9a5a'].forEach((c, k) => {
+    totem.push(P(Box(2.4, 3, 2.4), c, { y: 1.5 + k * 3 }), P(Box(0.5, 0.5, 0.2), C.white, { x: 0.6, y: 2 + k * 3, z: 1.25 }), P(Box(0.5, 0.5, 0.2), C.white, { x: -0.6, y: 2 + k * 3, z: 1.25 }));
+  });
+  totem.push(P(Box(7, 0.6, 1.2), '#e8b030', { y: 11 }));
+  def('totemPole', totem, { scale: [1, 1.4] });
+  def('tumbleweed', [P(Ico(2, 1), '#a8864a', { y: 2 }), P(Ico(1.6, 0), '#8a6a3a', { y: 2, rx: 0.7 })], { scale: [0.7, 1.3], sink: 0 });
+  const ruins = [P(Box(14, 1, 9), '#d8d0b8', { y: 0.5 })];
+  [[-5, 3, 9], [-1.7, 3, 4], [1.7, 3, 7.5], [5, 3, 2.5], [-5, -3, 6], [5, -3, 9]].forEach(([x, z, h]) => ruins.push(P(Cyl(0.9, 1, h, 8), '#e8e0c8', { x, y: 1 + h / 2, z })));
+  ruins.push(P(Box(12, 1, 1.6), '#e8e0c8', { x: 0, y: 10.5, z: -3 }), P(Cyl(0.9, 0.9, 7, 8), '#d0c8b0', { x: 1, y: 1.8, z: -1, rz: PI / 2, ry: 0.4 }));
+  def('ruins', ruins, { scale: [1.2, 1.8] });
+  def('snowman', [P(Sph(2.6, 8, 6), C.snow, { y: 2.4 }), P(Sph(1.9, 8, 6), C.snow, { y: 6 }), P(Sph(1.3, 8, 6), C.snow, { y: 8.8 }), P(Cone(0.3, 1.6, 5), C.orange, { y: 8.8, z: 1.6, rx: PI / 2 }), P(Cyl(1, 1, 1.6, 8), C.black, { y: 10.6 }), P(Cyl(1.5, 1.5, 0.2, 8), C.black, { y: 9.9 }), P(Box(4, 0.4, 0.4), '#c0392b', { y: 7.5 })], { scale: [0.9, 1.4], sink: 0.3 });
+  def('igloo', [P(new THREE.SphereGeometry(5, 10, 6, 0, PI * 2, 0, PI / 2), '#f0f6ff', {}), P(new THREE.CylinderGeometry(1.8, 1.8, 3.5, 8, 1, false, 0, PI), '#e0eaf6', { y: 0, z: 5, rx: PI / 2, rz: PI / 2 })], { scale: [1, 1.4], sink: 0.2 });
+  def('parasol', [P(Box(0.3, 6, 0.3), C.white, { y: 3 }), P(Cone(4, 1.6, 8), '#ff4d6d', { y: 6.4 }), P(Box(2, 0.1, 4), '#4dd6ff', { x: 2.5, y: 0.1 })], { scale: [0.9, 1.3], sink: 0, tints: ['#ffffff', '#ffe08a', '#a0d0ff', '#c0ffa0'] });
+  const castle = [P(Box(6, 2, 6), '#e8d090', { y: 1 })];
+  for (const [x, z] of [[2.6, 2.6], [-2.6, 2.6], [2.6, -2.6], [-2.6, -2.6]]) castle.push(P(Cyl(0.9, 1, 3.5, 8), '#e0c880', { x, y: 1.75, z }), P(Cone(1.1, 1.4, 8), '#d8b870', { x, y: 4.2, z }));
+  castle.push(P(Box(0.1, 1, 0.8), '#ff4d6d', { y: 3, x: 2.6, z: 2.6 }));
+  def('sandcastle', castle, { scale: [0.9, 1.4], sink: 0.2 });
+  def('iceberg', [P(Ico(8), '#eaf6ff', { y: 0, sy: 1.5 }), P(Ico(5), '#c8e8ff', { x: 6, y: 1, z: 2, sy: 1.8 })], { scale: [0.8, 1.6], sea: true, sink: 3, nonUniform: true });
+  def('whale', [
+    P(Sph(6, 10, 8), '#4a6a8a', { y: 0, sz: 2.4 }), P(Sph(5.6, 10, 6), '#d8e0e8', { y: -1.2, z: 1, sz: 2.2 }),
+    P(Box(7, 0.6, 2.6), '#4a6a8a', { y: 1.5, z: -15, rx: -0.4 }), P(Sph(0.6, 5, 4), C.black, { x: 4.6, y: 1.5, z: 9 }), P(Sph(0.6, 5, 4), C.black, { x: -4.6, y: 1.5, z: 9 }),
+    P(Cone(1, 4, 6), '#e0f4ff', { y: 8, z: 5 }), P(Cone(0.7, 3, 6), '#e0f4ff', { x: 1, y: 9, z: 5, rz: -0.5 }), P(Cone(0.7, 3, 6), '#e0f4ff', { x: -1, y: 9, z: 5, rz: 0.5 }),
+  ], { scale: [0.8, 1.3], sea: true, sink: 1 });
+  def('sailboat', [P(Box(3, 1.6, 9), C.white, { y: 0.8 }), P(Box(3.1, 0.4, 9.1), '#2a5ad0', { y: 0.4 }), P(Cyl(0.15, 0.15, 12), C.trunk, { y: 7 }), P(Cone(4, 10, 3), '#fff8e0', { y: 7.5, z: -2.2, sx: 0.05 })], { scale: [0.9, 1.3], sea: true, sink: 0.5, tints: ['#ffffff', '#ffd0d0', '#d0ffe0'] });
+  const tower = [];
+  for (let k = 0; k < 6; k++) tower.push(P(Cyl(1.6 - k * 0.22, 1.8 - k * 0.22, 7, 4), k % 2 ? C.white : '#e8302a', { y: 3.5 + k * 7, ry: PI / 4 }));
+  tower.push(P(Sph(0.8, 6, 4), '#ff2020', { y: 43 }), P(new THREE.SphereGeometry(3, 10, 6, 0, PI * 2, 0, PI / 2), '#d0d4d8', { y: 26, z: 2.5, rx: PI / 2 }));
+  def('radioTower', tower, { scale: [1, 1.3] });
+  const fw = [];
+  for (const z of [-1.5, 1.5]) fw.push(P(Tor(12, 0.5, 4, 32), '#e8e8f0', { y: 17, z }));
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2;
+    fw.push(P(Box(0.3, 24, 0.3), '#c8c8d8', { y: 17, rz: a / 2 }));
+    fw.push(P(Box(2.2, 2, 2.2), ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a'][k % 4], { x: Math.cos(a) * 12, y: 17 + Math.sin(a) * 12 - 1.6 }));
+  }
+  for (const x of [-1, 1]) for (const z of [-3, 3]) fw.push(P(Box(0.6, 19, 0.6), '#8a8aa0', { x: x * 4.5, y: 8, z, rz: -x * 0.24 }));
+  fw.push(P(Cyl(0.8, 0.8, 7, 8), '#8a8aa0', { y: 17, rx: PI / 2 }));
+  def('ferrisWheel', fw, { scale: [1, 1.3] });
+  const stones = [];
+  for (let k = 0; k < 8; k++) { const a = (k / 8) * PI * 2; stones.push(P(Box(2.2, 7, 1.4), '#9a968c', { x: Math.cos(a) * 10, y: 3.5, z: Math.sin(a) * 10, ry: -a })); }
+  for (let k = 0; k < 8; k += 2) { const a = ((k + 0.5) / 8) * PI * 2; stones.push(P(Box(1.6, 1.2, 8.5), '#8a867c', { x: Math.cos(a) * 9.6, y: 7.6, z: Math.sin(a) * 9.6, ry: -a })); }
+  def('stoneCircle', stones, { scale: [1, 1.4], sink: 0.4 });
 }
 
 // ---------- player ----------
@@ -300,6 +374,76 @@ export function makeUfo(hat) {
   }
   if (hat) partyHat(g, 6);
   g.userData.lights = lights;
+  return g;
+}
+
+export function makeBlimp(hat) {
+  const g = new THREE.Group();
+  add(g, Sph(7, 12, 8), lam('#c8ccd4'), { s: [1, 1, 2.6] });
+  for (const [x, y] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) add(g, Box(x ? 4 : 0.4, y ? 4 : 0.4, 4), lam('#e8302a'), { x: x * 2.5, y: y * 2.5, z: -17 });
+  add(g, Box(3, 2, 6), lam('#5a5a6a'), { y: -7.5 });
+  const tex = makeTextTexture([pick(['BUY MORE LOOPS', 'HOOPS: 50% OFF', 'VOTE GOOSE', 'TRY GROUND!', 'GARY WAS HERE'])], { w: 1024, h: 256, size: 120, bg: '#ffd23a' });
+  for (const s of [-1, 1]) add(g, new THREE.PlaneGeometry(24, 6), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }), { x: s * 7.05, ry: s * PI / 2 });
+  const prop = add(g, Box(0.3, 5, 0.3), lam('#333'), { z: -19.5 });
+  g.userData.spin = [prop];
+  if (hat) partyHat(g, 7);
+  return g;
+}
+
+export function makeBee(hat) {
+  const g = new THREE.Group();
+  add(g, Sph(1.4, 8, 6), lam('#ffcc1a'), { s: [1, 1, 1.4] });
+  for (const z of [-0.5, 0.5]) add(g, Cyl(1.42, 1.42, 0.4, 10), lam('#1d1d22'), { z, rx: PI / 2, s: [1, 1, 1] });
+  add(g, Sph(0.8, 6, 5), lam('#1d1d22'), { z: 2 });
+  add(g, Cone(0.3, 1, 5), lam('#1d1d22'), { z: -2.3, rx: -PI / 2 });
+  for (const x of [-0.4, 0.4]) add(g, Sph(0.25, 4, 3), basic('#ffffff'), { x, y: 0.3, z: 2.6 });
+  wings(g, '#e8f8ff', 1.6, 1, 1);
+  if (hat) partyHat(g, 1.6);
+  return g;
+}
+
+export function makeJelly(hat) {
+  const g = new THREE.Group();
+  add(g, new THREE.SphereGeometry(5, 12, 8, 0, PI * 2, 0, PI / 2), new THREE.MeshPhongMaterial({ color: '#ff8ad8', emissive: '#a03a90', transparent: true, opacity: 0.75, shininess: 80 }), { s: [1, 0.8, 1] });
+  add(g, Sph(2, 8, 6), basic('#ffd0f4', { transparent: true, opacity: 0.6 }), { y: 1.2 });
+  const tent = [];
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * PI * 2;
+    const t = new THREE.Group();
+    t.position.set(Math.cos(a) * 3, 0, Math.sin(a) * 3);
+    add(t, Box(0.4, 9, 0.4), basic('#ffb0ec', { transparent: true, opacity: 0.8 }), { y: -4.5 });
+    g.add(t);
+    tent.push(t);
+  }
+  g.userData.tentacles = tent;
+  if (hat) partyHat(g, 4.5);
+  return g;
+}
+
+export function makeCannon(hat) {
+  const g = new THREE.Group();
+  add(g, Cyl(5, 6, 2.5, 8), lam('#4a5a3a'), { y: 1.2 });
+  add(g, new THREE.SphereGeometry(3.6, 10, 6, 0, PI * 2, 0, PI / 2), lam('#5a6a4a'), { y: 2.4 });
+  const barrel = new THREE.Group();
+  barrel.position.y = 4.2;
+  add(barrel, Cyl(0.9, 1.1, 7, 8), lam('#2a2a30'), { z: 3.4, rx: PI / 2 });
+  add(barrel, Cyl(1.2, 1.2, 0.8, 8), lam('#e8302a'), { z: 6.8, rx: PI / 2 });
+  g.add(barrel);
+  for (const x of [-1.2, 1.2]) add(g, Sph(0.5, 5, 4), basic('#ffffff'), { x, y: 4.6, z: 3 });
+  add(g, Box(3.4, 0.5, 0.5), basic('#1d1d22'), { y: 5.4, z: 3, rz: 0.1 });
+  if (hat) partyHat(g, 6);
+  g.userData.barrel = barrel;
+  return g;
+}
+
+export function makeRivalJet(hat) {
+  const g = new THREE.Group();
+  const p = makePlane();
+  p.setSkin({ body: '#6a2aa0', wing: '#2a2a3a', accent: '#ff3ad0' });
+  p.group.rotation.y = PI; // plane model flies toward -Z, enemies face +Z
+  g.add(p.group);
+  if (hat) partyHat(g, 2.2);
+  g.userData.spin = [p.prop];
   return g;
 }
 

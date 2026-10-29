@@ -74,7 +74,7 @@ export class Player {
       if (this.deadTimer <= 0) {
         const f = this.forward;
         this.spawn(this.pos.x, this.pos.z, Math.atan2(-f.x, -f.z));
-        G.ui.notify(pick(T.respawn), 'info');
+        G.ui.notify(pick(T.respawn), 'info', 3, 0);
       }
       return;
     }
@@ -193,7 +193,7 @@ export class Player {
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);
     G.audio.hit();
-    if (Math.random() < 0.35) G.ui.notify(pick(T.hurt), 'bad', 2);
+    if (Math.random() < 0.2) G.ui.notify(pick(T.hurt), 'bad', 2, 0);
     if (this.health <= 0) this.crash('enemy');
   }
 

@@ -12,34 +12,34 @@ const GW = SEG + 3; // height grid width incl. one-vertex border for normals
 export const RADIUS = 4;
 
 const TABLES = {
-  [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], [null, 2]],
-  [CAT.FOREST]: [['pine', 4], ['roundTree', 2], ['bush', 1], ['birch', 0.5]],
-  [CAT.DESERT]: [['cactus', 3], ['rock', 2], ['rockB', 1], ['deadTree', 0.8], ['bush', 0.4], [null, 3]],
+  [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], [null, 2]],
+  [CAT.FOREST]: [['pine', 4], ['roundTree', 2], ['bush', 1], ['birch', 0.5], ['log', 0.8], ['tent', 0.12]],
+  [CAT.DESERT]: [['cactus', 3], ['rock', 2], ['rockB', 1], ['deadTree', 0.8], ['bush', 0.4], ['tumbleweed', 0.9], ['totemPole', 0.15], [null, 3]],
   [CAT.ROCK]: [['rock', 2], ['rockB', 1.5], ['pine', 0.8], [null, 3]],
   [CAT.MESA]: [['rock', 1.5], ['rockB', 1], [null, 4]],
-  [CAT.SNOW]: [['snowPine', 3], ['rock', 1], [null, 2]],
-  [CAT.BEACH]: [['palm', 3], ['rockB', 0.6], [null, 2]],
-  [CAT.SEA]: [['buoy', 0.25], ['boat', 0.18], ['duck', 0.015], [null, 6]],
+  [CAT.SNOW]: [['snowPine', 3], ['rock', 1], ['snowman', 0.25], ['igloo', 0.12], [null, 2]],
+  [CAT.BEACH]: [['palm', 3], ['rockB', 0.6], ['parasol', 0.7], ['sandcastle', 0.35], [null, 2]],
+  [CAT.SEA]: [['buoy', 0.25], ['boat', 0.18], ['sailboat', 0.14], ['iceberg', 0.05], ['whale', 0.025], ['duck', 0.015], [null, 6]],
 };
 const LANDMARKS = {
-  [CAT.GRASS]: ['windmill', 'windmill', 'castleTower', 'house'],
-  [CAT.FOREST]: ['castleTower', 'windmill'],
-  [CAT.DESERT]: ['pyramid', 'moai'],
-  [CAT.MESA]: ['moai'],
-  [CAT.BEACH]: ['lighthouse'],
-  [CAT.SNOW]: ['castleTower'],
+  [CAT.GRASS]: ['windmill', 'windmill', 'castleTower', 'house', 'barn', 'barn', 'ferrisWheel', 'stoneCircle', 'radioTower'],
+  [CAT.FOREST]: ['castleTower', 'windmill', 'stoneCircle', 'ruins'],
+  [CAT.DESERT]: ['pyramid', 'moai', 'ruins', 'radioTower'],
+  [CAT.MESA]: ['moai', 'ruins'],
+  [CAT.BEACH]: ['lighthouse', 'ferrisWheel'],
+  [CAT.SNOW]: ['castleTower', 'radioTower', 'igloo'],
 };
 
 export const THEMES = {
   default: {},
-  mushroom: { roundTree: 'mushroom', pine: 'mushroom', birch: 'mushroom', palm: 'mushroom', snowPine: 'mushroom', deadTree: 'mushroom' },
-  candy: { roundTree: 'lollipop', pine: 'lollipop', birch: 'lollipop', rock: 'donut', rockB: 'donut', bush: 'donut', cactus: 'lollipop', palm: 'lollipop' },
-  crystal: { rock: 'crystal', rockB: 'crystal', pine: 'crystal', snowPine: 'crystal', deadTree: 'crystal', cactus: 'crystal' },
-  gnome: { bush: 'gnome', rock: 'gnome', cactus: 'gnome', rockB: 'gnome' },
-  spooky: { roundTree: 'deadTree', pine: 'deadTree', birch: 'deadTree', palm: 'deadTree', snowPine: 'deadTree', bush: 'rock', house: 'castleTower' },
-  tropical: { pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
-  construction: { rock: 'trafficCone', bush: 'trafficCone', cactus: 'trafficCone', rockB: 'trafficCone', gnome: 'trafficCone' },
-  duck: { boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
+  mushroom: { appleTree: 'mushroom', roundTree: 'mushroom', pine: 'mushroom', birch: 'mushroom', palm: 'mushroom', snowPine: 'mushroom', deadTree: 'mushroom' },
+  candy: { appleTree: 'lollipop', haybale: 'donut', roundTree: 'lollipop', pine: 'lollipop', birch: 'lollipop', rock: 'donut', rockB: 'donut', bush: 'donut', cactus: 'lollipop', palm: 'lollipop' },
+  crystal: { tumbleweed: 'crystal', iceberg: 'crystal', rock: 'crystal', rockB: 'crystal', pine: 'crystal', snowPine: 'crystal', deadTree: 'crystal', cactus: 'crystal' },
+  gnome: { scarecrow: 'gnome', snowman: 'gnome', flowers: 'gnome', bush: 'gnome', rock: 'gnome', cactus: 'gnome', rockB: 'gnome' },
+  spooky: { appleTree: 'deadTree', flowers: 'rock', scarecrow: 'deadTree', roundTree: 'deadTree', pine: 'deadTree', birch: 'deadTree', palm: 'deadTree', snowPine: 'deadTree', bush: 'rock', house: 'castleTower' },
+  tropical: { appleTree: 'palm', snowman: 'parasol', igloo: 'sandcastle', pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
+  construction: { haybale: 'trafficCone', tumbleweed: 'trafficCone', rock: 'trafficCone', bush: 'trafficCone', cactus: 'trafficCone', rockB: 'trafficCone', gnome: 'trafficCone' },
+  duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
 
 function pickWeighted(rng, table) {
