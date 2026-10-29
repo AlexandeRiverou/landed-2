@@ -99,7 +99,7 @@ export const TACTICS = [
   },
   {
     id: 'calmEnemies', tier: 2,
-    can: (o, P) => P.G.enemies.list.some((e) => !e.quest) && o.type !== 'hunt' && o.type !== 'boss',
+    can: (o, P) => P.G.enemies.list.some((e) => !e.quest) && !o.needsEnemies,
     apply: (G) => { G.enemies.calm(45); },
     texts: ['We bribed the enemies to take a coffee break. 45 seconds. GO.', 'Enemies are on strike. They want better dental. Fly freely!'],
   },

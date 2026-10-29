@@ -191,6 +191,30 @@ html, body {
   border: 2px solid rgba(255, 255, 255, 0.7); border-radius: 50%;
 }
 
+/* Relax mode: a pill button up top, cinema bars and a calm HUD while it's on. */
+.relax-btn {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  margin: 0; padding: 5px 16px; font-size: 15px; border-radius: 999px;
+  display: flex; align-items: center; gap: 6px; pointer-events: auto;
+  background: linear-gradient(135deg, #e6f6ff, #f1e4ff); box-shadow: 0 4px 0 var(--ink);
+}
+.relax-btn:hover { background: linear-gradient(135deg, #ffffff, #e9dbff); }
+.relax-btn:active { transform: translate(-50%, 3px); box-shadow: 0 1px 0 var(--ink); }
+.relax-btn .ico { font-size: 18px; }
+body.relax .relax-btn { background: linear-gradient(135deg, #ffd23a, #ff9a3a); }
+#letterbox > div { position: absolute; left: 0; right: 0; height: 0; background: #0d0b1a; transition: height 1.2s ease; }
+#letterbox > div:first-child { top: 0; }
+#letterbox > div:last-child { bottom: 0; }
+body.relax #letterbox > div { height: 7vh; }
+#relax-caption {
+  position: absolute; bottom: 2vh; left: 50%; transform: translate(-50%, 50%); white-space: nowrap;
+  color: #fff; font-size: 13px; font-weight: 600; letter-spacing: 1px; opacity: 0; transition: opacity 1.5s;
+}
+body.relax #relax-caption { opacity: 0.85; }
+body.relax #objective, body.relax #boss-bar, body.relax #crosshair, body.relax #marker, body.relax #edge-arrow { display: none !important; }
+#topleft, #bars, #powerups { transition: opacity 1s; }
+body.relax #topleft, body.relax #bars, body.relax #powerups { opacity: 0.3; }
+
 #tint { position: absolute; inset: 0; opacity: 0; transition: opacity 1s; mix-blend-mode: multiply; }
 #flash { position: absolute; inset: 0; opacity: 0; }
 
@@ -258,4 +282,6 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #rank { display: none; }
   #banner { top: auto; bottom: 110px; width: 62vw; }
   #boss-bar { bottom: 110px; width: 60vw; }
+  .relax-btn { top: auto; bottom: 14px; padding: 6px 10px; }
+  .relax-btn .lbl, #relax-caption { display: none; }
 }
