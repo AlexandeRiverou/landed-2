@@ -103,7 +103,7 @@ in three tiers:
 - *Mild:* nagging, guilt trips, pro tips, GPS distance, an on-screen edge arrow, sonar beeps panned toward the target,
   and a 900 m light beam.
 - *Pushy:* the hoop gets **bigger**, giant "HERE!!!" text, a 3D arrow on your nose, breadcrumb orbs, a balloon-held sky
-  billboard, fireworks at the target, a guide flock of birds, the **sun moved behind the objective**, fog cleared,
+  billboard, fireworks at the target, the **sun moved behind the objective**, fog cleared,
   enemies bribed into a coffee break, sad rain, lowered requirements, and magnet mode.
 - *Desperate:* the objective **walks over to you**, a steering tailwind, a **rainbow road**, a tunnel of practice rings,
   the mountains are told to sit down (the terrain flattens), free unlimited boost, the objective teleported right in front
