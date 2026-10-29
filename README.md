@@ -57,7 +57,8 @@ server.
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
 | Relax Mode | `R` or the ☁️ Relax Mode button at the top |
-| Touch | drag on the left to steer; BOOST / FIRE buttons on the right |
+| Stunts | double-tap `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll |
+| Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts |
 
 ## What's in it
 

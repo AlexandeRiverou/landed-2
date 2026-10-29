@@ -326,6 +326,53 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
+  // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick.
+  const setUp = (above) => page.evaluate((above) => {
+    const G = window.G, p = G.player;
+    G.enemies.spawnTimer = 1e9;
+    G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e));
+    G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.objectives.cooldown = 1e9;
+    p.maneuverCd = 0;
+    p.maneuver = null;
+    p.quat.set(0, 0, 0, 1);
+    p.updateAxes();
+    p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + above;
+    G.input.lastTap = {};
+    window.STUNT0 = { pos: p.pos.clone(), f: p.forward.clone(), r: p.right.clone() };
+  }, above);
+  const measure = () => page.evaluate(() => {
+    const G = window.G, p = G.player, s0 = window.STUNT0;
+    // The gesture is picked up on the next frame, so note the first stunt seen while stepping.
+    let name = p.maneuver?.name || null, dodgedMidway = null;
+    for (let i = 0; i < 90; i++) {
+      p.invuln = 0; p.grace = 1;
+      if (i === 8 && p.maneuver) { const h = p.health; p.damage(10); dodgedMidway = p.dodging ? p.health === h : null; }
+      G.step(1 / 30);
+      name ||= p.maneuver?.name || null;
+    }
+    const d = p.pos.clone().sub(s0.pos);
+    return { name, back: +p.forward.dot(s0.f).toFixed(2), upright: +p.up.y.toFixed(2), climb: Math.round(d.y), side: Math.round(d.dot(s0.r)), dodgedMidway };
+  });
+  const flick = (dx, dy) => page.evaluate(([dx, dy]) => {
+    const c = document.getElementById('game');
+    const ev = (type, x, y) => {
+      const t = new Touch({ identifier: 7, target: c, clientX: x, clientY: y });
+      c.dispatchEvent(new TouchEvent(type, { changedTouches: [t], touches: type === 'touchend' ? [] : [t], bubbles: true, cancelable: true }));
+    };
+    for (let k = 0; k < 2; k++) { ev('touchstart', 150, 400); ev('touchmove', 150 + dx, 400 + dy); ev('touchend', 150 + dx, 400 + dy); }
+  }, [dx, dy]);
+  const keyTwice = async (key) => { await page.keyboard.press(key); await page.keyboard.press(key); };
+  report.stunts = {};
+  await setUp(200); await keyTwice('ArrowUp'); report.stunts.up = await measure();
+  await setUp(200); await keyTwice('KeyS'); report.stunts.down = await measure();
+  await setUp(200); await keyTwice('ArrowRight'); report.stunts.right = await measure();
+  await setUp(200); await flick(-90, 0); report.stunts.touchLeft = await measure();
+  await setUp(200); await flick(0, -90); report.stunts.touchUp = await measure();
+  await setUp(20); await keyTwice('ArrowDown'); report.stunts.lowSplitS = await measure();
+  await setUp(200); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500); await page.keyboard.press('ArrowLeft'); report.stunts.slowTaps = await measure();
+
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
@@ -358,6 +405,11 @@ try {
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
+    [(({ up: s }) => s.name === 'Immelmann' && s.back < -0.9 && s.upright > 0.9 && s.climb > 15)(report.stunts), 'double-tap up: Immelmann turns you back and up'],
+    [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
+    [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],
+    [(({ touchLeft: s, touchUp: u }) => s.name === 'Barrel roll' && s.side < -18 && u.name === 'Immelmann')(report.stunts), 'two touch flicks trigger stunts'],
+    [!report.stunts.lowSplitS.name && !report.stunts.slowTaps.name, 'no Split-S near the ground, and slow taps are not a double tap'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {
