@@ -71,7 +71,8 @@ server.
 
 **Procedural world** (`src/world.js`, `src/terrain.js`): an infinite, chunked terrain built from seeded simplex noise. It has
 ridged mountain ranges, mesas with sheer cliff walls, stepped terraces, river canyons, rock pinnacles, open sea with
-islands, and beaches, deserts, forests and snow caps. Chunks build nearest-first and stream in as you fly.
+islands, and beaches, deserts, forests and snow caps. In Hollow Peaks, big tunnels are bored clean through the
+mountains. Chunks build nearest-first and stream in as you fly.
 
 **Assets** (`src/models.js`): 30+ low-poly props built from primitives and drawn with one `InstancedMesh` per type per chunk.
 They include pines, round trees, birches, palms, dead trees, cacti, bushes, rocks, houses, windmills, lighthouses, castle
@@ -87,9 +88,12 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. There are 26, in order:
+colours, props, sky, weather and music mood. There are 27, in order:
 
 - Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
+- **Hollow Peaks:** huge mountains and deep canyons, with tunnels clean through the rock. They're 56–90 m wide,
+  up to 68 m tall and open at both ends, so you can fly in one side and out the other. The roof is solid: hit it
+  and you crash. Your altitude readout measures to the tunnel floor while you're inside.
 - **Crystal Caverns:** a real cave. A rock roof with stalactites hangs over everything, the lakes glow, and glowing
   mushrooms and stalagmites grow on the floor. Hit the roof and you crash.
 - Volcano Land (lava seas, falling ash) → Tropical Archipelago
@@ -197,12 +201,12 @@ seconds. A small "Developer menu… 3s" pill counts down while you hold; let go 
 pauses the game, silences the engine and ducks the music. Close it with `Esc`, the ✕ button, or the same 3 s hold.
 It's a testing aid, so it's deliberately left off the title card.
 
-- **Zones:** jump straight to any of the 26 zones (the next zone change is a full zone's worth of objectives away).
+- **Zones:** jump straight to any of the 27 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 12, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.
-- **Cheats & tools:** God mode (no damage, and you skim the ground, sea and cave roof like Ghost Mode), Relax Mode
+- **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode), Relax Mode
   on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
 
 Starting a boss or objective replaces the current one and turns Relax Mode off. While the menu is open, gameplay keys
