@@ -24,6 +24,12 @@ export function clearance(G, x, z, r = 30) {
 // In a cave, keep anything placed in the air below the roof.
 export const underRoof = (G, x, z, y, margin = 25) => Math.min(y, G.terrain.ceilingHeight(x, z) - margin);
 
+// A landmark standing in a cave has to fit under the roof: shrink its group if it would poke through.
+export function fitUnderRoof(G, g, height) {
+  const room = G.terrain.ceilingHeight(g.position.x, g.position.z) - g.position.y - 30;
+  if (height > room) g.scale.setScalar(Math.max(0.2, room / height));
+}
+
 export function flatForward(G) {
   const f = new THREE.Vector3(G.player.forward.x, 0, G.player.forward.z);
   if (f.lengthSq() < 1e-4) f.set(0, 0, -1);
@@ -264,7 +270,7 @@ function mkCollect(G, kind) {
       const a = (k / n) * Math.PI * 2 + rand(-0.3, 0.3), r = rand(60, 190);
       m.position.set(center.x + Math.cos(a) * r, center.y + rand(-30, 50), center.z + Math.sin(a) * r);
     }
-    m.position.y = Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25);
+    m.position.y = underRoof(G, m.position.x, m.position.z, Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25), 15);
     m.userData.phase = Math.random() * 10;
     G.scene.add(m);
     items.push(m);
@@ -290,6 +296,7 @@ function mkCollect(G, kind) {
         const ph = this.t + m.userData.phase;
         if (stars) { m.rotation.y += dt * 2; m.position.y += Math.sin(ph * 2) * dt * 3; }
         else { m.position.y += dt * 2.5; m.position.x += Math.sin(ph) * dt * 2; m.rotation.z = Math.sin(ph) * 0.15; }
+        m.position.y = underRoof(G, m.position.x, m.position.z, m.position.y, 15); // balloons rise, but not into a cave roof
         if (magnet && m.position.distanceTo(pp) < 450) { m.userData.tpos = null; m.position.lerp(pp, 1 - Math.exp(-dt * 0.5)); }
         if (!G.player.dead && m.position.distanceTo(pp) < (stars ? 11 : 10) * scale) {
           m.userData.got = true;
@@ -345,6 +352,7 @@ function mkGoose(G) {
       const g = clearance(G, goose.position.x, goose.position.z, 15);
       if (goose.position.y < g + 30) goose.position.y += (g + 30 - goose.position.y) * Math.min(1, dt * 3);
       if (goose.position.y > g + 200) goose.position.y -= dt * 20;
+      goose.position.y = underRoof(G, goose.position.x, goose.position.z, goose.position.y, 15);
       goose.lookAt(_a.copy(goose.position).add(vel));
       const f = Math.sin(this.t * 12) * 0.7;
       goose.userData.wings[0].rotation.z = -f; goose.userData.wings[1].rotation.z = f;
@@ -458,6 +466,7 @@ function mkBuzz(G) {
   const g = new THREE.Group();
   g.add(m);
   g.position.set(spot.x, groundAt(G, spot.x, spot.z) - 2, spot.z);
+  fitUnderRoof(G, g, m.userData.height);
   G.scene.add(g);
   let R = 55;
   const top = new THREE.Vector3();
@@ -466,7 +475,7 @@ function mkBuzz(G) {
     title: `Buzz The ${name}`, desc,
     caps: new Set(['grow', 'approach', 'teleport']),
     signText: [name.toUpperCase(), 'THAT WAY →'],
-    target() { return top.set(g.position.x, g.position.y + m.userData.height * g.scale.x + 15, g.position.z); },
+    target() { return top.set(g.position.x, underRoof(G, g.position.x, g.position.z, g.position.y + m.userData.height * g.scale.x + 15, 15), g.position.z); },
     onUpdate(dt, G) {
       anim(g, dt);
       if (g.userData.tpos) g.userData.tpos.y = groundAt(G, g.userData.tpos.x, g.userData.tpos.z) - 2;

@@ -292,13 +292,22 @@ try {
         planeUnderRoof: pp.y < roof, curve: +(CURVE.value * 1e4).toFixed(2),
       });
       if (z.world.cave) {
-        // Things placed in the cave stay under the roof: a fresh objective, and an enemy spawn.
-        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
-        G.objectives.completed = 1;
-        G.objectives.next();
-        const t = G.objectives.current.target();
-        out.caveObjective = { type: G.objectives.current.type, underRoof: !t || t.y < G.terrain.ceilingHeight(t.x, t.z) };
-        G.objectives.current.dispose(G); G.objectives.current = null;
+        // Every objective the cave offers keeps its targets under the roof (sampled for 2 s each, as items drift).
+        out.caveObjective = { checked: 0, aboveRoof: [] };
+        for (const type of window.OBJ_FOR_TEST.OBJECTIVE_TYPES.filter((t) => G.zones.allowsObjective(t))) {
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+          G.objectives.completed = 1;
+          G.objectives.recent = window.OBJ_FOR_TEST.OBJECTIVE_TYPES.filter((t) => t !== type);
+          G.objectives.next();
+          for (let i = 0; i < 60; i++) {
+            const t = G.objectives.current?.target();
+            if (t && !G.objectives.current.virtual && t.y >= G.terrain.ceilingHeight(t.x, t.z)) { out.caveObjective.aboveRoof.push(type); break; }
+            step(1);
+          }
+          out.caveObjective.checked++;
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        }
+        out.caveObjective.underRoof = out.caveObjective.aboveRoof.length === 0;
       }
       if (z.name === 'Meteor Belt') {
         // A big asteroid shot apart breaks into smaller ones.
