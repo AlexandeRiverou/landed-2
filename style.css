@@ -236,6 +236,8 @@ body.touch #touch-controls { display: flex; }
   backdrop-filter: blur(2px);
   padding: 16px;
 }
+/* Title screen: the cover art (assets/cover.webp, rendered in-engine by docs/art/render-cover.cjs) replaces the live scene. Anchored left of centre to keep the plane in view on narrow screens. */
+#title { background: #f6d6ad url(assets/cover.webp) 25% 50% / cover no-repeat; backdrop-filter: none; }
 .card {
   background: #fff;
   border: 4px solid var(--ink);
