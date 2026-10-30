@@ -215,7 +215,8 @@ body.relax #objective, body.relax #boss-bar, body.relax #crosshair, body.relax #
 #topleft, #bars, #powerups { transition: opacity 1s; }
 body.relax #topleft, body.relax #bars, body.relax #powerups { opacity: 0.3; }
 
-#tint { position: absolute; inset: 0; opacity: 0; transition: opacity 1s; mix-blend-mode: multiply; }
+/* Mood vignette (guilt trips, sad rain): tints only the screen edges so the view ahead stays clear. */
+#tint { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s; }
 #flash { position: absolute; inset: 0; opacity: 0; }
 
 #touch-controls { display: none; position: absolute; right: 16px; bottom: 16px; gap: 14px; flex-direction: column; pointer-events: auto; }

@@ -151,6 +151,8 @@ export function buildProps() {
   buildMoreProps();
   buildFantasyProps();
   buildNewWorldProps();
+  buildCityProps();
+  buildCountryProps();
 }
 
 // ---------- the countryside, the beach, the snow, and some questionable landmarks ----------
@@ -303,6 +305,108 @@ function buildNewWorldProps() {
 
   // Blockland's trees are cubes on sticks.
   def('blockTree', [P(Box(1.6, 6, 1.6), '#8a5a32', { y: 3 }), P(Box(7, 6, 7), '#3ab03a', { y: 9 }), P(Box(4, 3, 4), '#5ad04a', { y: 13.5 })], { scale: [0.8, 1.4], tints: ['#ffffff', '#c0ffa0', '#ffe080', '#ffb0b0'] });
+}
+
+// ---------- the city (Metropolis) ----------
+// Vehicles, lamps and anything with an arm face +z; the city places them with a fixed heading.
+// Cities hold thousands of these, so they're mostly boxes: an axle box pokes out both sides as a pair of wheels.
+const wheels = (xs, zs, r) => xs.flatMap((x) => zs.map((z) => P(Cyl(r, r, 0.5, 8), C.black, { x, y: r, z, rz: PI / 2 })));
+const axles = (w, zs, r) => zs.map((z) => P(Box(w, r * 2, r * 2), C.black, { y: r, z }));
+function buildCityProps() {
+  const car = (body) => [
+    P(Box(2, 0.9, 4.6), body, { y: 0.95 }), P(Box(1.8, 0.8, 2.4), body, { y: 1.8, z: -0.2 }), P(Box(1.84, 0.5, 2.2), '#2a3440', { y: 1.85, z: -0.2 }),
+    P(Box(1.7, 0.25, 0.1), '#fff4c0', { y: 1.05, z: 2.31 }), P(Box(1.7, 0.2, 0.1), '#ff3030', { y: 1.05, z: -2.31 }),
+    ...axles(2.1, [-1.45, 1.45], 0.42),
+  ];
+  def('car', car('#f2f2f2'), { scale: [1.2, 1.3], sink: 0, tints: ['#d8433a', '#3d6fd1', '#f2efe6', '#3a3a44', '#9aa0a6', '#4aa05a', '#ff8a1f', '#8a3ab0'] });
+  def('taxi', [...car('#ffc81a'), P(Box(2.02, 0.2, 4.62), '#2a2a2a', { y: 1.1 }), P(Box(0.9, 0.35, 0.5), '#fff4c0', { y: 2.38, z: -0.2 })], { scale: [1.2, 1.3], sink: 0 });
+  const bus = [P(Box(2.6, 2.6, 11), '#f2f2f2', { y: 1.9 }), P(Box(2.64, 1, 10.2), '#2a3440', { y: 2.4, z: -0.2 }), P(Box(2.3, 1, 0.1), '#2a3440', { y: 2.4, z: 5.51 }), P(Box(2.4, 0.3, 4), '#d0d0d0', { y: 3.35, z: -2 }), ...axles(2.7, [-3.6, 3.4], 0.6)];
+  def('bus', bus, { scale: [1.2, 1.25], sink: 0, tints: ['#e8402a', '#3d7fd1', '#3aa05a', '#ffb020'] });
+  def('streetLamp', [
+    P(Box(0.3, 8, 0.3), '#3a3e44', { y: 4 }), P(Box(0.16, 0.16, 2.6), '#3a3e44', { y: 8, z: 1.2 }), P(Box(0.6, 0.3, 1.1), '#fff2b0', { y: 7.9, z: 2.4 }),
+  ], { scale: [1.15, 1.25], sink: 0 });
+  def('trafficLight', [
+    P(Box(0.36, 6.6, 0.36), '#3a3e44', { y: 3.3 }), P(Box(0.18, 0.18, 5), '#3a3e44', { y: 6.4, z: 2.5 }), P(Box(0.7, 2.1, 0.6), '#22252a', { y: 5.4, z: 4.8 }),
+    P(Box(0.44, 0.44, 0.8), '#ff3a2a', { y: 6.05, z: 4.8 }), P(Box(0.44, 0.44, 0.8), '#ffc21a', { y: 5.4, z: 4.8 }), P(Box(0.44, 0.44, 0.8), '#3aff6a', { y: 4.75, z: 4.8 }),
+  ], { scale: [1.15, 1.2], sink: 0 });
+  def('parkTree', [
+    P(Box(2.6, 0.9, 2.6), '#a09a90', { y: 0.45 }), P(Box(0.6, 3.4, 0.6), C.trunk, { y: 2.4 }), P(Ico(2.6), C.leaf, { y: 5.4 }), P(Ico(1.7), C.leaf2, { x: 1.2, y: 6.4, z: 0.5 }),
+  ], { scale: [1, 1.25], sink: 0 });
+  def('bench', [
+    P(Box(2.4, 0.15, 0.7), '#a87a4a', { y: 0.55 }), P(Box(2.4, 0.6, 0.12), '#a87a4a', { y: 1, z: -0.32 }),
+    P(Box(0.12, 0.55, 0.6), C.black, { x: 1, y: 0.27 }), P(Box(0.12, 0.55, 0.6), C.black, { x: -1, y: 0.27 }),
+  ], { scale: [1.4, 1.6], sink: 0 });
+  // Rooftops: water towers, helipads, antennas, billboards, building-site cranes and a supertall's spire.
+  const wt = [P(Cyl(2.6, 2.6, 4.2, 10), '#8a5a3a', { y: 8.1 }), P(Cyl(2.66, 2.66, 0.25, 10), '#4a3a2a', { y: 7 }), P(Cyl(2.66, 2.66, 0.25, 10), '#4a3a2a', { y: 9.2 }), P(Cone(2.9, 1.8, 10), '#5a4030', { y: 11.1 })];
+  for (const [x, z] of [[1.6, 1.6], [-1.6, 1.6], [1.6, -1.6], [-1.6, -1.6]]) wt.push(P(Box(0.35, 6, 0.35), '#3a3a3a', { x, y: 3, z }));
+  def('waterTower', wt, { scale: [1, 1.3], sink: 0 });
+  def('helipad', [
+    P(Cyl(9, 9, 0.5, 16), '#4a4e56', { y: 0.25 }), P(Tor(7.8, 0.35, 3, 24), '#ffd23a', { y: 0.55, rx: PI / 2, sz: 0.3 }),
+    P(Box(0.9, 0.12, 5.5), '#ffffff', { x: 1.6, y: 0.56 }), P(Box(0.9, 0.12, 5.5), '#ffffff', { x: -1.6, y: 0.56 }), P(Box(2.4, 0.12, 0.9), '#ffffff', { y: 0.56 }),
+  ], { scale: [0.9, 1], sink: 0 });
+  def('antenna', [
+    P(Box(2.4, 1.5, 2.4), '#9aa0a6', { y: 0.75 }), P(Cyl(0.25, 0.5, 22, 4), '#c8ccd2', { y: 12 }),
+    P(Box(3.2, 0.2, 0.2), '#c8ccd2', { y: 9 }), P(Box(0.2, 0.2, 2.4), '#c8ccd2', { y: 15 }), P(Sph(0.5, 6, 4), '#ff2020', { y: 23.3 }),
+  ], { scale: [0.8, 1.4], sink: 0 });
+  def('billboard', [
+    P(Box(0.4, 6, 0.4), '#3a3e44', { x: 4, y: 3 }), P(Box(0.4, 6, 0.4), '#3a3e44', { x: -4, y: 3 }), P(Box(12.4, 5.4, 0.4), '#2a2a30', { y: 8.5 }),
+    P(Box(11.6, 4.6, 0.1), '#ffffff', { y: 8.5, z: 0.25 }), P(Box(11.6, 1.2, 0.12), '#ff4d6d', { y: 7.3, z: 0.26 }), P(Sph(1.2, 8, 6), '#ffd23a', { x: -3.6, y: 9.4, z: 0.3, sz: 0.2 }),
+  ], { scale: [1, 1.2], sink: 0, tints: ['#ffffff', '#ffe08a', '#a0e0ff', '#ffb0d0', '#b0ffb0'] });
+  def('crane', [
+    P(Box(4, 1, 4), '#7a7a80', { y: 0.5 }), P(Box(2, 56, 2), '#ffc020', { y: 28 }), P(Box(2.6, 2.4, 2.6), '#e8e8e8', { y: 57.2, z: 1.4 }),
+    P(Box(1.2, 1.4, 40), '#ffc020', { y: 59, z: 18 }), P(Box(1.2, 1.2, 12), '#ffc020', { y: 59, z: -6 }), P(Box(2.4, 2.4, 3), '#7a7a80', { y: 57.6, z: -10.5 }),
+    P(Cone(1.4, 6, 4), '#ffc020', { y: 62.5, ry: PI / 4 }), P(Box(0.12, 18, 0.12), C.black, { y: 49.5, z: 30 }), P(Box(1.2, 1, 1.2), '#e8402a', { y: 40, z: 30 }),
+  ], { scale: [0.9, 1.15], sink: 0 });
+  def('spire', [P(Cyl(1.4, 2.6, 10, 6), '#c8ccd2', { y: 5 }), P(Cyl(0.7, 1.4, 14, 6), '#d8dce2', { y: 17 }), P(Cone(0.7, 16, 6), '#e8ecf2', { y: 32 }), P(Sph(0.7, 6, 4), '#ff2020', { y: 40.2 })], { scale: [1, 1.3], sink: 0 });
+  // Plazas and parks: a copper statue holding up a torch, and a three-tier fountain.
+  def('statue', [
+    P(Box(10, 8, 10), '#b8b0a0', { y: 4 }), P(Box(11, 1, 11), '#a8a090', { y: 8.5 }), P(Cone(3.4, 13, 8), '#6ab8a0', { y: 15.5 }),
+    P(Cyl(1.5, 2.1, 5, 8), '#6ab8a0', { y: 21 }), P(Sph(1.3, 8, 6), '#6ab8a0', { y: 24.6 }), P(Cone(1.6, 1.4, 7), '#6ab8a0', { y: 25.9 }),
+    P(Cyl(0.5, 0.6, 6, 6), '#6ab8a0', { x: 2, y: 25.5, rz: -0.3 }), P(Cone(0.9, 1.6, 6), '#c8a03a', { x: 2.9, y: 29, rx: PI }), P(Ico(0.8), '#ffd23a', { x: 3, y: 30.2 }),
+    P(Box(1.4, 2.2, 0.6), '#5aa890', { x: -1.8, y: 20, z: 1.2, rz: 0.3 }),
+  ], { scale: [1, 1.15], sink: 0.2 });
+  def('fountain', [
+    P(Cyl(6, 6.2, 1.2, 14), '#c8c0b0', { y: 0.6 }), P(Cyl(5.5, 5.5, 0.2, 14), '#6ac8f0', { y: 1.15 }), P(Cyl(0.6, 0.8, 3.5, 8), '#c8c0b0', { y: 2.5 }),
+    P(Cyl(2.4, 1, 0.8, 10), '#c8c0b0', { y: 4.4 }), P(Cyl(2.1, 2.1, 0.1, 10), '#6ac8f0', { y: 4.8 }), P(Cone(1.2, 3, 8), '#bfe8ff', { y: 6.3 }),
+  ], { scale: [0.9, 1.2], sink: 0 });
+}
+
+// ---------- extras for the countryside, the desert and the snow ----------
+function buildCountryProps() {
+  def('picnicTable', [
+    P(Box(3.6, 0.2, 1.6), '#a87a4a', { y: 1.4 }), P(Box(1.6, 0.04, 1.62), '#e84a4a', { y: 1.52 }),
+    P(Box(3.6, 0.15, 0.5), '#a87a4a', { y: 0.85, z: 1.3 }), P(Box(3.6, 0.15, 0.5), '#a87a4a', { y: 0.85, z: -1.3 }),
+    ...[1.4, -1.4].map((x) => P(Box(0.2, 1.4, 3), '#8a5a32', { x, y: 0.7 })), P(Box(0.6, 0.5, 0.4), '#c89a50', { x: 0.8, y: 1.75 }),
+  ], { scale: [1.3, 1.6], sink: 0.1 });
+  def('tractor', [
+    P(Box(1.8, 1.4, 3.2), '#f2f2f2', { y: 1.7, z: 0.6 }), P(Box(1.9, 0.3, 2), '#f2f2f2', { y: 4.6, z: -0.7 }), P(Box(1.8, 2, 1.8), '#2a3440', { y: 3.4, z: -0.7 }),
+    P(Cyl(0.12, 0.12, 1.8, 5), C.black, { x: 0.5, y: 3, z: 1.6 }), P(Box(1.4, 0.8, 0.1), '#ffe08a', { y: 1.8, z: 2.21 }),
+    ...[1.2, -1.2].map((x) => P(Cyl(1.35, 1.35, 0.7, 10), C.black, { x, y: 1.35, z: -0.8, rz: PI / 2 })),
+    ...[1.2, -1.2].map((x) => P(Cyl(0.5, 0.5, 0.74, 8), C.yellow, { x, y: 1.35, z: -0.8, rz: PI / 2 })),
+    ...[1, -1].map((x) => P(Cyl(0.7, 0.7, 0.5, 8), C.black, { x, y: 0.7, z: 1.7, rz: PI / 2 })),
+  ], { scale: [1.2, 1.4], sink: 0.1, tints: ['#d8433a', '#3a9a3a', '#3d6fd1', '#ff8a1f'] });
+  def('camperVan', [
+    P(Box(2.4, 2.4, 6), '#f2efe6', { y: 1.9 }), P(Box(2.42, 0.5, 6.02), '#ff8a1f', { y: 1.3 }), P(Box(2.1, 0.9, 0.1), '#2a3440', { y: 2.5, z: 3.01 }),
+    P(Box(2.44, 0.7, 2.4), '#2a3440', { y: 2.5, z: -0.8 }), P(Box(2, 0.5, 3), '#f2efe6', { y: 3.35, z: -0.6 }), P(Cyl(0.6, 0.6, 0.3, 8), C.black, { y: 1.6, z: -3.1, rx: PI / 2 }),
+    ...wheels([-1.1, 1.1], [-1.9, 1.9], 0.55),
+  ], { scale: [1.2, 1.3], sink: 0.1, tints: ['#ffffff', '#a0e0ff', '#ffe08a', '#c0ffc0', '#ffc8c0'] });
+  const gas = [
+    P(Box(16, 0.2, 20), '#8a8a8a', { y: 0.1, z: -4 }), P(Box(14, 0.8, 9), '#f2efe6', { y: 5.6 }), P(Box(14.1, 0.4, 9.1), '#d8433a', { y: 5.3 }),
+    P(Box(8, 3.6, 6), '#e8dcc8', { y: 1.8, z: -10 }), P(Box(6, 1.4, 0.1), '#7ac8ff', { y: 1.9, z: -6.95 }), P(Box(8.4, 0.5, 6.4), '#d8433a', { y: 3.8, z: -10 }),
+    P(Cyl(0.2, 0.2, 9, 5), '#9aa0a6', { x: 8, y: 4.5, z: 4 }), P(Box(0.3, 2.4, 3), C.yellow, { x: 8, y: 9.6, z: 4 }),
+  ];
+  for (const [x, z] of [[5, 3], [-5, 3], [5, -3], [-5, -3]]) gas.push(P(Box(0.5, 5, 0.5), '#e8e8e8', { x, y: 2.5, z }));
+  for (const x of [2.5, -2.5]) gas.push(P(Box(0.8, 1.6, 0.6), '#d8433a', { x, y: 0.9 }), P(Box(0.6, 0.4, 0.62), '#ffffff', { x, y: 1.4 }));
+  def('gasStation', gas, { scale: [1, 1.2], sink: 0.2 });
+  const lift = [
+    P(Box(1.6, 0.6, 1.6), '#7a7f88', { y: 0.3 }), P(Cyl(0.45, 0.65, 16, 6), '#8a8f98', { y: 8 }), P(Box(7, 0.6, 0.6), '#8a8f98', { y: 16 }),
+    P(Box(0.08, 0.08, 30), C.black, { x: 3.2, y: 15.4 }), P(Box(0.08, 0.08, 30), C.black, { x: -3.2, y: 15.4 }),
+  ];
+  for (const [x, z] of [[3.2, 6], [-3.2, -7]]) {
+    lift.push(P(Cyl(0.45, 0.45, 0.4, 8), '#5a5f68', { x, y: 15.7 }));
+    lift.push(P(Box(0.1, 2.4, 0.1), '#3a3a3a', { x, y: 14.2, z }), P(Box(1.6, 0.2, 0.8), '#d8433a', { x, y: 13, z }), P(Box(1.6, 0.8, 0.12), '#d8433a', { x, y: 13.4, z: z - 0.4 }));
+  }
+  def('skiLift', lift, { scale: [1, 1.2], sink: 0.4 });
 }
 
 // ---------- player ----------
