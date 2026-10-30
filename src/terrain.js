@@ -1,9 +1,10 @@
 // Infinite chunked terrain. Chunks build nearest-first a few per frame; a rebuild
 // (after the world mutates) swaps chunks in progressively so the world "morphs".
 import * as THREE from 'three';
-import { world, heightAt, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt, clearTunnels, tunnelInBox, tunnelColumn } from './world.js';
+import { world, heightAt, groundHeight, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt, clearTunnels, clearCity, tunnelInBox, tunnelColumn, cityRoofAt } from './world.js';
 import { mulberry32, hash3 } from './noise.js';
 import { PROPS, propMaterial } from './models.js';
+import { buildCityMesh, cityProps } from './city.js';
 
 export const CHUNK = 320;
 export const SEG = 40;
@@ -20,12 +21,12 @@ const THIN = 0.01; // overhang thinner than this is no overhang
 const NO_PROPS = 255; // category for tunnel floors and mouths: nothing grows in there
 
 const TABLES = {
-  [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], [null, 2]],
+  [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], ['picnicTable', 0.12], ['tractor', 0.1], [null, 2]],
   [CAT.FOREST]: [['pine', 4], ['roundTree', 2], ['bush', 1], ['birch', 0.5], ['log', 0.8], ['tent', 0.12]],
-  [CAT.DESERT]: [['cactus', 3], ['rock', 2], ['rockB', 1], ['deadTree', 0.8], ['bush', 0.4], ['tumbleweed', 0.9], ['totemPole', 0.15], [null, 3]],
+  [CAT.DESERT]: [['cactus', 3], ['rock', 2], ['rockB', 1], ['deadTree', 0.8], ['bush', 0.4], ['tumbleweed', 0.9], ['totemPole', 0.15], ['camperVan', 0.1], [null, 3]],
   [CAT.ROCK]: [['rock', 2], ['rockB', 1.5], ['pine', 0.8], [null, 3]],
   [CAT.MESA]: [['rock', 1.5], ['rockB', 1], [null, 4]],
-  [CAT.SNOW]: [['snowPine', 3], ['rock', 1], ['snowman', 0.25], ['igloo', 0.12], [null, 2]],
+  [CAT.SNOW]: [['snowPine', 3], ['rock', 1], ['snowman', 0.25], ['igloo', 0.12], ['skiLift', 0.15], [null, 2]],
   [CAT.BEACH]: [['palm', 3], ['rockB', 0.6], ['parasol', 0.7], ['sandcastle', 0.35], [null, 2]],
   [CAT.SEA]: [['buoy', 0.25], ['boat', 0.18], ['sailboat', 0.14], ['iceberg', 0.05], ['whale', 0.025], ['duck', 0.015], [null, 6]],
 };
@@ -36,7 +37,7 @@ const SURFACE_MARGIN = 4;
 const LANDMARKS = {
   [CAT.GRASS]: ['windmill', 'windmill', 'castleTower', 'house', 'barn', 'barn', 'ferrisWheel', 'stoneCircle', 'radioTower'],
   [CAT.FOREST]: ['castleTower', 'windmill', 'stoneCircle', 'ruins'],
-  [CAT.DESERT]: ['pyramid', 'moai', 'ruins', 'radioTower'],
+  [CAT.DESERT]: ['pyramid', 'moai', 'ruins', 'radioTower', 'gasStation'],
   [CAT.MESA]: ['moai', 'ruins'],
   [CAT.BEACH]: ['lighthouse', 'ferrisWheel'],
   [CAT.SNOW]: ['castleTower', 'radioTower', 'igloo'],
@@ -49,18 +50,20 @@ export const THEMES = {
   crystal: { tumbleweed: 'crystal', iceberg: 'crystal', rock: 'crystal', rockB: 'crystal', pine: 'crystal', snowPine: 'crystal', deadTree: 'crystal', cactus: 'crystal' },
   gnome: { scarecrow: 'gnome', snowman: 'gnome', flowers: 'gnome', bush: 'gnome', rock: 'gnome', cactus: 'gnome', rockB: 'gnome' },
   spooky: { appleTree: 'deadTree', flowers: 'rock', scarecrow: 'deadTree', roundTree: 'deadTree', pine: 'deadTree', birch: 'deadTree', palm: 'deadTree', snowPine: 'deadTree', bush: 'rock', house: 'castleTower' },
-  tropical: { appleTree: 'palm', snowman: 'parasol', igloo: 'sandcastle', pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
+  tropical: { appleTree: 'palm', snowman: 'parasol', igloo: 'sandcastle', skiLift: 'palm', pine: 'palm', roundTree: 'palm', birch: 'palm', snowPine: 'palm', cactus: 'palm', deadTree: 'palm' },
   construction: { haybale: 'trafficCone', tumbleweed: 'trafficCone', rock: 'trafficCone', bush: 'trafficCone', cactus: 'trafficCone', rockB: 'trafficCone', gnome: 'trafficCone' },
-  lunar: { roundTree: 'rock', pine: 'rockB', birch: 'rock', bush: 'rockB', palm: 'rock', snowPine: 'rockB', cactus: 'rock', deadTree: 'rockB', appleTree: 'rock', flowers: null, haybale: 'rockB', sheep: null, cow: null, scarecrow: null, house: 'crystal', gnome: null },
+  lunar: { roundTree: 'rock', pine: 'rockB', birch: 'rock', bush: 'rockB', palm: 'rock', snowPine: 'rockB', cactus: 'rock', deadTree: 'rockB', appleTree: 'rock', flowers: null, haybale: 'rockB', sheep: null, cow: null, scarecrow: null, house: 'crystal', gnome: null, picnicTable: null, tractor: null, camperVan: 'rockB', skiLift: null, gasStation: 'ruins' },
   princess: {
     roundTree: 'heartTree', appleTree: 'heartTree', birch: 'heartTree', pine: 'heartTree', snowPine: 'heartTree', palm: 'heartTree', cactus: 'heartTree', deadTree: 'heartTree',
     sheep: 'unicorn', cow: 'unicorn', scarecrow: 'unicorn', haybale: 'carriage', house: 'carriage', well: 'flowers', rock: 'flowers', bush: 'flowers', tumbleweed: 'flowers', log: 'flowers', tent: 'carriage',
+    picnicTable: 'flowers', tractor: 'carriage', camperVan: 'carriage', skiLift: 'heartTree', gasStation: 'fairyCastle',
     castleTower: 'fairyCastle', windmill: 'fairyCastle', barn: 'fairyCastle', radioTower: 'fairyCastle', pyramid: 'fairyCastle', moai: 'fairyCastle', ruins: 'fairyCastle', igloo: 'fairyCastle',
   },
   cave: {
     roundTree: 'glowShroom', appleTree: 'glowShroom', birch: 'glowShroom', palm: 'glowShroom', bush: 'glowShroom', flowers: 'glowShroom', mushroom: 'glowShroom',
     pine: 'stalagmite', snowPine: 'stalagmite', cactus: 'stalagmite', deadTree: 'stalagmite', tumbleweed: 'rockB', totemPole: 'crystal', iceberg: 'crystal',
     house: 'tent', haybale: 'rock', sheep: null, cow: null, scarecrow: null, well: null, parasol: null, sandcastle: null, boat: null, sailboat: null, buoy: null, whale: null,
+    picnicTable: null, tractor: null, camperVan: null, skiLift: 'stalagmite', gasStation: 'ruins',
     windmill: 'crystal', castleTower: 'ruins', barn: 'stalagmite', ferrisWheel: null, radioTower: 'stalagmite', lighthouse: 'crystal', pyramid: 'ruins', igloo: 'crystal',
   },
   garden: { pine: 'roundTree', snowPine: 'roundTree', birch: 'flowers', bush: 'flowers', rock: 'mushroom', rockB: 'gnome', haybale: 'flowers', log: 'flowers', deadTree: 'appleTree', cactus: 'flowers' },
@@ -69,21 +72,30 @@ export const THEMES = {
     pine: 'kelp', snowPine: 'kelp', palm: 'kelp', cactus: 'kelp', deadTree: 'kelp', totemPole: 'kelp', log: 'rockB', haybale: 'rock',
     house: 'shipwreck', barn: 'shipwreck', windmill: 'shipwreck', castleTower: 'ruins', lighthouse: 'shipwreck', radioTower: 'kelp', ferrisWheel: 'shipwreck', igloo: 'coral',
     sheep: null, cow: null, scarecrow: null, gnome: null, well: null, tent: null, snowman: null, parasol: null, sandcastle: null,
+    picnicTable: null, tractor: 'shipwreck', camperVan: 'rockB', skiLift: 'kelp', gasStation: 'shipwreck',
   },
   neon: {
     roundTree: 'crystal', appleTree: 'crystal', birch: 'crystal', pine: 'crystal', snowPine: 'crystal', palm: 'crystal', cactus: 'crystal', deadTree: 'crystal', totemPole: 'crystal',
     bush: null, flowers: null, rock: null, rockB: null, log: null, haybale: null, tumbleweed: null, sheep: null, cow: null, scarecrow: null, gnome: null, well: null,
     tent: null, snowman: null, igloo: null, parasol: null, sandcastle: null, house: null, buoy: null, boat: null, sailboat: null, whale: null, duck: null, iceberg: null,
     windmill: 'radioTower', barn: 'radioTower', castleTower: 'radioTower', stoneCircle: 'crystal', ruins: 'crystal', moai: 'crystal',
+    picnicTable: null, tractor: null, camperVan: null, skiLift: null, gasStation: 'radioTower',
   },
   salt: {
     roundTree: null, appleTree: null, birch: null, pine: null, snowPine: null, palm: null, cactus: 'rockB', deadTree: null, bush: null, flowers: null, log: null, haybale: null,
     tumbleweed: null, sheep: null, cow: null, scarecrow: null, gnome: null, well: null, tent: null, snowman: null, igloo: null, parasol: null, sandcastle: null, house: null,
     totemPole: null, buoy: null, boat: null, sailboat: null, whale: null, duck: null, iceberg: null,
     windmill: 'rock', barn: 'rock', castleTower: 'rock', ferrisWheel: 'rock', radioTower: 'rock', lighthouse: 'rock', stoneCircle: 'rock', ruins: 'rockB', pyramid: 'rockB',
+    picnicTable: null, tractor: null, camperVan: null, skiLift: null, gasStation: 'rock',
   },
   bare: Object.fromEntries([...new Set(Object.values(LANDMARKS).flat())].map((k) => [k, null])), // no landmarks (the gas giant's cloud tops)
   blocks: { roundTree: 'blockTree', appleTree: 'blockTree', birch: 'blockTree', pine: 'blockTree', palm: 'blockTree', bush: 'blockTree', snowPine: 'blockTree', rock: 'rockB', deadTree: 'blockTree' },
+  // Metropolis: the parks keep their trees; farm animals and cottages stay in the countryside.
+  city: {
+    appleTree: 'roundTree', bush: 'parkTree', flowers: 'bench', haybale: 'bench', rock: null, rockB: null, house: null, sheep: null, cow: null, scarecrow: 'streetLamp',
+    well: 'fountain', tractor: null, picnicTable: 'bench', gnome: 'statue', log: 'bench', tent: null, iceberg: null,
+    windmill: 'statue', castleTower: 'statue', barn: 'fountain', stoneCircle: 'fountain', radioTower: 'statue', ruins: 'fountain',
+  },
   duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
 
@@ -111,7 +123,7 @@ export class Terrain {
     this.water = new Water(G);
   }
 
-  rebuildAll() { this.version++; clearTunnels(); } // the tunnels follow the new mountains
+  rebuildAll() { this.version++; clearTunnels(); clearCity(); } // the tunnels follow the new mountains, the city its new ground
 
   // Blast a crater: the height function changes at once; the chunks under it rebuild over the next frames.
   deform(x, z, r, depth) {
@@ -170,6 +182,7 @@ export class Terrain {
     c.mesh.geometry.dispose();
     if (c.ceil) { this.G.scene.remove(c.ceil); c.ceil.geometry.dispose(); }
     if (c.over) { this.G.scene.remove(c.over); c.over.geometry.dispose(); }
+    if (c.city) { this.G.scene.remove(c.city); c.city.geometry.dispose(); }
     for (const m of c.props.children) m.dispose();
   }
 
@@ -193,7 +206,7 @@ export class Terrain {
       }
       if (!any) us = ts = null; // the tunnel stays in the open air here
     } else {
-      for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) hs[j * GW + i] = heightAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP);
+      for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) hs[j * GW + i] = groundHeight(ox + (i - 1) * STEP, oz + (j - 1) * STEP); // the city's buildings are a mesh of their own
     }
 
     const V = SEG + 1;
@@ -243,6 +256,7 @@ export class Terrain {
     const chunk = { cx, cz, hs, us, ts, mesh, version: this.version };
     chunk.props = this.buildProps(chunk, cats);
     if (us) chunk.over = this.buildOverhang(chunk, index);
+    if (world.city) chunk.city = buildCityMesh(ox, oz, CHUNK, this.material);
     if (world.cave) {
       chunk.cs = new Float32Array(GW * GW);
       for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) chunk.cs[j * GW + i] = ceilingAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP, hs[j * GW + i]);
@@ -252,6 +266,7 @@ export class Terrain {
     this.G.scene.add(mesh, chunk.props);
     if (chunk.ceil) this.G.scene.add(chunk.ceil);
     if (chunk.over) this.G.scene.add(chunk.over);
+    if (chunk.city) this.G.scene.add(chunk.city);
     this.chunks.set(k, chunk);
   }
 
@@ -348,7 +363,8 @@ export class Terrain {
   }
 
   // Exact height of the rendered (triangulated) surface; falls back to the noise. Over a tunnel it's the
-  // mountain top, unless `y` is below the middle of the rock: then it's the tunnel floor.
+  // mountain top, unless `y` is below the middle of the rock: then it's the tunnel floor. In the city, a
+  // building's roof (its walls are sheer: one step from the street to the roof).
   surfaceHeight(x, z, y = Infinity) {
     if (world.tunnels) {
       const o = this.overhang(x, z);
@@ -357,7 +373,8 @@ export class Terrain {
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const ch = this.chunks.get(key(cx, cz));
     if (!ch) return heightAt(x, z);
-    return gridHeight(ch.hs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP);
+    const g = gridHeight(ch.hs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP);
+    return world.city ? Math.max(g, cityRoofAt(x, z)) : g;
   }
 
   buildProps(chunk, cats) {
@@ -365,16 +382,17 @@ export class Terrain {
     const { cx, cz, hs, us, ts } = chunk;
     const ox = cx * CHUNK, oz = cz * CHUNK;
     // Over a tunnel, things in the air float above the mountain top, and nothing stands under a rock lip.
-    const top = (u, v) => (us ? Math.max(gridHeight(hs, u, v), gridHeight(ts, u, v)) : gridHeight(hs, u, v));
+    // In the city, things in the air float above the rooftops.
+    const top = (u, v) => Math.max(gridHeight(hs, u, v), us ? gridHeight(ts, u, v) : -Infinity, world.city ? cityRoofAt(ox + u * STEP, oz + v * STEP) : -Infinity);
     const overhung = (u, v) => us && gridHeight(ts, u, v) - gridHeight(us, u, v) > THIN;
     const rng = mulberry32(hash3(cx, cz, world.seed * 7 + world.propSalt));
     const theme = THEMES[world.propTheme] || {};
     const buckets = {};
     const V = SEG + 1;
-    const place = (type, x, y, z, scaleMul = 1) => {
+    const place = (type, x, y, z, scaleMul = 1, yaw = null) => { // yaw: a fixed heading (cars follow their lane)
       const meta = PROPS[type];
       if (!meta) return;
-      (buckets[type] ||= []).push({ x, y, z, meta, s: scaleMul });
+      (buckets[type] ||= []).push({ x, y, z, meta, s: scaleMul, yaw });
     };
 
     const attempts = Math.round(64 * world.propDensity);
@@ -403,6 +421,7 @@ export class Terrain {
         if (type && !overhung(u, v)) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
       }
     }
+    if (world.city) cityProps(ox, oz, CHUNK, place); // traffic, street furniture, parks and rooftops
     if (world.underwater) { // the boats and whales up on the surface
       for (let k = 0; k < 2; k++) {
         const type = rng() < 0.35 && pickWeighted(rng, SURFACE);
@@ -430,7 +449,7 @@ export class Terrain {
       list.forEach((it, i) => {
         const m = it.meta;
         const s = (m.scale[0] + rng() * (m.scale[1] - m.scale[0])) * world.propScale * it.s;
-        _e.set((rng() - 0.5) * m.tilt, rng() * Math.PI * 2, (rng() - 0.5) * m.tilt);
+        _e.set((rng() - 0.5) * m.tilt, it.yaw ?? rng() * Math.PI * 2, (rng() - 0.5) * m.tilt);
         _q.setFromEuler(_e);
         if (m.nonUniform) _s.set(s * (0.7 + rng() * 0.6), s * (0.5 + rng() * 0.7), s * (0.7 + rng() * 0.6));
         else _s.setScalar(s);

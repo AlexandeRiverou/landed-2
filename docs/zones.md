@@ -18,7 +18,7 @@ developer menu and the smoke test pick up new entries on their own, so adding a 
 | `sunAzimuth` | Fixes the sky's sun direction (radians), so the lighting lines up with a sun in the decor (Neon Grid uses `Math.PI` for its retro sun). Zones without it get a fresh random sun direction. |
 | `asteroids`, `comets` | Asteroid count and comets (space zones). |
 | `noGround` | No ground: ground objectives, ground enemies and ground bosses are skipped. |
-| `noObjectives` | Objective types this zone doesn't offer (e.g. `altitude` and `stairs` under a roof). |
+| `noObjectives` | Objective types this zone doesn't offer (e.g. `altitude` and `stairs` under a roof, `gate` in the city). |
 | `lock` | Mutation groups that can't fire here, so random world changes don't break the zone's look. Start from `LOCK`, `SHAPE_LOCK` or `SPACE_LOCK`. Add `'decor'` when the zone has its own decor, so the random planet mutation stays out of it. |
 
 ## World params (`world` in `src/world.js`)
@@ -48,6 +48,19 @@ ones, all off by default:
   and the mountain top over it. Only chunks that touch a tunnel build the extra overhang mesh (`buildOverhang()`).
   For tests and debugging: `tunnelsNear(x, z, r)` lists the tunnels around a point, `tunnelPoint(T, t)` walks
   one's centre line.
+- **`city: n`:** a street grid with solid buildings, one city block every `n` metres (Metropolis uses `112`). Each
+  cell has its road along its low-x and low-z edges: 24 m streets (`CITY_STREET`), every 4th line a 40 m avenue
+  (`CITY_AVENUE`), and 6 m sidewalks (`CITY_WALK`) around the block. A block becomes a park, a plaza (downtown
+  only) or 1 to 4 lots split by 4 m alleys. Roofs sit on whole 3.6 m floors (`CITY_FLOOR`). How tall a lot grows
+  depends on `cityDensity()`: downtown towers run 70–330 m, often a podium, a shaft and a narrower crown; the
+  outskirts stay 9–60 m; about 6% of low-rise lots are building sites with a crane on top. The ground is clamped to
+  a flat quay along the water, nothing is built in the harbour, and the sea gets no islands. Blocks are planned
+  lazily from the seed and cached (capped at 8,000); `reseed()`, `Terrain.rebuildAll()` and zone changes clear
+  the cache (`clearCity()`), so lock the shape and sea mutations (`SHAPE_LOCK`, `'sea'`, `'islands'`, `'scale'`) in
+  a city zone or the buildings move under the player. `src/city.js` draws one mesh per chunk for all its buildings
+  (one shared window texture) and places the street, park and rooftop props. For tests and debugging:
+  `cityBlock(bx, bz)` gives a block's plan, `cityRoofAt(x, z)` the rooftop (or `-Infinity` off a building),
+  `cityGround(x, z)` street level.
 - **`curve`:** tiny-planet bend: everything is drawn lower by `curve · d²` (Planet Pebble).
 - **`axisCurve` / `curveAxis`:** the same bend measured along one world axis only (`'x'` or `'z'`). Negative bends
   the ground **up**, like the inside of a ring (Ringworld uses `-1 / 2000` across `x`).
@@ -58,6 +71,15 @@ Use `waterLine()` from `src/world.js`, not `world.seaLevel`, whenever you ask "w
 down?". It returns the sea level normally, and `-Infinity` underwater, where the seabed is the ground. The player,
 camera, objectives (`groundAt()`), enemies and the HUD altitude all use it. Only pass it to `Math.max()` and
 comparisons; never use it as a position.
+
+### Ground with buildings on it (the city)
+
+In a city zone, `heightAt()` returns the **rooftop** over a building and street level everywhere else, so building
+walls are as solid as the ground: hit one and you crash (reason `'ground'`), Ghost Mode skims you onto the roof, and
+the HUD altitude measures to the roof under you. `Terrain.surfaceHeight()` includes the roofs too. Use
+`groundHeight()` when you need the ground **without** buildings (the terrain mesh is built from it); outside the
+city it's the same as `heightAt()`. Anything placed with `groundAt()` (objective targets, for one) lands on the
+roof when it's over a building.
 
 ### Asking at an altitude (tunnels)
 

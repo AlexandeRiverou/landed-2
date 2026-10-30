@@ -2,7 +2,7 @@
 // sky, weather, music). Every few completed objectives you fly on into the next one, from green
 // meadows up through the stratosphere into orbit, a meteor belt, the Moon and beyond.
 import * as THREE from 'three';
-import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearTunnels } from './world.js';
+import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearTunnels, clearCity } from './world.js';
 import { Asteroids } from './asteroids.js';
 import { CURVE, AXIS_CURVE, CURVE_AXIS, noCurve } from './curve.js';
 import { disposeTree } from './models.js';
@@ -60,6 +60,12 @@ export const ZONES = [
     name: 'Tropical Archipelago', blurb: 'A thousand islands, palm trees, and suspiciously calm whales.',
     world: { palette: 'Deep Jungle', seaLevel: 70, propTheme: 'tropical', tempBias: -0.1 },
     sky: 'sunset', weather: 'clear', clouds: ['#ffd8c0', 35], mood: 'day', lock: LOCK,
+  },
+  {
+    name: 'Metropolis', blurb: 'Skyscrapers at golden hour. The avenues are wide, the alleys are a dare, and the windows are very clean. Keep them that way.',
+    world: { palette: 'metro', city: 112, amp: 0.04, hillBase: 0.05, roughness: 0.15, terrace: 0, mesa: 0, canyon: 0, spikes: 0, seaLevel: 0, snowLine: 9999, propTheme: 'city', propDensity: 0.6, floatingIslands: 0, balloons: 0.5, tempBias: -0.4 },
+    sky: 'golden', weather: 'clear', clouds: ['#ffe0c8', 25, 520], fog: 1.15, mood: 'dusk', noObjectives: ['gate'], // a 64 m stone arch doesn't fit down a street
+    lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands', 'scale'], // the street plan sits on the ground and the sea line: keep both still
   },
   {
     name: 'Sunken Reef', blurb: 'The sea won. You fly underwater now. The surface is the ceiling; the fish are unimpressed.',
@@ -198,6 +204,7 @@ export class Zones {
     if (!keepSeed) reseed((Math.random() * 1e9) | 0); // a fresh landscape for every zone
     clearCraters(); // the old zone's blast holes don't belong in the new world
     clearTunnels(); // nor its tunnels
+    clearCity(); // nor its city plan (it was made for the old world's ground)
     G.sky.setPreset(z.sky, instant);
     G.sky.weather.set(z.weather);
     G.sky.clouds.setStyle(z.clouds[0], z.clouds[1], z.clouds[2] ?? 440); // default cloud layer height

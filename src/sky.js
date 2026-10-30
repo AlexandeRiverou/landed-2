@@ -23,6 +23,7 @@ export const TOD = {
   synthwave: { top: '#12042a', horizon: '#ff3aa8', bottom: '#2a0838', sun: '#ff9ae0', sunI: 1.3, hemiSky: '#c07aff', hemiGround: '#3a1a6a', hemiI: 1.3, elev: 9, stars: 0.8 },
   pastel: { top: '#8ab4ec', horizon: '#ffdce8', bottom: '#f8e8f0', sun: '#fff4e8', sunI: 1.9, hemiSky: '#ffe8f4', hemiGround: '#d8d0e8', hemiI: 1.25, elev: 24, stars: 0 },
   jovian: { top: '#4a1e0a', horizon: '#f0a860', bottom: '#c0703a', sun: '#fff0d0', sunI: 2.0, hemiSky: '#ffc890', hemiGround: '#8a4a2a', hemiI: 1.0, elev: 25, stars: 0.4 },
+  golden: { top: '#3a5a9a', horizon: '#f8c898', bottom: '#d8a078', sun: '#ffc890', sunI: 2.1, hemiSky: '#ffd8b8', hemiGround: '#5a4a5a', hemiI: 1.0, elev: 14, stars: 0.05 },
   storm: { top: '#3a4048', horizon: '#8d949c', bottom: '#5a6068', sun: '#d8dde2', sunI: 0.9, hemiSky: '#a0a8b0', hemiGround: '#3a3f44', hemiI: 0.95, elev: 50, stars: 0 },
 };
 const COLOR_KEYS = ['top', 'horizon', 'bottom', 'sun', 'hemiSky', 'hemiGround'];

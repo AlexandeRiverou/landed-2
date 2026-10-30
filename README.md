@@ -72,15 +72,19 @@ server.
 **Procedural world** (`src/world.js`, `src/terrain.js`): an infinite, chunked terrain built from seeded simplex noise. It has
 ridged mountain ranges, mesas with sheer cliff walls, stepped terraces, river canyons, rock pinnacles, open sea with
 islands, and beaches, deserts, forests and snow caps. In Hollow Peaks, big tunnels are bored clean through the
-mountains. Chunks build nearest-first and stream in as you fly.
+mountains. In Metropolis, the land is cut into a street grid of skyscrapers (`src/city.js` draws them). Chunks build
+nearest-first and stream in as you fly.
 
-**Assets** (`src/models.js`): 30+ low-poly props built from primitives and drawn with one `InstancedMesh` per type per chunk.
+**Assets** (`src/models.js`): 80+ low-poly props built from primitives and drawn with one `InstancedMesh` per type per chunk.
 They include pines, round trees, birches, palms, dead trees, cacti, bushes, rocks, houses, windmills, lighthouses, castle
 towers, moai heads, pyramids, boats, buoys, floating islands, hot-air balloons, plus the themed ones: mushrooms,
 crystals, lollipops, donuts, gnomes, traffic cones and giant rubber ducks. Farms bring apple trees, flowers, hay bales,
 sheep, cows, scarecrows, wells and barns. Elsewhere there are logs and tents, tumbleweeds and totem poles, snowmen and
-igloos, beach parasols and sandcastles, icebergs, whales and sailboats. Landmarks include ferris wheels, stone circles,
-ruins and radio towers.
+igloos, beach parasols and sandcastles, icebergs, whales and sailboats. The countryside gets picnic tables and
+tractors, the desert camper vans, the snow ski lifts. Landmarks include ferris wheels, stone circles, ruins, radio
+towers and the odd lonely gas station. The city brings its own: cars, taxis and buses that stay in their lanes,
+street lamps, traffic lights, park trees, benches, fountains and statues, and on the roofs water towers, billboards,
+antennas, helipads, spires on the tallest towers and cranes on building sites.
 
 **Enemies** (`src/enemies.js`): angry drones, spiky balloon mines, a seagull gang, bee swarms, orb-spitting UFOs, ad
 blimps that drop "special offers", zapping sky jellyfish, grumpy ground cannons, Rival Pilot Gary (strafing runs), grumpy
@@ -88,7 +92,7 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. There are 27, in order:
+colours, props, sky, weather and music mood. There are 28, in order:
 
 - Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
 - **Hollow Peaks:** huge mountains and deep canyons, with tunnels clean through the rock. They're 56–90 m wide,
@@ -97,6 +101,10 @@ colours, props, sky, weather and music mood. There are 27, in order:
 - **Crystal Caverns:** a real cave. A rock roof with stalactites hangs over everything, the lakes glow, and glowing
   mushrooms and stalagmites grow on the floor. Hit the roof and you crash.
 - Volcano Land (lava seas, falling ash) → Tropical Archipelago
+- **Metropolis:** a city at golden hour. Wide avenues every few blocks, narrower streets and alleys between them,
+  towers up to about 330 m downtown, parks, plazas, and a harbour. The buildings are solid: fly into a wall and you
+  crash, and your altitude readout measures to the roof under you. Ghost Mode puts you on the roof instead. No stone
+  arch objective here (it doesn't fit down a street), but crop dusting down an avenue is fair game.
 - **Sunken Reef:** you fly underwater. Coral, kelp, fish schools and shipwrecks on a colourful seabed; boats and
   whales float on the glowing surface above. The surface is the ceiling: it holds you a few metres under it instead
   of crashing you.
@@ -201,7 +209,7 @@ seconds. A small "Developer menu… 3s" pill counts down while you hold; let go 
 pauses the game, silences the engine and ducks the music. Close it with `Esc`, the ✕ button, or the same 3 s hold.
 It's a testing aid, so it's deliberately left off the title card.
 
-- **Zones:** jump straight to any of the 27 zones (the next zone change is a full zone's worth of objectives away).
+- **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 12, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.

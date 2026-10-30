@@ -38,6 +38,7 @@ export const ZONE_PALETTES = {
   toy: palette('Toy Box', { grass: '#4ad04a', grass2: '#8ae84a', forest: '#1fa04a', sand: '#ffe46a', desert: '#ffb43a', desert2: '#ff8a3a', rock: '#a0a4b8', rock2: '#80849a', snow: '#ffffff', seabed: '#3a9ae0', water: '#3ac8ff', bands: ['#ff5a5a', '#ffd23a', '#5ab4ff', '#c07aff'] }),
   jovian: palette('Jovian', { grass: '#f0c890', grass2: '#f6e2c0', forest: '#e8a060', sand: '#fff0d8', desert: '#d08850', desert2: '#c8743a', rock: '#e8b07a', rock2: '#d89a6a', snow: '#fff4e0', seabed: '#a85a2a', water: '#c0703a', bands: ['#e8b07a', '#f6e2c0', '#c8743a', '#f0c890'] }),
   peaks: palette('Peaks', { grass: '#6f9a4a', grass2: '#8fb25a', forest: '#3f6a3a', sand: '#d8c89a', desert: '#c8a070', desert2: '#b08058', rock: '#8a8278', rock2: '#6a6460', snow: '#f4f6fa', seabed: '#6a7a6a', water: '#3a8ab8', bands: ['#a86a4a', '#c8946a', '#8a5a40', '#d8b088'] }),
+  metro: palette('Metro', { grass: '#5a9a48', grass2: '#74b052', forest: '#3a7a3a', sand: '#d0c4a8', desert: '#b8ac90', desert2: '#a89c80', rock: '#6a6a70', rock2: '#5a5a60', snow: '#f0f0f0', seabed: '#3a4a52', water: '#2a6a9a', bands: ['#8a8a90', '#9a9aa0', '#7a7a80', '#aaaab0'] }),
   lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
 };
 
@@ -72,6 +73,7 @@ export const world = {
   hillBase: 1,       // scales the broad rise every mountain range sits on (the salt flats want almost none)
   ranges: 0,         // + spreads the mountain ranges over more of the land (Hollow Peaks)
   tunnels: 0,        // 0..1: chance each TUNNEL_CELL square gets a tunnel bored through its mountain (Hollow Peaks)
+  city: 0,           // > 0: a street grid of city blocks this many metres apart, with solid skyscrapers (Metropolis)
 };
 export const WORLD_DEFAULTS = { ...world };
 
@@ -81,6 +83,7 @@ export function reseed(seed) {
   const r = mulberry32(world.seed);
   for (const k of ['a', 'b', 'c', 'd', 'e', 'f']) N[k] = createNoise2D(r);
   clearTunnels();
+  clearCity();
 }
 
 // The height the sea stops you at: its surface, or nowhere when you fly beneath it.
@@ -98,7 +101,13 @@ export function heightAt(x, z) {
     return Math.round(h / s) * s + W.floor - craterDepthAt(x, z);
   }
   if (W.tunnels) { tunnelColumn(x, z, _col); return _col.floor; }
+  if (W.city) return Math.max(cityGround(x, z) - craterDepthAt(x, z), cityRoofAt(x, z)); // rooftops are ground too
   return landHeight(x, z) - craterDepthAt(x, z);
+}
+
+// The ground without any buildings on it (the terrain mesh). Same as heightAt() outside the city.
+export function groundHeight(x, z) {
+  return world.city ? cityGround(x, z) - craterDepthAt(x, z) : heightAt(x, z);
 }
 
 // The natural landscape, before any craters are blasted into it.
@@ -156,7 +165,7 @@ function landHeight(x, z) {
 
   // Open sea with scattered islands.
   if (sea > 0) {
-    const isl = N.b(x * 0.004 + 50, z * 0.004 + 50);
+    const isl = W.city ? 0 : N.b(x * 0.004 + 50, z * 0.004 + 50); // a city's harbour is open water
     h = lerp(h, -45 + Math.max(0, isl - 0.35) * 160, sea);
   }
   if (W.craters > 0) h -= moonCraters(x, z) * W.craters;
@@ -281,6 +290,116 @@ export function tunnelColumn(x, z, out) {
   return true;
 }
 
+// ---------- the city ----------
+// Metropolis: gentle land cut into a street grid. Every `city`-metre cell has its road along its low-x and low-z
+// edges (every 4th line a wide avenue) and a city block in the rest: a park, a plaza, or up to four buildings.
+// A building is a stack of boxes ("tiers"), each narrower than the one below, with its roof at a whole number
+// of floors. heightAt() returns the rooftop over a building and street level everywhere else, so walls are as
+// solid as the ground. Blocks are planned lazily from the seed and cached; reseed(), Terrain.rebuildAll() and
+// zone changes clear the cache (clearCity()). Lock the shape and sea mutations in a city zone.
+export const CITY_STREET = 24, CITY_AVENUE = 40, CITY_WALK = 6, CITY_FLOOR = 3.6;
+const LOT_GAP = 4; // the alley between two buildings of one block
+const cityPlans = new Map(); // cell key → block plan
+export function clearCity() { cityPlans.clear(); }
+
+// Width of the road along grid line i (the low edge of cell i).
+export const cityRoad = (i) => ((i % 4) + 4) % 4 === 0 ? CITY_AVENUE : CITY_STREET;
+
+// Street level: the gentle land, with a flat quay along the water so no street slopes into the harbour.
+export function cityGround(x, z) {
+  const h = landHeight(x, z), sea = world.seaLevel;
+  return h > sea - 12 ? Math.max(h, sea + 4) : h;
+}
+
+// How built-up a district is: 0 (low-rise outskirts) to 1 (downtown).
+export function cityDensity(x, z) {
+  return smoothstep(-0.25, 0.5, N.d(x * 0.0005 + 13, z * 0.0005 - 29) * 0.85 + N.c(x * 0.0021 - 7, z * 0.0021 + 3) * 0.25);
+}
+
+export function cityBlock(bx, bz) {
+  const k = cellKey(bx, bz);
+  let b = cityPlans.get(k);
+  if (!b) {
+    if (cityPlans.size > 8000) cityPlans.clear(); // a very long flight: start over rather than grow forever
+    b = planBlock(bx, bz);
+    cityPlans.set(k, b);
+  }
+  return b;
+}
+
+function planBlock(bx, bz) {
+  const W = world, B = W.city, rng = mulberry32(hash3(bx, bz, W.seed ^ 0xc17e));
+  const x0 = bx * B + cityRoad(bx), z0 = bz * B + cityRoad(bz), x1 = (bx + 1) * B, z1 = (bz + 1) * B;
+  const dens = cityDensity((x0 + x1) / 2, (z0 + z1) / 2);
+  const blk = { bx, bz, x0, z0, x1, z1, dens, kind: 'lots', lots: [] };
+  const r = rng();
+  if (r < 0.04 + 0.08 * (1 - dens)) { blk.kind = 'park'; return blk; }
+  if (r < 0.07 + 0.08 * (1 - dens) && dens > 0.3) { blk.kind = 'plaza'; return blk; }
+  // Split the block (inside its sidewalk) into 1 or 2 lots each way, with alleys between them.
+  const split = (a, b) => {
+    if (rng() < 0.4) return [[a, b]];
+    const m = a + (b - a) * (0.38 + rng() * 0.24);
+    return [[a, m - LOT_GAP / 2], [m + LOT_GAP / 2, b]];
+  };
+  const xs = split(x0 + CITY_WALK, x1 - CITY_WALK), zs = split(z0 + CITY_WALK, z1 - CITY_WALK);
+  const floors = (h) => Math.max(2, Math.round(h / CITY_FLOOR)) * CITY_FLOOR;
+  for (const [ax, bxx] of xs) {
+    for (const [az, bzz] of zs) {
+      const lx0 = ax + rng() * 2.5, lx1 = bxx - rng() * 2.5, lz0 = az + rng() * 2.5, lz1 = bzz - rng() * 2.5;
+      const base = Math.min(cityGround(lx0, lz0), cityGround(lx1, lz0), cityGround(lx0, lz1), cityGround(lx1, lz1));
+      if (base < W.seaLevel + 2) continue; // no buildings in the harbour
+      const tall = rng() < 0.03 + 0.85 * dens * dens;
+      const site = !tall && rng() < 0.06; // a building site: a few floors and a crane on top
+      const h = site ? 7 + rng() * 8 : tall ? 70 + rng() * (50 + 210 * dens) : 9 + rng() * (12 + 40 * dens);
+      const b = { x0: lx0, z0: lz0, x1: lx1, z1: lz1, base, tall, site, style: Math.floor(rng() * 5), seed: (rng() * 1e9) | 0, tiers: [] };
+      const tier = (inset, top) => {
+        const s = Math.min(inset, (Math.min(lx1 - lx0, lz1 - lz0) - 12) / 2); // never thinner than 12 m
+        b.tiers.push({ x0: lx0 + s, z0: lz0 + s, x1: lx1 - s, z1: lz1 - s, top: base + floors(top) });
+      };
+      const w = Math.min(lx1 - lx0, lz1 - lz0);
+      if (tall && rng() < 0.75) { // a tower on a podium, maybe with a narrower crown
+        tier(0, 8 + rng() * 16);
+        const crown = h > 140 && rng() < 0.6;
+        tier(w * (0.1 + rng() * 0.12), crown ? h * (0.6 + rng() * 0.2) : h);
+        if (crown) tier(w * (0.24 + rng() * 0.08), h);
+      } else tier(0, h);
+      blk.lots.push(b);
+    }
+  }
+  return blk;
+}
+
+// The rooftop under (x, z), or -Infinity on a road, a sidewalk, a park or in an alley.
+export function cityRoofAt(x, z) {
+  const B = world.city, bx = Math.floor(x / B), bz = Math.floor(z / B);
+  if (x - bx * B < cityRoad(bx) || z - bz * B < cityRoad(bz)) return -Infinity;
+  for (const b of cityBlock(bx, bz).lots) {
+    if (x < b.x0 || x >= b.x1 || z < b.z0 || z >= b.z1) continue;
+    for (let i = b.tiers.length - 1; i >= 0; i--) {
+      const t = b.tiers[i];
+      if (x >= t.x0 && x < t.x1 && z >= t.z0 && z < t.z1) return t.top;
+    }
+  }
+  return -Infinity;
+}
+
+const CITY_RGB = { road: hex('#3c3e44'), walk: hex('#a8a49c'), plaza: hex('#c8b8a0'), lot: hex('#6a6866') };
+// City colours for the ground mesh: asphalt roads, concrete sidewalks, paved plazas and grass parks.
+function cityColor(x, z, out) {
+  const B = world.city, bx = Math.floor(x / B), bz = Math.floor(z / B), P = world.palette;
+  let c = CITY_RGB.road, cat = CAT.CITY;
+  if (x - bx * B >= cityRoad(bx) && z - bz * B >= cityRoad(bz)) {
+    const blk = cityBlock(bx, bz);
+    const inner = x >= blk.x0 + CITY_WALK && x < blk.x1 - CITY_WALK && z >= blk.z0 + CITY_WALK && z < blk.z1 - CITY_WALK;
+    if (!inner) c = CITY_RGB.walk;
+    else if (blk.kind === 'park') { mix(P.grass, P.grass2, smoothstep(-0.5, 0.5, N.b(x * 0.03, z * 0.03)), out); return CAT.GRASS; }
+    else c = blk.kind === 'plaza' ? CITY_RGB.plaza : CITY_RGB.lot;
+  }
+  const r = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453, jit = 0.95 + 0.1 * (r - Math.floor(r));
+  out[0] = c[0] * jit; out[1] = c[1] * jit; out[2] = c[2] * jit;
+  return cat;
+}
+
 // Natural impact craters: one per 140 m cell at a random spot, bowl + raised rim.
 function moonCraters(x, z) {
   const S = 140, cx = Math.floor(x / S), cz = Math.floor(z / S);
@@ -346,7 +465,7 @@ export function addCrater(x, z, r, depth) {
 
 export function clearCraters() { craters.clear(); }
 
-export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7 };
+export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7, CITY: 8 };
 
 function mix(a, b, t, out) {
   out[0] = a[0] + (b[0] - a[0]) * t;
@@ -361,6 +480,7 @@ export function terrainInfo(x, z, h, ny, out) {
   const temp = N.f(x * 0.00035 + 500, z * 0.00035 - 200) + W.tempBias;
   const v = N.b(x * 0.013 + 3, z * 0.013 - 7);
   const sl = W.underwater ? -Infinity : W.seaLevel; // underwater, the seabed gets the land biomes
+  if (W.city && h >= sl + 1.2) return cityColor(x, z, out); // streets, sidewalks, plazas and parks
   let cat;
   if (h < sl + 1.2) {
     mix(P.seabed, P.seabed, 0, out);
