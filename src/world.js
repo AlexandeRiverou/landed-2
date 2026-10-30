@@ -320,7 +320,7 @@ export function cityBlock(bx, bz) {
   const k = cellKey(bx, bz);
   let b = cityPlans.get(k);
   if (!b) {
-    if (cityPlans.size > 40000) cityPlans.clear(); // a very long flight: start over rather than grow forever
+    if (cityPlans.size > 8000) cityPlans.clear(); // a very long flight: start over rather than grow forever
     b = planBlock(bx, bz);
     cityPlans.set(k, b);
   }
