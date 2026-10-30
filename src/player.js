@@ -57,6 +57,7 @@ export class Player {
     this.maneuverCd = 0;
     this.maneuversSeen = new Set();
     this.dodging = false;    // mid barrel roll: shots and bumps miss
+    this.god = false;        // developer menu: no damage, and the ground can't hurt you
     this.shootCd = 0;
     this.bullets = [];
     this.ceilingWarned = 0;
@@ -139,7 +140,7 @@ export class Player {
     // Terrain + water.
     const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z);
     const sea = G.world.seaLevel;
-    const ghost = G.powerups.has('ghost');
+    const ghost = G.powerups.has('ghost') || this.god;
     if (this.pos.y < ground + 1.8) {
       if (ghost) this.pos.y = ground + 1.8; // Ghost Mode: skim the ground instead of hitting it
       else if (this.grace > 0 || this.invuln > 0) {
@@ -308,7 +309,7 @@ export class Player {
   }
 
   damage(n) {
-    if (this.dead || this.invuln > 0 || this.dodging) return;
+    if (this.dead || this.invuln > 0 || this.dodging || this.god) return;
     const G = this.G;
     if (G.powerups.has('shield')) { G.powerups.shieldHit(); return; }
     this.health -= n;

@@ -35,7 +35,8 @@ npm run check     # syntax check every module
 npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN needed)
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
-                  # world mutations, every objective, every boss and relax mode;
+                  # world mutations, every objective, every boss, relax mode and
+                  # the developer menu;
                   # fails on any error
 ```
 
@@ -178,3 +179,23 @@ upward for free.
 
 `window.G` holds the whole game state. `G.step(dt)` advances the simulation without rendering, which is handy for
 scripted tests in a headless browser.
+
+**Secret developer menu** (`src/devmenu.js`): during a flight, hold `1` and `0` together (top row or numpad) for 3
+seconds. A small "Developer menu… 3s" pill counts down while you hold; let go early and nothing happens. The menu
+pauses the game, silences the engine and ducks the music. Close it with `Esc`, the ✕ button, or the same 3 s hold.
+It's a testing aid, so it's deliberately left off the title card.
+
+- **Zones:** jump straight to any of the 20 zones (the next zone change is a full zone's worth of objectives away).
+- **Bosses:** start any of the 12, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
+  where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
+- **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.
+- **Power-ups:** grab any of the 13.
+- **Cheats & tools:** God mode (no damage, and you skim the ground, sea and cave roof like Ghost Mode), Relax Mode
+  on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
+
+Starting a boss or objective replaces the current one and turns Relax Mode off. While the menu is open, gameplay keys
+don't reach the game (`G.input.lock`), so `Space` won't fire behind it.
+
+From the console: `G.devmenu.open()` / `G.devmenu.close()`, `G.player.god = true`, and
+`G.objectives.startType('stars')` to start one objective type right now (unknown types are ignored; it doesn't check
+whether the zone allows it, and it doesn't clear the current objective, the menu does that first).

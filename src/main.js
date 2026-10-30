@@ -15,6 +15,7 @@ import { Mutations } from './mutations.js';
 import { PowerUps } from './powerups.js';
 import { Progress } from './progression.js';
 import { Zones } from './zones.js';
+import { DevMenu } from './devmenu.js';
 import { pick, T } from './texts.js';
 import { installCurvature } from './curve.js';
 
@@ -47,6 +48,7 @@ G.progress = new Progress(G);
 G.powerups = new PowerUps(G);
 G.zones = new Zones(G);
 G.input = new Input(canvas);
+G.devmenu = new DevMenu(G); // secret: hold 1 + 0 for 3 s mid-flight
 
 G.player.spawn(0, 0, Math.random() * Math.PI * 2);
 G.terrain.update(G.player.pos, 999);
@@ -159,6 +161,7 @@ const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
+  G.devmenu.update();
   if (G.paused) {
     if (!G.started) titleCamera(dt);
     G.terrain.update(G.player.pos, 1);
