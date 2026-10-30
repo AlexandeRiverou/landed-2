@@ -140,8 +140,8 @@ export class Player {
     this.prevPos.copy(this.pos);
     this.pos.addScaledVector(this.forward, this.speed * dt).addScaledVector(this.wind, dt);
 
-    // Terrain + water.
-    const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z);
+    // Terrain + water. Heights are asked at your altitude: in a tunnel, the floor and roof are the tunnel's.
+    const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z, this.pos.y);
     const sea = G.world.seaLevel;
     const ghost = G.powerups.has('ghost') || this.god;
     if (this.pos.y < ground + 1.8) {
@@ -165,7 +165,7 @@ export class Player {
       if (G.time - this.surfaceWarned > 10) { G.ui.notify('That\'s the surface. Planes stay under it here. House rules.', 'warn', 2.5, 1); this.surfaceWarned = G.time; }
     }
     // Cave roof. Right after the world changes (or with Ghost Mode) you're moved into the open gap instead.
-    const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z);
+    const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z, this.pos.y);
     if (this.pos.y > roof - 2.5) {
       if (ghost || G.world.underwater) this.pos.y = roof - 2.5; // underwater the roof is the sea surface: never a crash
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = Math.max(ground + 12, roof - 25);
@@ -214,8 +214,8 @@ export class Player {
 
   startManeuver(dir) {
     const G = this.G, M = MANEUVERS[dir];
-    const ground = Math.max(G.terrain.surfaceHeight(this.pos.x, this.pos.z), waterLine());
-    const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z);
+    const ground = Math.max(G.terrain.surfaceHeight(this.pos.x, this.pos.z, this.pos.y), waterLine());
+    const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z, this.pos.y);
     // Turning back through a half loop needs room: 45 m below you for a Split-S, 45 m above for an Immelmann.
     if (dir === 'down' && this.pos.y - ground < 45) { G.ui.notify('Too low for a Split-S! Climb a bit first. The ground is not a stunt partner.', 'warn', 2.5, 1); return; }
     if (dir === 'up' && roof - this.pos.y < 45) { G.ui.notify('No room to loop under this roof. Find a taller bit of cave.', 'warn', 2.5, 1); return; }
@@ -289,7 +289,7 @@ export class Player {
       b.pos.addScaledVector(b.vel, dt);
       b.mesh.position.copy(b.pos);
       if (b.life <= 0) { this.removeBullet(i); continue; }
-      if (b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z)) {
+      if (b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z, b.pos.y)) {
         // Bullets chew small holes in the ground.
         this.G.terrain.deform(b.pos.x, b.pos.z, 8, 1.6);
         this.G.fx.emit(b.pos, 6, { colors: ['#8a6a4a', '#b89a70', '#6a5a4a'], speed: 18, life: 0.7, size: 4, gravity: -30, up: 12 });

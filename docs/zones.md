@@ -36,6 +36,18 @@ ones, all off by default:
   (Blockland).
 - **`hillBase`:** scales the broad rise every mountain range sits on. `1` is normal; Salt Mirror uses `0.05` to stay
   flat.
+- **`ranges`:** added to the mountain selector noise, so ranges spread over more of the land. `0` is normal; Hollow
+  Peaks uses `0.55`.
+- **`tunnels`:** `0..1`, the chance each 720 m square (`TUNNEL_CELL`) gets a tunnel bored through its mountain
+  (Hollow Peaks uses `1`). A tunnel is a gently curving bore, 56–90 m wide, 42–68 m tall and 340–540 m long, with a
+  flat floor and an arched roof. Both ends open at or above the ground, its floor never dips into the sea, and it
+  never leaves its square. Squares where no heading runs deep enough inside a mountain get none. Tunnels are planned
+  lazily per square and cached; `reseed()`, `Terrain.rebuildAll()` and zone changes clear the cache
+  (`clearTunnels()`), so lock the shape mutations (`SHAPE_LOCK`) in a tunnel zone or the bores move under the
+  player. `heightAt()` returns the tunnel floor inside a bore; `tunnelColumn()` gives the floor, the roof underside
+  and the mountain top over it. Only chunks that touch a tunnel build the extra overhang mesh (`buildOverhang()`).
+  For tests and debugging: `tunnelsNear(x, z, r)` lists the tunnels around a point, `tunnelPoint(T, t)` walks
+  one's centre line.
 - **`curve`:** tiny-planet bend: everything is drawn lower by `curve · d²` (Planet Pebble).
 - **`axisCurve` / `curveAxis`:** the same bend measured along one world axis only (`'x'` or `'z'`). Negative bends
   the ground **up**, like the inside of a ring (Ringworld uses `-1 / 2000` across `x`).
@@ -46,6 +58,19 @@ Use `waterLine()` from `src/world.js`, not `world.seaLevel`, whenever you ask "w
 down?". It returns the sea level normally, and `-Infinity` underwater, where the seabed is the ground. The player,
 camera, objectives (`groundAt()`), enemies and the HUD altitude all use it. Only pass it to `Math.max()` and
 comparisons; never use it as a position.
+
+### Asking at an altitude (tunnels)
+
+Over a tunnel, one spot has two grounds: the tunnel floor and the mountain top. `Terrain.surfaceHeight(x, z, y)`,
+`Terrain.ceilingHeight(x, z, y)` and `groundAt(G, x, z, y)` take an optional `y` to pick one:
+
+- `y` below the middle of the rock overhead: you're in the tunnel. Ground is its floor, ceiling is its roof.
+- `y` above that, or no `y`: you're over the mountain. Ground is the mountain top, ceiling is `Infinity`.
+
+**Pass `y` for anything that flies** (player collisions, stunt room checks, bullets, HUD altitude, the camera,
+flying enemies, power-up spawns, the low-fly objective). **Leave it out to put something on the surface** (ground
+enemies, objective targets that stand on the ground), so it lands on top of the mountain, not inside it. Outside tunnel zones `y`
+changes nothing. In tunnel zones the camera is also held 3 m under a tunnel roof.
 
 ## Curvature (`src/curve.js`)
 

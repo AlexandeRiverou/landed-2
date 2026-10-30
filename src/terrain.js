@@ -1,7 +1,7 @@
 // Infinite chunked terrain. Chunks build nearest-first a few per frame; a rebuild
 // (after the world mutates) swaps chunks in progressively so the world "morphs".
 import * as THREE from 'three';
-import { world, heightAt, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt } from './world.js';
+import { world, heightAt, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt, clearTunnels, tunnelInBox, tunnelColumn } from './world.js';
 import { mulberry32, hash3 } from './noise.js';
 import { PROPS, propMaterial } from './models.js';
 
@@ -15,6 +15,9 @@ const SCORCH = (() => { const c = new THREE.Color('#4a3424'); return [c.r, c.g, 
 const rgb = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
 const CEIL_ROCK = [rgb('#6a6080'), rgb('#5a5470'), rgb('#7a7090')];
 const CEIL_GLOW = [rgb('#7af0ff'), rgb('#c07aff'), rgb('#7aff9a')];
+const TUNNEL_ROCK = [rgb('#4a4440'), rgb('#3a3634'), rgb('#57504a')];
+const THIN = 0.01; // overhang thinner than this is no overhang
+const NO_PROPS = 255; // category for tunnel floors and mouths: nothing grows in there
 
 const TABLES = {
   [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], [null, 2]],
@@ -93,6 +96,7 @@ function pickWeighted(rng, table) {
 }
 
 const key = (cx, cz) => cx + ',' + cz;
+const _oh = { floor: 0, under: 0, top: 0 };
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 
@@ -107,7 +111,7 @@ export class Terrain {
     this.water = new Water(G);
   }
 
-  rebuildAll() { this.version++; }
+  rebuildAll() { this.version++; clearTunnels(); } // the tunnels follow the new mountains
 
   // Blast a crater: the height function changes at once; the chunks under it rebuild over the next frames.
   deform(x, z, r, depth) {
@@ -165,6 +169,7 @@ export class Terrain {
     this.G.scene.remove(c.mesh, c.props);
     c.mesh.geometry.dispose();
     if (c.ceil) { this.G.scene.remove(c.ceil); c.ceil.geometry.dispose(); }
+    if (c.over) { this.G.scene.remove(c.over); c.over.geometry.dispose(); }
     for (const m of c.props.children) m.dispose();
   }
 
@@ -173,7 +178,23 @@ export class Terrain {
     const old = this.chunks.get(k);
     const ox = cx * CHUNK, oz = cz * CHUNK;
     const hs = new Float32Array(GW * GW);
-    for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) hs[j * GW + i] = heightAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP);
+    // Tunnel chunks also keep the rock over each bore: its underside (us) and the mountain top (ts).
+    let us = null, ts = null;
+    if (tunnelInBox(ox - STEP, oz - STEP, ox + CHUNK + STEP, oz + CHUNK + STEP)) {
+      us = new Float32Array(GW * GW); ts = new Float32Array(GW * GW);
+      const col = {};
+      let any = false;
+      for (let j = 0; j < GW; j++) {
+        for (let i = 0; i < GW; i++) {
+          const g = j * GW + i;
+          any = tunnelColumn(ox + (i - 1) * STEP, oz + (j - 1) * STEP, col) || any;
+          hs[g] = col.floor; us[g] = col.under; ts[g] = col.top;
+        }
+      }
+      if (!any) us = ts = null; // the tunnel stays in the open air here
+    } else {
+      for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) hs[j * GW + i] = heightAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP);
+    }
 
     const V = SEG + 1;
     const pos = new Float32Array(V * V * 3), nor = new Float32Array(V * V * 3), col = new Float32Array(V * V * 3);
@@ -193,6 +214,11 @@ export class Terrain {
           const k = Math.min(0.8, scorch * 0.14);
           tmp[0] += (SCORCH[0] - tmp[0]) * k; tmp[1] += (SCORCH[1] - tmp[1]) * k; tmp[2] += (SCORCH[2] - tmp[2]) * k;
         }
+        if (us && ts[gi] - us[gi] > THIN) { // a tunnel floor: bare rock, in the dark
+          const r = TUNNEL_ROCK[(i + j) % 3];
+          tmp[0] = r[0] * 0.8; tmp[1] = r[1] * 0.8; tmp[2] = r[2] * 0.8;
+        }
+        if (us && us[gi] !== hs[gi]) cats[idx] = NO_PROPS; // inside a bore or its mouth
         col[idx * 3] = tmp[0]; col[idx * 3 + 1] = tmp[1]; col[idx * 3 + 2] = tmp[2];
       }
     }
@@ -214,8 +240,9 @@ export class Terrain {
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.matrixAutoUpdate = false;
 
-    const chunk = { cx, cz, hs, mesh, version: this.version };
+    const chunk = { cx, cz, hs, us, ts, mesh, version: this.version };
     chunk.props = this.buildProps(chunk, cats);
+    if (us) chunk.over = this.buildOverhang(chunk, index);
     if (world.cave) {
       chunk.cs = new Float32Array(GW * GW);
       for (let j = 0; j < GW; j++) for (let i = 0; i < GW; i++) chunk.cs[j * GW + i] = ceilingAt(ox + (i - 1) * STEP, oz + (j - 1) * STEP, hs[j * GW + i]);
@@ -224,6 +251,7 @@ export class Terrain {
     if (old) this.unload(old);
     this.G.scene.add(mesh, chunk.props);
     if (chunk.ceil) this.G.scene.add(chunk.ceil);
+    if (chunk.over) this.G.scene.add(chunk.over);
     this.chunks.set(k, chunk);
   }
 
@@ -253,10 +281,65 @@ export class Terrain {
     return mesh;
   }
 
+  // The rock over a tunnel for one chunk: the mountain top facing up and the tunnel roof facing down, as
+  // one mesh. Only triangles with some thickness are kept, and the two layers meet where it thins out.
+  buildOverhang(chunk, floorIndex) {
+    const { cx, cz, us, ts } = chunk, V = SEG + 1, VV = V * V, ox = cx * CHUNK, oz = cz * CHUNK;
+    const pos = new Float32Array(VV * 6), col = new Float32Array(VV * 6), thick = new Uint8Array(VV);
+    const tmp = [0, 0, 0];
+    for (let j = 0; j < V; j++) {
+      for (let i = 0; i < V; i++) {
+        const idx = j * V + i, g = (j + 1) * GW + (i + 1), x = ox + i * STEP, z = oz + j * STEP;
+        thick[idx] = ts[g] - us[g] > THIN ? 1 : 0;
+        pos[idx * 3] = x; pos[idx * 3 + 1] = ts[g]; pos[idx * 3 + 2] = z;
+        const nx = ts[g - 1] - ts[g + 1], nz = ts[g - GW] - ts[g + GW];
+        terrainInfo(x, z, ts[g], (2 * STEP) / Math.hypot(nx, 2 * STEP, nz), tmp); // the mountain keeps its biomes
+        col[idx * 3] = tmp[0]; col[idx * 3 + 1] = tmp[1]; col[idx * 3 + 2] = tmp[2];
+        const u = (VV + idx) * 3, r = TUNNEL_ROCK[hash3(i, j, cx * 31 + cz) % 3];
+        pos[u] = x; pos[u + 1] = us[g]; pos[u + 2] = z;
+        col[u] = r[0]; col[u + 1] = r[1]; col[u + 2] = r[2];
+      }
+    }
+    const index = [];
+    for (let k = 0; k < floorIndex.length; k += 3) {
+      const a = floorIndex[k], b = floorIndex[k + 1], c = floorIndex[k + 2];
+      if (!(thick[a] | thick[b] | thick[c])) continue;
+      index.push(a, b, c, VV + a, VV + c, VV + b); // top faces up, the roof underside (reversed) faces down
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(new Uint16Array(index), 1));
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geo, this.material);
+    mesh.matrixAutoUpdate = false;
+    return mesh;
+  }
+
+  // Rock hanging over (x, z) in a tunnel zone, as { under, top }; null where nothing overhangs.
+  overhang(x, z) {
+    if (!world.tunnels) return null;
+    const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+    const ch = this.chunks.get(key(cx, cz));
+    if (ch) {
+      if (!ch.us) return null;
+      const fx = (x - cx * CHUNK) / STEP, fz = (z - cz * CHUNK) / STEP;
+      _oh.under = gridHeight(ch.us, fx, fz); _oh.top = gridHeight(ch.ts, fx, fz);
+    } else tunnelColumn(x, z, _oh);
+    return _oh.top - _oh.under > THIN ? _oh : null;
+  }
+
   // Height of the rendered cave roof above (x, z); Infinity in the open. Underwater, the sea surface
   // (a little below it) is the roof, so everything placed in the air stays in the water.
-  ceilingHeight(x, z) {
+  // Give `y` to ask from inside a tunnel: below the middle of the rock over it, the tunnel roof is
+  // your roof; above that (or without y) you're over the mountain, with open sky.
+  ceilingHeight(x, z, y = Infinity) {
     const sea = world.underwater ? world.seaLevel - SURFACE_MARGIN : Infinity;
+    if (world.tunnels) {
+      const o = this.overhang(x, z);
+      return o && y < (o.under + o.top) / 2 ? Math.min(sea, o.under) : sea;
+    }
     if (!world.cave) return sea;
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const ch = this.chunks.get(key(cx, cz));
@@ -264,8 +347,13 @@ export class Terrain {
     return Math.min(sea, gridHeight(ch.cs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP));
   }
 
-  // Exact height of the rendered (triangulated) surface; falls back to the noise.
-  surfaceHeight(x, z) {
+  // Exact height of the rendered (triangulated) surface; falls back to the noise. Over a tunnel it's the
+  // mountain top, unless `y` is below the middle of the rock: then it's the tunnel floor.
+  surfaceHeight(x, z, y = Infinity) {
+    if (world.tunnels) {
+      const o = this.overhang(x, z);
+      if (o && y >= (o.under + o.top) / 2) return o.top;
+    }
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const ch = this.chunks.get(key(cx, cz));
     if (!ch) return heightAt(x, z);
@@ -274,8 +362,11 @@ export class Terrain {
 
   buildProps(chunk, cats) {
     const group = new THREE.Group();
-    const { cx, cz, hs } = chunk;
+    const { cx, cz, hs, us, ts } = chunk;
     const ox = cx * CHUNK, oz = cz * CHUNK;
+    // Over a tunnel, things in the air float above the mountain top, and nothing stands under a rock lip.
+    const top = (u, v) => (us ? Math.max(gridHeight(hs, u, v), gridHeight(ts, u, v)) : gridHeight(hs, u, v));
+    const overhung = (u, v) => us && gridHeight(ts, u, v) - gridHeight(us, u, v) > THIN;
     const rng = mulberry32(hash3(cx, cz, world.seed * 7 + world.propSalt));
     const theme = THEMES[world.propTheme] || {};
     const buckets = {};
@@ -295,6 +386,7 @@ export class Terrain {
       if (!type) continue;
       if (type in theme) type = theme[type]; // a theme can swap a prop, or remove it (null)
       if (!type) continue;
+      if (overhung(u, v)) continue;
       const x = ox + u * STEP, z = oz + v * STEP;
       const h = gridHeight(hs, u, v);
       if (cat === CAT.SEA && h > world.seaLevel - 3) continue;
@@ -308,7 +400,7 @@ export class Terrain {
       if (list) {
         let type = list[Math.floor(rng() * list.length)];
         if (type in theme) type = theme[type];
-        if (type) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
+        if (type && !overhung(u, v)) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
       }
     }
     if (world.underwater) { // the boats and whales up on the surface
@@ -319,7 +411,7 @@ export class Terrain {
     }
     if (rng() < world.floatingIslands && !world.cave) {
       const u = rng() * SEG, v = rng() * SEG;
-      place('floatingIsland', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 140 + rng() * 240, oz + v * STEP);
+      place('floatingIsland', ox + u * STEP, Math.max(top(u, v), world.seaLevel) + 140 + rng() * 240, oz + v * STEP);
     }
     if (world.underwater) { // where the sky would have balloons, the sea has fish
       for (let k = 0; k < 2; k++) {
@@ -329,7 +421,7 @@ export class Terrain {
       }
     } else if (rng() < 0.07 * world.balloons && !world.cave) { // nothing floats above a cave roof
       const u = rng() * SEG, v = rng() * SEG;
-      place('hotAirBalloon', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 90 + rng() * 200, oz + v * STEP);
+      place('hotAirBalloon', ox + u * STEP, Math.max(top(u, v), world.seaLevel) + 90 + rng() * 200, oz + v * STEP);
     }
 
     for (const type in buckets) {

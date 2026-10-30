@@ -464,10 +464,10 @@ export class Enemies {
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else {
-        const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) + (e.boss ? e.radius : 12);
+        const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), waterLine()) + (e.boss ? e.radius : 12); // tunnels: enemies can follow you in
         if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
-        const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z) - (e.boss ? e.radius : 10);
+        const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y) - (e.boss ? e.radius : 10);
         if (e.pos.y > roof) { e.pos.y = Math.max(roof, g); if (e.vel.y > 0) e.vel.y = 0; }
       }
       this.animate(e, dt);
@@ -708,7 +708,7 @@ export class Enemies {
       s.pos.addScaledVector(s.vel, dt);
       const hit = !p.dead && s.pos.distanceToSquared(p.pos) < s.r2 * p.sizeScale * p.sizeScale;
       if (hit) p.damage(s.dmg);
-      const ground = !hit && s.pos.y < this.G.terrain.surfaceHeight(s.pos.x, s.pos.z);
+      const ground = !hit && s.pos.y < this.G.terrain.surfaceHeight(s.pos.x, s.pos.z, s.pos.y);
       if (ground) {
         // Orbs that miss blow holes in the landscape.
         this.G.terrain.deform(s.pos.x, s.pos.z, 5, 2.5);
@@ -722,7 +722,7 @@ export class Enemies {
     const G = this.G, e = this.list[i];
     e.dead = true;
     // Blowing up close to the ground leaves a crater: bosses leave a big one.
-    const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z);
+    const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
     if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
     if (e.boss) {
       for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-20, 20), rand(-15, 15), rand(-20, 20)))), k * 150);

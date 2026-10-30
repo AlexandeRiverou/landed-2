@@ -373,6 +373,75 @@ try {
         }
         out.caveObjective.underRoof = out.caveObjective.aboveRoof.length === 0;
       }
+      if (z.world.tunnels) {
+        // Hollow Peaks: fly clean through the nearest tunnel with no safety net (steered along its centre line),
+        // bump its roof, then check that above the same mountain the top is the ground and the sky is open.
+        const W = await import('./src/world.js');
+        const p = G.player, V = pp.constructor, hp = p.health, cooldown = G.objectives.cooldown;
+        const T = W.tunnelsNear(pp.x, pp.z, 3000).sort((a, b) => Math.hypot(a.ox - pp.x, a.oz - pp.z) - Math.hypot(b.ox - pp.x, b.oz - pp.z))[0];
+        if (!T) throw new Error('Hollow Peaks: no tunnel found');
+        for (const t of [0, T.len / 2, T.len]) { const c = W.tunnelPoint(T, t); G.terrain.update(new V(c.x, 0, c.z), 200); } // its chunks, built now
+        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        G.objectives.cooldown = 1e9;
+        const puTimer = G.powerups.timer; // no power-up (Ghost Mode!) gets picked up on the way through
+        G.powerups.timer = 1e9;
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.powerups.active.clear();
+        p.health = 1e6; // enemies aren't what this checks
+        p.maneuver = null;
+        let reason = null;
+        const crash = p.crash.bind(p);
+        p.crash = (r) => { reason ||= r; crash(r); };
+        const along = () => (p.pos.x - T.ax) * T.dx + (p.pos.z - T.az) * T.dz;
+        const placeAt = (t, lift) => { const c = W.tunnelPoint(T, t); p.pos.set(c.x, c.floor + T.H * lift, c.z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true; };
+        const aim = (t) => { const c = W.tunnelPoint(T, Math.min(T.len + 100, t + 25)); p.nudgeToward(new V(c.x, c.floor + T.H * 0.42, c.z), 1e9, 1); p.updateAxes(); };
+        placeAt(2, 0.42);
+        let under = 0, t = 2;
+        for (let k = 0; k < 30 * 40 && t < T.len + 10 && !p.dead; k++) {
+          p.invuln = 0; p.grace = 0;
+          aim(t);
+          G.step(1 / 30);
+          t = along();
+          if (Number.isFinite(G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y))) under++;
+        }
+        const tunnel = { len: Math.round(T.len), width: Math.round(T.hw * 2), height: Math.round(T.H), dead: p.dead, reason, through: t >= T.len, underSecs: +(under / 30).toFixed(1) };
+        // Nose up hard in the middle: the roof is solid rock...
+        const mid = W.tunnelPoint(T, T.len / 2), noseUp = new p.quat.constructor().setFromAxisAngle(new V(1, 0, 0), 1.2);
+        const pitchUp = () => { p.quat.setFromAxisAngle(new V(0, 1, 0), Math.atan2(-T.dx, -T.dz)).multiply(noseUp); p.updateAxes(); };
+        reason = null;
+        placeAt(T.len / 2, 0.4);
+        for (let k = 0; k < 90 && !p.dead; k++) { p.invuln = 0; p.grace = 0; pitchUp(); G.step(1 / 30); }
+        tunnel.roofCrash = reason;
+        // ...and Ghost Mode skims it instead, staying inside.
+        reason = null;
+        placeAt(T.len / 2, 0.4);
+        G.powerups.active.set('ghost', 10);
+        let ghostOut = 0;
+        for (let k = 0; k < 45 && !p.dead; k++) {
+          p.invuln = 0; p.grace = 0; pitchUp(); G.step(1 / 30);
+          if (!Number.isFinite(G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y))) ghostOut++; // popped out of the rock?
+        }
+        G.powerups.active.clear();
+        tunnel.ghostInside = !p.dead && ghostOut === 0;
+        // Over the mountain at the same spot: its top is the ground, with no roof; inside, the bore's floor and roof.
+        const top = G.terrain.surfaceHeight(mid.x, mid.z), inY = mid.floor + T.H * 0.4;
+        const floorIn = G.terrain.surfaceHeight(mid.x, mid.z, inY), roofIn = G.terrain.ceilingHeight(mid.x, mid.z, inY);
+        Object.assign(tunnel, { top: Math.round(top), floorIn: Math.round(floorIn), roofIn: Math.round(roofIn) });
+        tunnel.rockAbove = roofIn > floorIn + 30 && top > roofIn + 20 && Math.abs(floorIn - mid.floor) < 1;
+        tunnel.openOnTop = G.terrain.surfaceHeight(mid.x, mid.z, top + 30) === top && G.terrain.ceilingHeight(mid.x, mid.z, top + 30) === Infinity && G.terrain.ceilingHeight(mid.x, mid.z) === Infinity;
+        // The HUD altitude over the mountain is measured to its top, not to the tunnel floor under it.
+        p.pos.set(mid.x, top + 30, mid.z); p.prevPos.copy(p.pos); p.dead = false;
+        p.quat.set(0, 0, 0, 1); p.updateAxes();
+        p.invuln = 99;
+        G.step(1 / 30);
+        tunnel.hudAlt = +document.getElementById('speed').textContent.match(/ALT (\d+)/)[1];
+        tunnel.hudToTop = tunnel.hudAlt === Math.round(p.pos.y - G.terrain.surfaceHeight(p.pos.x, p.pos.z)) && tunnel.hudAlt < p.pos.y - mid.floor - 50;
+        out.tunnel = tunnel;
+        p.crash = crash;
+        p.health = hp;
+        G.objectives.cooldown = cooldown;
+        G.powerups.timer = puTimer;
+      }
       if (z.name === 'Meteor Belt') {
         // A big asteroid shot apart breaks into smaller ones.
         const a = G.zones.asteroids;
@@ -503,13 +572,16 @@ try {
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
-    [report.zones.length >= 26, 'every zone loads (26+)'],
+    [report.zones.length >= 27, 'every zone loads (27+)'],
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
     [report.zones.filter((z) => z.name !== 'Crystal Caverns' && z.name !== 'Sunken Reef').every((z) => z.roof === null), 'only the cave has a roof (and the reef, see below)'],
     [(({ underwater: u }, r) => r && r.roof === r.sea - 4 && r.planeUnderRoof && !u.dead && u.pressedSecs >= 1 && u.maxY < u.sea && u.aboveSurface.length === 0 && u.hues >= 6)(report, report.zones.find((z) => z.name === 'Sunken Reef')), 'underwater: the surface is the roof, the plane and objectives stay under it, and the seabed is colourful'],
     [report.zones.find((z) => z.name === 'Planet Pebble').curve > 1 && report.zones[0].curve < 0.5, 'Planet Pebble curves the horizon (and nothing else does)'],
     [(({ axisCurve: k, axis: a }) => k < -1 && a[0] === 1 && a[1] === 0)(report.zones.find((z) => z.name === 'Ringworld')), 'Ringworld bends the ground up, across one axis only'],
     [report.zones.filter((z, i) => z.name !== 'Ringworld' && report.zones[i - 1]?.name !== 'Ringworld').every((z) => Math.abs(z.axisCurve) < 0.05), 'no other zone bends across an axis'],
+    [(({ tunnel: t }) => t && !t.dead && t.through && t.underSecs >= 2)(report), 'Hollow Peaks: the plane flies clean through a tunnel in the mountains'],
+    [(({ tunnel: t }) => t && t.roofCrash === 'roof' && t.ghostInside)(report), 'Hollow Peaks: the tunnel roof is solid (Ghost Mode skims it instead)'],
+    [(({ tunnel: t }) => t && t.rockAbove && t.openOnTop && t.hudToTop)(report), 'Hollow Peaks: above a tunnel, the mountain top is the ground (open sky, HUD altitude to the top)'],
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],

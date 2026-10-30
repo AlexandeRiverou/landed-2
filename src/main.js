@@ -64,8 +64,9 @@ function updateCamera(dt, snap = false) {
   const p = G.player;
   _u.copy(Y).lerp(p.up, 0.45).normalize();
   _d.copy(p.pos).addScaledVector(p.forward, -26).addScaledVector(_u, 7.5);
-  const ground = Math.max(G.terrain.surfaceHeight(_d.x, _d.z), waterLine()) + 3;
+  const ground = Math.max(G.terrain.surfaceHeight(_d.x, _d.z, _d.y), waterLine()) + 3;
   if (_d.y < ground) _d.y = ground;
+  if (world.tunnels) _d.y = Math.min(_d.y, G.terrain.ceilingHeight(_d.x, _d.z, _d.y) - 3); // in a tunnel, stay under its roof
   if (world.underwater) _d.y = Math.min(_d.y, world.seaLevel - 2); // keep the camera in the water
   if (snap) camera.position.copy(_d);
   else camera.position.lerp(_d, 1 - Math.exp(-dt * 6));

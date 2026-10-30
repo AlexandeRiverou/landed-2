@@ -2,7 +2,7 @@
 // sky, weather, music). Every few completed objectives you fly on into the next one, from green
 // meadows up through the stratosphere into orbit, a meteor belt, the Moon and beyond.
 import * as THREE from 'three';
-import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters } from './world.js';
+import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearTunnels } from './world.js';
 import { Asteroids } from './asteroids.js';
 import { CURVE, AXIS_CURVE, CURVE_AXIS, noCurve } from './curve.js';
 import { disposeTree } from './models.js';
@@ -38,6 +38,12 @@ export const ZONES = [
     name: 'Frozen Peaks', blurb: 'Jagged ice-cold mountains. The snowmen here are judgmental.',
     world: { palette: 'Winter Wonderland', amp: 1.9, terrace: 0.9, snowLine: 60, tempBias: -0.5 },
     sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'dusk', lock: [...LOCK, 'weather'],
+  },
+  {
+    name: 'Hollow Peaks', blurb: 'Huge mountains with holes clean through them. Yes, you can fly in there. The mountain is fine with it.',
+    world: { palette: 'peaks', ranges: 0.55, hillBase: 3, tunnels: 1, amp: 2.2, roughness: 1.1, terrace: 0.35, mesa: 0.5, canyon: 1.6, canyonWidth: 1.8, spikes: 0.5, seaLevel: -30, snowLine: 480, floatingIslands: 0.1, tempBias: -0.15 },
+    sky: 'morning', weather: 'clear', clouds: ['#ffffff', 30], fog: 1.15, mood: 'day',
+    lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'weather', 'islands'], // reshaped mountains would move the tunnels under you
   },
   {
     name: 'Crystal Caverns', blurb: 'You flew into a cave. There is a ceiling now. Please respect the ceiling.',
@@ -191,6 +197,7 @@ export class Zones {
     world.palette = ZONE_PALETTES[palette] || PALETTES.find((p) => p.name === palette) || PALETTES[0];
     if (!keepSeed) reseed((Math.random() * 1e9) | 0); // a fresh landscape for every zone
     clearCraters(); // the old zone's blast holes don't belong in the new world
+    clearTunnels(); // nor its tunnels
     G.sky.setPreset(z.sky, instant);
     G.sky.weather.set(z.weather);
     G.sky.clouds.setStyle(z.clouds[0], z.clouds[1], z.clouds[2] ?? 440); // default cloud layer height
