@@ -35,7 +35,7 @@ try { commit ||= execSync('git rev-parse HEAD', { cwd: root }).toString().trim()
 const version = process.env.RELEASE_VERSION || (commit ? commit.slice(0, 7) : 'dev');
 await writeFile(join(dist, 'VERSION.json'), JSON.stringify({ version, commit, three: threeVersion, builtAt: new Date().toISOString() }, null, 2) + '\n');
 await writeFile(join(dist, 'README.txt'), [
-  `Loop-de-Whoops ${version}`,
+  `Landed ${version}`,
   '',
   'Browsers block ES modules on file://, so serve this folder with any static server, e.g.',
   '  python3 -m http.server 8000',

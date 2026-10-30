@@ -82,7 +82,7 @@ The preview shows the work under review, not necessarily `main`. After a merge, 
 
 ## Project quick reference
 
-- Loop-de-Whoops: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.
+- Landed: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.
 - `window.G` holds the game state in the browser. `G.step(dt)` advances the simulation without rendering, which is
   useful for scripted tests.
 - Build & Release: `.github/workflows/build-release.yml` runs check, build and smoke test on every PR into `main`.
