@@ -175,7 +175,7 @@ export function mkFollow(G) {
   }
   const f = new THREE.Vector3(G.player.forward.x, 0, G.player.forward.z).normalize();
   leader.position.copy(G.player.pos).addScaledVector(f, 220);
-  leader.position.y = Math.max(leader.position.y, clearance(G, leader.position.x, leader.position.z) + 60);
+  leader.position.y = underRoof(G, leader.position.x, leader.position.z, Math.max(leader.position.y, clearance(G, leader.position.x, leader.position.z) + 60), 35);
   G.scene.add(leader);
   const heading = f.clone(), vel = f.clone().multiplyScalar(44);
   let need = 14, near = 90, time = 0, wasClose = false;
@@ -197,6 +197,7 @@ export function mkFollow(G) {
       want.y = THREE.MathUtils.clamp((cruise - leader.position.y) * 0.5, -12, 16);
       vel.lerp(want, 1 - Math.exp(-dt * 1.5));
       leader.position.addScaledVector(vel, dt);
+      leader.position.y = underRoof(G, leader.position.x, leader.position.z, leader.position.y, 15); // stalactites come fast: never fly into one
       anim(leader, dt);
       leader.lookAt(_a.copy(leader.position).add(vel));
       const u = leader.children[0].userData;
