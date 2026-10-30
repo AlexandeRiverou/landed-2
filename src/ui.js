@@ -107,7 +107,8 @@ export class UI {
   }
 
   flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }
-  tint(color, seconds) { this.el.tint.style.background = color; this.el.tint.style.opacity = 0.55; this.tintTimer = seconds; }
+  // Soft edge vignette in `color`; the centre half of the screen is left untouched.
+  tint(color, seconds) { this.el.tint.style.background = `radial-gradient(ellipse at center, transparent 50%, ${color}88 80%, ${color}dd 100%)`; this.el.tint.style.opacity = 1; this.tintTimer = seconds; }
 
   update(dt) {
     const G = this.G, e = this.el, p = G.player;
