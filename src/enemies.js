@@ -386,6 +386,8 @@ export class Enemies {
     const def = TYPES[type];
     const mesh = def.make(this.hats);
     mesh.position.copy(pos);
+    // In a cave, nothing starts inside the roof (the per-frame clamp in update() only kicks in after the first move).
+    if (!def.ground) mesh.position.y = Math.min(mesh.position.y, this.G.terrain.ceilingHeight(pos.x, pos.z) - 10);
     this.G.scene.add(mesh);
     const e = {
       type, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp: def.hp, radius: def.radius * (opts.scale || 1),

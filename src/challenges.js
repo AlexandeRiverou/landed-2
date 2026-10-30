@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
-import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, BUZZ } from './objectives.js';
+import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -98,7 +98,7 @@ export function mkGallery(G) {
   for (let k = 0; k < n; k++) {
     const m = makeBalloon(colors[k % colors.length]);
     m.position.copy(center).add(new THREE.Vector3(rand(-70, 70), rand(-25, 35), rand(-70, 70)));
-    m.position.y = Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25);
+    m.position.y = underRoof(G, m.position.x, m.position.z, Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25), 15);
     m.userData.phase = Math.random() * 10;
     G.scene.add(m);
     items.push(m);
@@ -124,7 +124,7 @@ export function mkGallery(G) {
         anim(m, dt);
         const ph = this.t + m.userData.phase;
         m.position.x += Math.sin(ph * 0.7) * dt * 6; // gentle sway: a moving target
-        m.position.y += Math.sin(ph) * dt * 3;
+        m.position.y = underRoof(G, m.position.x, m.position.z, m.position.y + Math.sin(ph) * dt * 3, 15);
         const r2 = (6 * scale) ** 2;
         for (let b = bullets.length - 1; b >= 0; b--) {
           if (bullets[b].pos.distanceToSquared(_b.copy(m.position).setY(m.position.y + 1)) > r2) continue;
@@ -175,7 +175,7 @@ export function mkFollow(G) {
   }
   const f = new THREE.Vector3(G.player.forward.x, 0, G.player.forward.z).normalize();
   leader.position.copy(G.player.pos).addScaledVector(f, 220);
-  leader.position.y = Math.max(leader.position.y, clearance(G, leader.position.x, leader.position.z) + 60);
+  leader.position.y = underRoof(G, leader.position.x, leader.position.z, Math.max(leader.position.y, clearance(G, leader.position.x, leader.position.z) + 60), 35);
   G.scene.add(leader);
   const heading = f.clone(), vel = f.clone().multiplyScalar(44);
   let need = 14, near = 90, time = 0, wasClose = false;
@@ -197,6 +197,7 @@ export function mkFollow(G) {
       want.y = THREE.MathUtils.clamp((cruise - leader.position.y) * 0.5, -12, 16);
       vel.lerp(want, 1 - Math.exp(-dt * 1.5));
       leader.position.addScaledVector(vel, dt);
+      leader.position.y = underRoof(G, leader.position.x, leader.position.z, leader.position.y, 15); // stalactites come fast: never fly into one
       anim(leader, dt);
       leader.lookAt(_a.copy(leader.position).add(vel));
       const u = leader.children[0].userData;
@@ -381,6 +382,7 @@ export function mkTour(G) {
     const m = makeLandmark(kind, rand(4, 5.5));
     g.add(m);
     g.position.set(at.x, groundAt(G, at.x, at.z) - 2, at.z);
+    fitUnderRoof(G, g, m.userData.height);
     G.scene.add(g);
     f.applyAxisAngle(Y, rand(-0.9, 0.9));
     at = at.clone().addScaledVector(f, rand(300, 380));
@@ -395,7 +397,7 @@ export function mkTour(G) {
     desc: `Visit ${sites.map((s) => `the ${s.name}`).join(', then ')}. In that order. Photos encouraged.`,
     caps: new Set(['grow', 'approach', 'teleport']),
     signText: ['TOUR', 'NEXT STOP →'],
-    target() { const s = cur(); return top.set(s.g.position.x, s.g.position.y + s.m.userData.height * s.g.scale.x + 15, s.g.position.z); },
+    target() { const s = cur(); return top.set(s.g.position.x, underRoof(G, s.g.position.x, s.g.position.z, s.g.position.y + s.m.userData.height * s.g.scale.x + 15, 15), s.g.position.z); },
     onUpdate(dt, G) {
       for (const s of sites) { anim(s.g, dt); s.g.rotation.y += dt * 0.2; }
       const s = cur();
