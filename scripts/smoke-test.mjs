@@ -280,7 +280,7 @@ try {
     out.zoneAdvanced = G.zones.index === zone0 + 1;
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
-    const { CURVE } = await import('./src/curve.js');
+    const { CURVE, AXIS_CURVE, CURVE_AXIS } = await import('./src/curve.js');
     for (let i = 0; i < zoneCount; i++) {
       G.zones.enter(i);
       step(90);
@@ -290,7 +290,71 @@ try {
         name: z.name, ground: Math.round(ground), asteroids: G.zones.asteroids.list.length,
         roof: Number.isFinite(roof) ? Math.round(roof) : null, gap: Number.isFinite(roof) ? Math.round(roof - ground) : null,
         planeUnderRoof: pp.y < roof, curve: +(CURVE.value * 1e4).toFixed(2),
+        axisCurve: +(AXIS_CURVE.value * 1e4).toFixed(2), axis: [CURVE_AXIS.value.x, CURVE_AXIS.value.y], sea: G.world.seaLevel,
       });
+      if (z.world.underwater) {
+        // Underwater: nose held up for 8 s with no safety net. The surface holds the plane under it instead of crashing it.
+        // Start in open water (the game's 8 s zone grace would cover a hill under the plane; this flight has none):
+        // level, mid-way between seabed and surface, over a heading whose seabed stays well under the climb.
+        const p = G.player, hp = p.health, sea = G.world.seaLevel, V = pp.constructor, Q = p.quat.constructor; // THREE.Vector3 / Quaternion
+        const UP = new V(0, 1, 0), PITCH = 0.6;
+        const clear = (x, z, dir, y0) => {
+          for (let d = 0; d <= 600; d += 10) {
+            const climb = Math.min(sea - 7, y0 + d * Math.tan(PITCH) * 0.7); // below the real climb (speed drops nose-up)
+            if (G.terrain.surfaceHeight(x + dir.x * d, z + dir.z * d) > climb - 15) return false;
+          }
+          return true;
+        };
+        let start = null;
+        for (let r = 0; r <= 1200 && !start; r += 150) {
+          for (let a = 0; a < 8 && !start; a++) {
+            const x = pp.x + Math.cos(a * Math.PI / 4) * r, z = pp.z + Math.sin(a * Math.PI / 4) * r;
+            const y0 = (G.terrain.surfaceHeight(x, z) + sea) / 2;
+            for (let h = 0; h < 16 && !start; h++) {
+              const yaw = h * Math.PI / 8, dir = new V(-Math.sin(yaw), 0, -Math.cos(yaw)); // forward for this yaw
+              if (clear(x, z, dir, y0)) start = { x, y: y0, z, yaw };
+            }
+          }
+        }
+        if (!start) throw new Error('underwater: no open water found for the surface check');
+        const nose = new Q().setFromAxisAngle(UP, start.yaw).multiply(new Q().setFromAxisAngle(new V(1, 0, 0), PITCH));
+        pp.set(start.x, start.y, start.z);
+        p.prevPos.copy(pp);
+        p.maneuver = null;
+        p.health = 1e6; // enemies aren't what this checks
+        let maxY = -Infinity, crashed = false, atSurface = 0;
+        for (let k = 0; k < 240; k++) {
+          p.invuln = 0; p.grace = 0;
+          p.quat.copy(nose); p.updateAxes(); // holding the stick back: keep pushing into the surface
+          G.step(1 / 30);
+          crashed ||= p.dead;
+          maxY = Math.max(maxY, p.pos.y);
+          if (p.pos.y > sea - 10) atSurface++;
+        }
+        out.underwater = { sea, startY: Math.round(start.y), maxY: Math.round(maxY), dead: crashed, pressedSecs: +(atSurface / 30).toFixed(1) };
+        p.health = hp;
+        // Fresh objectives keep their targets in the water.
+        out.underwater.aboveSurface = [];
+        for (const type of ['hoop', 'chain', 'stars', 'balloons']) {
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+          G.objectives.completed = 1;
+          G.objectives.recent = window.OBJ_FOR_TEST.OBJECTIVE_TYPES.filter((t) => t !== type);
+          G.objectives.next();
+          for (let i = 0; i < 30; i++) {
+            const t = G.objectives.current?.target();
+            if (t && t.y >= G.world.seaLevel) { out.underwater.aboveSurface.push(type); break; }
+            step(1);
+          }
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        }
+        // The seabed gets biome colours: count distinct hues in the loaded terrain (one flat seabed colour would be ~1).
+        const hues = new Set();
+        for (const c of [...G.terrain.chunks.values()].slice(0, 6)) {
+          const col = c.mesh.geometry.attributes.color.array;
+          for (let i = 0; i < col.length; i += 3) { const sum = col[i] + col[i + 1] + col[i + 2] || 1; hues.add(`${(col[i] / sum).toFixed(2)},${(col[i + 1] / sum).toFixed(2)}`); }
+        }
+        out.underwater.hues = hues.size;
+      }
       if (z.world.cave) {
         // Every objective the cave offers keeps its targets under the roof (sampled for 2 s each, as items drift).
         out.caveObjective = { checked: 0, aboveRoof: [] };
@@ -439,10 +503,13 @@ try {
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
-    [report.zones.length >= 20, 'every zone loads (20+)'],
+    [report.zones.length >= 26, 'every zone loads (26+)'],
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
-    [report.zones.filter((z) => z.name !== 'Crystal Caverns').every((z) => z.roof === null), 'only the cave has a roof'],
+    [report.zones.filter((z) => z.name !== 'Crystal Caverns' && z.name !== 'Sunken Reef').every((z) => z.roof === null), 'only the cave has a roof (and the reef, see below)'],
+    [(({ underwater: u }, r) => r && r.roof === r.sea - 4 && r.planeUnderRoof && !u.dead && u.pressedSecs >= 1 && u.maxY < u.sea && u.aboveSurface.length === 0 && u.hues >= 6)(report, report.zones.find((z) => z.name === 'Sunken Reef')), 'underwater: the surface is the roof, the plane and objectives stay under it, and the seabed is colourful'],
     [report.zones.find((z) => z.name === 'Planet Pebble').curve > 1 && report.zones[0].curve < 0.5, 'Planet Pebble curves the horizon (and nothing else does)'],
+    [(({ axisCurve: k, axis: a }) => k < -1 && a[0] === 1 && a[1] === 0)(report.zones.find((z) => z.name === 'Ringworld')), 'Ringworld bends the ground up, across one axis only'],
+    [report.zones.filter((z, i) => z.name !== 'Ringworld' && report.zones[i - 1]?.name !== 'Ringworld').every((z) => Math.abs(z.axisCurve) < 0.05), 'no other zone bends across an axis'],
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],

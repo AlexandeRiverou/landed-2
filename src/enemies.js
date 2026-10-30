@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
+import { waterLine } from './world.js';
 
 const TYPES = {
   drone: { hp: 2, radius: 5, dmg: 18, speed: 38, make: makeDrone, score: 50, minScore: 0, weight: 3, kamikaze: true, name: 'Angry Drone' },
@@ -424,9 +425,9 @@ export class Enemies {
     // Straight ahead, inside the camera's view, so you see them coming.
     const d = rand(300, 500), side = rand(-130, 130);
     const pos = p.pos.clone().addScaledVector(_v, d).addScaledVector(_w, side);
-    const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), G.world.seaLevel);
+    const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), waterLine());
     if (TYPES[type].ground) {
-      if (G.terrain.surfaceHeight(pos.x, pos.z) < G.world.seaLevel) return; // cannons can't swim
+      if (G.terrain.surfaceHeight(pos.x, pos.z) < waterLine()) return; // cannons can't swim (on a seabed they don't have to)
       if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
     } else pos.y = Math.min(Math.max(p.pos.y + rand(-15, 35), g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
@@ -463,7 +464,7 @@ export class Enemies {
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else {
-        const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), G.world.seaLevel) + (e.boss ? e.radius : 12);
+        const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) + (e.boss ? e.radius : 12);
         if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         if (e.pos.y < g) { e.pos.y = g; if (e.vel.y < 0) e.vel.y = 0; }
         const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z) - (e.boss ? e.radius : 10);

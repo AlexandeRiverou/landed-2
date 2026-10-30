@@ -87,22 +87,34 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. There are 20, in order:
+colours, props, sky, weather and music mood. There are 26, in order:
 
 - Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
 - **Crystal Caverns:** a real cave. A rock roof with stalactites hangs over everything, the lakes glow, and glowing
   mushrooms and stalagmites grow on the floor. Hit the roof and you crash.
-- Volcano Land (lava seas, falling ash) → Tropical Archipelago → **Giant's Garden** (everything is 3× bigger) →
-  Mushroom Forest
+- Volcano Land (lava seas, falling ash) → Tropical Archipelago
+- **Sunken Reef:** you fly underwater. Coral, kelp, fish schools and shipwrecks on a colourful seabed; boats and
+  whales float on the glowing surface above. The surface is the ceiling: it holds you a few metres under it instead
+  of crashing you.
+- **Giant's Garden** (everything is 3× bigger) → Mushroom Forest
+- **Neon Grid:** synthwave. Pointy black mountains, glowing magenta-to-cyan grid lines, and a striped retro sun on
+  the horizon.
 - **Princess Kingdom:** pink fairy-tale castles, heart-shaped trees, unicorns, pumpkin carriages and falling petals.
-- Candy Kingdom → Sky Islands → Stratosphere (above a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt
-  (asteroids you can shoot apart) → The Moon (craters, Earthrise) → **Mars** (red canyons, dust, two tiny moons)
+- Candy Kingdom → **Blockland** (the ground is made of 24 m blocks, the trees are cubes) → **Salt Mirror** (a nearly
+  flat salt plain under a sheet of shallow water, pastel sky)
+- Sky Islands → Stratosphere (above a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt
+  (asteroids you can shoot apart)
+- **Gas Giant:** no ground at all. Stripy cloud decks scroll far below, and a huge ringed planet hangs in a hazy
+  orange sky.
+- The Moon (craters, Earthrise) → **Mars** (red canyons, dust, two tiny moons)
 - **Planet Pebble:** a planet so small the ground visibly curves away toward a close horizon (`src/curve.js` bends
   every vertex down by its squared distance from the camera; gameplay stays flat).
+- **Ringworld:** you live on the inside of a ring. The ground curves **up** on both sides across one axis and stays
+  flat along it, and the far side of the ring arches overhead.
 - Alien World. Then it loops for lap 2.
 
 The current zone and how many objectives until the next show under your rank. Random world changes still happen inside
-a zone, but can't break its identity.
+a zone, but can't break its identity. To add or change a zone, see [`docs/zones.md`](docs/zones.md).
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double
@@ -185,7 +197,7 @@ seconds. A small "Developer menu… 3s" pill counts down while you hold; let go 
 pauses the game, silences the engine and ducks the music. Close it with `Esc`, the ✕ button, or the same 3 s hold.
 It's a testing aid, so it's deliberately left off the title card.
 
-- **Zones:** jump straight to any of the 20 zones (the next zone change is a full zone's worth of objectives away).
+- **Zones:** jump straight to any of the 26 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 12, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.

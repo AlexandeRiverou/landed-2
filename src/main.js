@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { world, reseed } from './world.js';
+import { world, reseed, waterLine } from './world.js';
 import { buildProps } from './models.js';
 import { Terrain } from './terrain.js';
 import { Sky } from './sky.js';
@@ -64,8 +64,9 @@ function updateCamera(dt, snap = false) {
   const p = G.player;
   _u.copy(Y).lerp(p.up, 0.45).normalize();
   _d.copy(p.pos).addScaledVector(p.forward, -26).addScaledVector(_u, 7.5);
-  const ground = Math.max(G.terrain.surfaceHeight(_d.x, _d.z), world.seaLevel) + 3;
+  const ground = Math.max(G.terrain.surfaceHeight(_d.x, _d.z), waterLine()) + 3;
   if (_d.y < ground) _d.y = ground;
+  if (world.underwater) _d.y = Math.min(_d.y, world.seaLevel - 2); // keep the camera in the water
   if (snap) camera.position.copy(_d);
   else camera.position.lerp(_d, 1 - Math.exp(-dt * 6));
   camUp.lerp(_u, 1 - Math.exp(-dt * 4)).normalize();

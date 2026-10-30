@@ -5,12 +5,14 @@ import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, mak
 import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
 import * as C from './challenges.js';
+import { waterLine } from './world.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const _dummy = new THREE.Object3D();
 
-export const groundAt = (G, x, z) => Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel);
+// The ground, or the sea surface over water (underwater, the seabed).
+export const groundAt = (G, x, z) => Math.max(G.terrain.surfaceHeight(x, z), waterLine());
 
 export function clearance(G, x, z, r = 30) {
   let g = groundAt(G, x, z);
@@ -578,7 +580,7 @@ function bossSpot(G, def) {
   for (let k = 0; k < 80; k++) {
     const s = pointAhead(G, 380, 750, 1.1);
     const g = G.terrain.surfaceHeight(s.x, s.z);
-    if (g > G.world.seaLevel + 2 && flat(s.x, s.z)) return s.setY(g);
+    if (g > waterLine() + 2 && flat(s.x, s.z)) return s.setY(g);
   }
   return null;
 }

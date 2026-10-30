@@ -32,6 +32,11 @@ export const ZONE_PALETTES = {
   princess: palette('Royal Pastel', { grass: '#b8f0c8', grass2: '#d8ffd8', forest: '#ff9ad0', sand: '#fff4d0', desert: '#ffd8f0', desert2: '#f0c0e8', rock: '#c8b0f0', rock2: '#a890e0', snow: '#ffffff', seabed: '#f0d0f0', water: '#9ad8ff', bands: ['#ffb0d8', '#d8c0ff', '#ffe8a0', '#ffd0e8'] }),
   cavern: palette('Cavern', { grass: '#4a6a5a', grass2: '#5a7a6a', forest: '#3a5a60', sand: '#7a7088', desert: '#6a6078', desert2: '#5a5068', rock: '#5a5070', rock2: '#4a4260', snow: '#a0e8ff', seabed: '#1a3a4a', water: '#1a9ac0', waterGlow: true, bands: ['#5a4a7a', '#3a5a7a', '#6a4a8a', '#2a4a5a'] }),
   dunes: palette('Dunes', { grass: '#e8c890', grass2: '#f0d8a0', forest: '#d8b070', sand: '#f4e0b0', desert: '#e8c080', desert2: '#d8a868', rock: '#b08a5a', rock2: '#9a7448', snow: '#fff4e0', seabed: '#c8a878', water: '#3aa8c8', bands: ['#d89a5a', '#e8b878', '#c0804a', '#f0cc98'] }),
+  reef: palette('Reef', { grass: '#e87a6a', grass2: '#f0a070', forest: '#3aa88a', sand: '#f0e0b0', desert: '#f0c070', desert2: '#e89a5a', rock: '#7a5a9a', rock2: '#5a6aa0', snow: '#ffd0e0', seabed: '#c8b890', water: '#4ab8e8', bands: ['#ff7a8a', '#ffb05a', '#c07aff', '#5ad8c8'] }),
+  neon: palette('Neon', { grass: '#ff2ad8', grass2: '#ff2ad8', forest: '#ff2ad8', sand: '#ff2ad8', desert: '#ff2ad8', desert2: '#ff2ad8', rock: '#120820', rock2: '#0a0418', snow: '#2af0ff', seabed: '#0a0418', water: '#180a30', bands: ['#120820', '#160a28', '#0e0618', '#1a0c2c'] }),
+  salt: palette('Salt', { grass: '#f4f2ee', grass2: '#ffffff', forest: '#e8e4e0', sand: '#fbfaf6', desert: '#f0ebe2', desert2: '#e6ded2', rock: '#b8aca0', rock2: '#a09488', snow: '#ffffff', seabed: '#f6f4f0', water: '#b8c4e8', waterGlow: true, bands: ['#e8e0d8', '#f4eee8', '#d8d0c8', '#fffaf4'] }),
+  toy: palette('Toy Box', { grass: '#4ad04a', grass2: '#8ae84a', forest: '#1fa04a', sand: '#ffe46a', desert: '#ffb43a', desert2: '#ff8a3a', rock: '#a0a4b8', rock2: '#80849a', snow: '#ffffff', seabed: '#3a9ae0', water: '#3ac8ff', bands: ['#ff5a5a', '#ffd23a', '#5ab4ff', '#c07aff'] }),
+  jovian: palette('Jovian', { grass: '#f0c890', grass2: '#f6e2c0', forest: '#e8a060', sand: '#fff0d8', desert: '#d08850', desert2: '#c8743a', rock: '#e8b07a', rock2: '#d89a6a', snow: '#fff4e0', seabed: '#a85a2a', water: '#c0703a', bands: ['#e8b07a', '#f6e2c0', '#c8743a', '#f0c890'] }),
   lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
 };
 
@@ -58,6 +63,12 @@ export const world = {
   cave: 0,           // 1 = a rock ceiling over everything (the caverns)
   balloons: 1,       // hot-air balloon chance multiplier
   curve: 0,          // tiny-planet curvature: vertices drop by curve·d² away from the camera (see curve.js)
+  axisCurve: 0,      // curvature across one world axis only (curveAxis); negative bends the ground up (the ringworld)
+  curveAxis: 'x',
+  underwater: 0,     // 1 = you fly under the sea: the surface is the roof and the water doesn't kill (the reef)
+  grid: 0,           // > 0: neon grid lines every `grid` metres painted over dark ground (the synthwave zone)
+  voxel: 0,          // > 0: the ground is built from blocks this many metres wide (Blockland)
+  hillBase: 1,       // scales the broad rise every mountain range sits on (the salt flats want almost none)
 };
 export const WORLD_DEFAULTS = { ...world };
 
@@ -68,7 +79,25 @@ export function reseed(seed) {
   for (const k of ['a', 'b', 'c', 'd', 'e', 'f']) N[k] = createNoise2D(r);
 }
 
+// The height the sea stops you at: its surface, or nowhere when you fly beneath it.
+export const waterLine = () => (world.underwater ? -Infinity : world.seaLevel);
+
+// Underwater, the seabed stays at least this far below the surface, so there's always room to fly.
+export const REEF_GAP = 60;
+
 export function heightAt(x, z) {
+  const W = world;
+  if (W.voxel) {
+    // Blockland: one height per block (sampled at its centre), snapped to steps a third of a block tall.
+    const b = W.voxel, s = b / 3;
+    const h = landHeight((Math.floor(x / b) + 0.5) * b, (Math.floor(z / b) + 0.5) * b) - W.floor;
+    return Math.round(h / s) * s + W.floor - craterDepthAt(x, z);
+  }
+  return landHeight(x, z) - craterDepthAt(x, z);
+}
+
+// The natural landscape, before any craters are blasted into it.
+function landHeight(x, z) {
   const W = world;
   const sel = N.a(x * 0.00042, z * 0.00042);
   const mount = smoothstep(0.0, 0.5, sel);
@@ -81,7 +110,7 @@ export function heightAt(x, z) {
   // Ridged mountain ranges.
   if (mount > 0) {
     const r = ridged(N.c, x * 0.0011, z * 0.0011, 5);
-    h += mount * (40 + r * r * 380 * W.amp);
+    h += mount * (40 * W.hillBase + r * r * 380 * W.amp);
   }
 
   // Mesas: plateaus with near-vertical cliff walls (narrow smoothstep bands).
@@ -126,7 +155,8 @@ export function heightAt(x, z) {
     h = lerp(h, -45 + Math.max(0, isl - 0.35) * 160, sea);
   }
   if (W.craters > 0) h -= moonCraters(x, z) * W.craters;
-  return h + W.floor - craterDepthAt(x, z);
+  if (W.underwater) h = Math.min(h, W.seaLevel - W.floor - REEF_GAP); // reef tops flatten out well under the surface
+  return h + W.floor;
 }
 
 // The cave roof: a lumpy rock ceiling that follows the floor at a safe distance, with stalactites
@@ -217,9 +247,10 @@ function mix(a, b, t, out) {
 // Writes an RGB colour into `out` and returns the biome category.
 export function terrainInfo(x, z, h, ny, out) {
   const W = world, P = W.palette;
+  if (W.voxel) { const b = W.voxel; x = (Math.floor(x / b) + 0.5) * b; z = (Math.floor(z / b) + 0.5) * b; } // one biome and shade per block
   const temp = N.f(x * 0.00035 + 500, z * 0.00035 - 200) + W.tempBias;
   const v = N.b(x * 0.013 + 3, z * 0.013 - 7);
-  const sl = W.seaLevel;
+  const sl = W.underwater ? -Infinity : W.seaLevel; // underwater, the seabed gets the land biomes
   let cat;
   if (h < sl + 1.2) {
     mix(P.seabed, P.seabed, 0, out);
@@ -245,6 +276,13 @@ export function terrainInfo(x, z, h, ny, out) {
     const d = smoothstep(0.12, 0.28, temp);
     if (d > 0) mix(out, P.desert, d * 0.7, out);
     cat = CAT.GRASS;
+  }
+  if (W.grid) {
+    // Neon grid: dark ground with glowing lines on a world-space grid, magenta low down to cyan up high.
+    const g = W.grid, on = ((x % g) + g) % g < 1 || ((z % g) + g) % g < 1;
+    if (on) mix(P.grass, P.snow, smoothstep(W.seaLevel, W.seaLevel + 260, h), out);
+    else mix(P.rock, P.rock2, v > 0 ? 0 : 1, out);
+    return cat;
   }
   const r = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
   const jit = 0.92 + 0.16 * (r - Math.floor(r));
