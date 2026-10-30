@@ -99,4 +99,5 @@ Security and Documenter agents (`.claude/agents/`). The rules above bind every a
   objective; see README "Debugging".
 - Build & Release: `.github/workflows/build-release.yml` runs check, build and smoke test on every PR into `main`.
   **Every merge into `main` publishes a new versioned GitHub Release** (patch bump; raise `version` in `package.json` for
-  minor/major), so a merged PR ships. Pushing a `v*` tag also publishes a release.
+  minor/major), so a merged PR ships, and deploys the game to GitHub Pages
+  (https://alexanderiverou.github.io/landed-2/). Pushing a `v*` tag also publishes a release.

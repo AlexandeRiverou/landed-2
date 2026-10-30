@@ -49,9 +49,16 @@ The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs th
   major release, raise `"version"` in `package.json` (e.g. to `1.1.0`) in your PR, and the merge releases exactly that
   (logic in `scripts/next-version.mjs`). Re-running the workflow on an already released commit doesn't publish twice.
 - **Pushing a `v*` tag by hand** releases that tag.
+- **Every merge into `main` also goes live on GitHub Pages:** the smoke-tested `dist/` is deployed to
+  **https://alexanderiverou.github.io/landed-2/**. "Run workflow" from the Actions tab on `main` redeploys it.
+  Hand-pushed tags and pull requests never deploy.
 
-To install a release, download the zip from the Releases page, unzip it, and serve the folder with any static
-server.
+To play the latest release, just open the GitHub Pages link above. To install one locally, download the zip from the
+Releases page, unzip it, and serve the folder with any static server.
+
+**One-time setup for GitHub Pages** (repo admin): Settings → Pages → Build and deployment → Source: **GitHub
+Actions**. Until then the Pages deploy job fails, but the release still publishes. Then check Settings →
+Environments → `github-pages` allows deployments from `main` only.
 
 ## Controls
 
