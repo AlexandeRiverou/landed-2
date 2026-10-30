@@ -10,7 +10,7 @@ export const SEG = 40;
 const STEP = CHUNK / SEG;
 const GW = SEG + 3; // height grid width incl. one-vertex border for normals
 export const RADIUS = 4;
-const AIRBORNE = new Set(['floatingIsland', 'hotAirBalloon']);
+const AIRBORNE = new Set(['floatingIsland', 'hotAirBalloon', 'fishSchool']);
 const SCORCH = (() => { const c = new THREE.Color('#4a3424'); return [c.r, c.g, c.b]; })();
 const rgb = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
 const CEIL_ROCK = [rgb('#6a6080'), rgb('#5a5470'), rgb('#7a7090')];
@@ -26,6 +26,10 @@ const TABLES = {
   [CAT.BEACH]: [['palm', 3], ['rockB', 0.6], ['parasol', 0.7], ['sandcastle', 0.35], [null, 2]],
   [CAT.SEA]: [['buoy', 0.25], ['boat', 0.18], ['sailboat', 0.14], ['iceberg', 0.05], ['whale', 0.025], ['duck', 0.015], [null, 6]],
 };
+// Underwater, the boats and whales float on the surface far above you.
+const SURFACE = [['boat', 1], ['sailboat', 1], ['buoy', 0.6], ['whale', 0.35], ['duck', 0.2], ['iceberg', 0.05]];
+// How far under the sea surface the underwater "roof" sits.
+const SURFACE_MARGIN = 4;
 const LANDMARKS = {
   [CAT.GRASS]: ['windmill', 'windmill', 'castleTower', 'house', 'barn', 'barn', 'ferrisWheel', 'stoneCircle', 'radioTower'],
   [CAT.FOREST]: ['castleTower', 'windmill', 'stoneCircle', 'ruins'],
@@ -57,6 +61,26 @@ export const THEMES = {
     windmill: 'crystal', castleTower: 'ruins', barn: 'stalagmite', ferrisWheel: null, radioTower: 'stalagmite', lighthouse: 'crystal', pyramid: 'ruins', igloo: 'crystal',
   },
   garden: { pine: 'roundTree', snowPine: 'roundTree', birch: 'flowers', bush: 'flowers', rock: 'mushroom', rockB: 'gnome', haybale: 'flowers', log: 'flowers', deadTree: 'appleTree', cactus: 'flowers' },
+  reef: {
+    roundTree: 'coral', appleTree: 'coral', birch: 'coral', bush: 'coral', flowers: 'coral', tumbleweed: 'coral',
+    pine: 'kelp', snowPine: 'kelp', palm: 'kelp', cactus: 'kelp', deadTree: 'kelp', totemPole: 'kelp', log: 'rockB', haybale: 'rock',
+    house: 'shipwreck', barn: 'shipwreck', windmill: 'shipwreck', castleTower: 'ruins', lighthouse: 'shipwreck', radioTower: 'kelp', ferrisWheel: 'shipwreck', igloo: 'coral',
+    sheep: null, cow: null, scarecrow: null, gnome: null, well: null, tent: null, snowman: null, parasol: null, sandcastle: null,
+  },
+  neon: {
+    roundTree: 'crystal', appleTree: 'crystal', birch: 'crystal', pine: 'crystal', snowPine: 'crystal', palm: 'crystal', cactus: 'crystal', deadTree: 'crystal', totemPole: 'crystal',
+    bush: null, flowers: null, rock: null, rockB: null, log: null, haybale: null, tumbleweed: null, sheep: null, cow: null, scarecrow: null, gnome: null, well: null,
+    tent: null, snowman: null, igloo: null, parasol: null, sandcastle: null, house: null, buoy: null, boat: null, sailboat: null, whale: null, duck: null, iceberg: null,
+    windmill: 'radioTower', barn: 'radioTower', castleTower: 'radioTower', stoneCircle: 'crystal', ruins: 'crystal', moai: 'crystal',
+  },
+  salt: {
+    roundTree: null, appleTree: null, birch: null, pine: null, snowPine: null, palm: null, cactus: 'rockB', deadTree: null, bush: null, flowers: null, log: null, haybale: null,
+    tumbleweed: null, sheep: null, cow: null, scarecrow: null, gnome: null, well: null, tent: null, snowman: null, igloo: null, parasol: null, sandcastle: null, house: null,
+    totemPole: null, buoy: null, boat: null, sailboat: null, whale: null, duck: null, iceberg: null,
+    windmill: 'rock', barn: 'rock', castleTower: 'rock', ferrisWheel: 'rock', radioTower: 'rock', lighthouse: 'rock', stoneCircle: 'rock', ruins: 'rockB', pyramid: 'rockB',
+  },
+  bare: Object.fromEntries([...new Set(Object.values(LANDMARKS).flat())].map((k) => [k, null])), // no landmarks (the gas giant's cloud tops)
+  blocks: { roundTree: 'blockTree', appleTree: 'blockTree', birch: 'blockTree', pine: 'blockTree', palm: 'blockTree', bush: 'blockTree', snowPine: 'blockTree', rock: 'rockB', deadTree: 'blockTree' },
   duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
 
@@ -229,13 +253,15 @@ export class Terrain {
     return mesh;
   }
 
-  // Height of the rendered cave roof above (x, z); Infinity outside caves.
+  // Height of the rendered cave roof above (x, z); Infinity in the open. Underwater, the sea surface
+  // (a little below it) is the roof, so everything placed in the air stays in the water.
   ceilingHeight(x, z) {
-    if (!world.cave) return Infinity;
+    const sea = world.underwater ? world.seaLevel - SURFACE_MARGIN : Infinity;
+    if (!world.cave) return sea;
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const ch = this.chunks.get(key(cx, cz));
-    if (!ch || !ch.cs) return ceilingAt(x, z);
-    return gridHeight(ch.cs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP);
+    if (!ch || !ch.cs) return Math.min(sea, ceilingAt(x, z));
+    return Math.min(sea, gridHeight(ch.cs, (x - cx * CHUNK) / STEP, (z - cz * CHUNK) / STEP));
   }
 
   // Exact height of the rendered (triangulated) surface; falls back to the noise.
@@ -285,11 +311,23 @@ export class Terrain {
         if (type) place(type, ox + u * STEP, gridHeight(hs, u, v), oz + v * STEP, 1.6);
       }
     }
+    if (world.underwater) { // the boats and whales up on the surface
+      for (let k = 0; k < 2; k++) {
+        const type = rng() < 0.35 && pickWeighted(rng, SURFACE);
+        if (type) place(type, ox + rng() * CHUNK, world.seaLevel, oz + rng() * CHUNK);
+      }
+    }
     if (rng() < world.floatingIslands && !world.cave) {
       const u = rng() * SEG, v = rng() * SEG;
       place('floatingIsland', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 140 + rng() * 240, oz + v * STEP);
     }
-    if (rng() < 0.07 * world.balloons && !world.cave) { // nothing floats above a cave roof
+    if (world.underwater) { // where the sky would have balloons, the sea has fish
+      for (let k = 0; k < 2; k++) {
+        if (rng() > 0.3) continue;
+        const u = rng() * SEG, v = rng() * SEG, g = gridHeight(hs, u, v);
+        place('fishSchool', ox + u * STEP, g + 25 + rng() * Math.max(0, world.seaLevel - g - 60), oz + v * STEP);
+      }
+    } else if (rng() < 0.07 * world.balloons && !world.cave) { // nothing floats above a cave roof
       const u = rng() * SEG, v = rng() * SEG;
       place('hotAirBalloon', ox + u * STEP, Math.max(gridHeight(hs, u, v), world.seaLevel) + 90 + rng() * 200, oz + v * STEP);
     }
@@ -348,7 +386,11 @@ class Water {
     this.target.set(world.palette.waterHex);
     this.mat.color.lerp(this.target, 0.03);
     // Lava glows; water doesn't. Seas far below a space zone simply aren't drawn.
-    this.mat.emissive.lerp(world.palette.waterGlow ? this.target : BLACK, 0.03);
+    // Seen from underwater, the surface glows with daylight.
+    this.mat.emissive.lerp(world.palette.waterGlow ? this.target : world.underwater ? _c.copy(this.target).multiplyScalar(0.6) : BLACK, 0.03);
     this.mesh.visible = world.seaLevel > -600;
+    // From underwater you look up at the surface, so it needs a back side too.
+    const side = world.underwater ? THREE.DoubleSide : THREE.FrontSide;
+    if (this.mat.side !== side) { this.mat.side = side; this.mat.needsUpdate = true; }
   }
 }

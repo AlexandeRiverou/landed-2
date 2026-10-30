@@ -150,6 +150,7 @@ export function buildProps() {
   ], { scale: [0.9, 1.3], sink: 0, tints: ['#ff5a5a', '#ffd23a', '#5ad0ff', '#a05aff', '#5aff8a', '#ff8ad8'] });
   buildMoreProps();
   buildFantasyProps();
+  buildNewWorldProps();
 }
 
 // ---------- the countryside, the beach, the snow, and some questionable landmarks ----------
@@ -260,6 +261,48 @@ function buildFantasyProps() {
   def('glowShroom', glow, { scale: [1, 2], sink: 0.1, tints: ['#ffffff', '#b0ffd0', '#e0b0ff', '#b0d0ff'] });
 
   def('stalagmite', [P(Cone(3, 14, 6), '#6a6070', { y: 7 }), P(Cone(1.8, 8, 5), '#7a7080', { x: 2.6, y: 4, z: 1 }), P(Cone(1.4, 6, 5), '#5a5060', { x: -2.2, y: 3, z: -1.2 })], { scale: [0.8, 2], sink: 0.5, tilt: 0.15 });
+}
+
+// ---------- the reef and Blockland ----------
+function buildNewWorldProps() {
+  // Branching coral: a stubby trunk with forked arms and round tips.
+  const coral = [P(Cyl(0.9, 1.3, 4, 6), '#ff7a8a', { y: 2 })];
+  [[0, 0.6], [2.1, -0.5], [4.2, 0.5], [1, -0.9], [3.1, 0.8]].forEach(([a, t], k) => {
+    const h = 5 + (k % 3) * 1.5;
+    coral.push(P(Cyl(0.45, 0.7, h, 5), '#ff7a8a', { x: Math.cos(a) * 1.6, y: 3 + h / 2, z: Math.sin(a) * 1.6, rx: Math.sin(a) * t, rz: -Math.cos(a) * t }));
+    coral.push(P(Sph(0.9, 6, 4), '#ffd0a0', { x: Math.cos(a) * (1.6 + h * 0.45 * Math.abs(t)), y: 3 + h * 0.95, z: Math.sin(a) * (1.6 + h * 0.45 * Math.abs(t)) }));
+  });
+  coral.push(P(Sph(2.2, 8, 5), '#c07aff', { x: 3, y: 1, z: 2, sy: 0.7 }));
+  def('coral', coral, { scale: [0.9, 2.2], sink: 0.4, tints: ['#ffffff', '#ffb0d8', '#a0f0ff', '#ffe08a', '#c8a0ff'] });
+
+  // Kelp: a few tall swaying strands with leaf blades.
+  const kelp = [];
+  [[0, 0, 26], [2, 1, 20], [-1.6, 1.4, 17], [0.8, -1.8, 22]].forEach(([x, z, h], k) => {
+    for (let i = 0; i < 5; i++) {
+      const y = (i + 0.5) * (h / 5), sway = Math.sin(i * 1.3 + k) * 0.8;
+      kelp.push(P(Cyl(0.25, 0.3, h / 5 + 0.3, 4), '#4a8a2a', { x: x + sway, y, z }));
+      kelp.push(P(Box(2.4, 0.15, 1), i % 2 ? '#6ab03a' : '#8ac84a', { x: x + sway + 1, y: y + 1, z, ry: i * 1.7 + k, rz: -0.5 }));
+    }
+  });
+  def('kelp', kelp, { scale: [0.8, 1.6], sink: 0.2, tints: ['#ffffff', '#e0ffb0', '#c0e8a0'] });
+
+  // A school of little fish swimming in a loose ring.
+  const fish = [];
+  for (let k = 0; k < 14; k++) {
+    const a = k * 2.4, r = 5 + (k % 4) * 2, x = Math.cos(a) * r, z = Math.sin(a) * r, y = Math.sin(k * 1.7) * 3;
+    fish.push(P(Sph(1, 6, 4), '#ffb03a', { x, y, z, sz: 1.8, ry: a }), P(Cone(0.8, 1.2, 4), '#ff7a2a', { x: x - Math.sin(a) * 2, y, z: z - Math.cos(a) * 2, rx: PI / 2, ry: a }));
+  }
+  def('fishSchool', fish, { scale: [1, 1.8], sink: 0, tints: ['#ffffff', '#a0e0ff', '#ffe060', '#ff9ad0'] });
+
+  // A sunken ship, listing on the seabed.
+  def('shipwreck', [
+    P(Box(7, 5, 22), '#6a4a32', { y: 2, rz: 0.25 }), P(Cone(3.6, 6, 4), '#5a3a26', { y: 2, z: 13.5, rx: PI / 2, ry: PI / 4, sx: 1.3, rz: 0.25 }),
+    P(Box(6, 0.4, 20), '#8a6a4a', { x: 1.2, y: 4.6, rz: 0.25 }), P(Cyl(0.4, 0.5, 18, 5), '#5a3a26', { x: 3, y: 12, z: 2, rz: 0.4 }),
+    P(Box(0.2, 7, 6), '#d8d0b8', { x: 3.6, y: 11, z: 2, rz: 0.4 }), P(Box(2.4, 1.8, 1.6), '#c8a03a', { x: -6, y: 0.4, z: -4 }),
+  ], { scale: [1, 1.5], sink: 0.8, tilt: 0.1 });
+
+  // Blockland's trees are cubes on sticks.
+  def('blockTree', [P(Box(1.6, 6, 1.6), '#8a5a32', { y: 3 }), P(Box(7, 6, 7), '#3ab03a', { y: 9 }), P(Box(4, 3, 4), '#5ad04a', { y: 13.5 })], { scale: [0.8, 1.4], tints: ['#ffffff', '#c0ffa0', '#ffe080', '#ffb0b0'] });
 }
 
 // ---------- player ----------

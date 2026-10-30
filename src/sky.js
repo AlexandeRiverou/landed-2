@@ -19,6 +19,10 @@ export const TOD = {
   royal: { top: '#a07aff', horizon: '#ffd8f0', bottom: '#ffe8f4', sun: '#fff0f8', sunI: 2.0, hemiSky: '#ffe0f4', hemiGround: '#a07ab0', hemiI: 1.1, elev: 40, stars: 0 },
   mars: { top: '#a8603a', horizon: '#e8b080', bottom: '#c08a5a', sun: '#fff0d8', sunI: 1.8, hemiSky: '#f0c8a0', hemiGround: '#6a3a2a', hemiI: 0.9, elev: 35, stars: 0.1 },
   pebble: { top: '#020418', horizon: '#3a5aa0', bottom: '#0a1430', sun: '#ffffff', sunI: 2.3, hemiSky: '#c8d8ff', hemiGround: '#4a5a3a', hemiI: 1.0, elev: 40, stars: 0.9 },
+  reef: { top: '#2a8ac8', horizon: '#0e5a8a', bottom: '#06304a', sun: '#c8f0ff', sunI: 1.7, hemiSky: '#9ae0ff', hemiGround: '#2a5a7a', hemiI: 1.35, elev: 70, stars: 0 },
+  synthwave: { top: '#12042a', horizon: '#ff3aa8', bottom: '#2a0838', sun: '#ff9ae0', sunI: 1.3, hemiSky: '#c07aff', hemiGround: '#3a1a6a', hemiI: 1.3, elev: 9, stars: 0.8 },
+  pastel: { top: '#8ab4ec', horizon: '#ffdce8', bottom: '#f8e8f0', sun: '#fff4e8', sunI: 1.9, hemiSky: '#ffe8f4', hemiGround: '#d8d0e8', hemiI: 1.25, elev: 24, stars: 0 },
+  jovian: { top: '#4a1e0a', horizon: '#f0a860', bottom: '#c0703a', sun: '#fff0d0', sunI: 2.0, hemiSky: '#ffc890', hemiGround: '#8a4a2a', hemiI: 1.0, elev: 25, stars: 0.4 },
   storm: { top: '#3a4048', horizon: '#8d949c', bottom: '#5a6068', sun: '#d8dde2', sunI: 0.9, hemiSky: '#a0a8b0', hemiGround: '#3a3f44', hemiI: 0.95, elev: 50, stars: 0 },
 };
 const COLOR_KEYS = ['top', 'horizon', 'bottom', 'sun', 'hemiSky', 'hemiGround'];

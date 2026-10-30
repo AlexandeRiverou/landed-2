@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { makePlane, PLANE_SKINS } from './models.js';
 import { pick, T } from './texts.js';
+import { waterLine } from './world.js';
 
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
@@ -20,6 +21,7 @@ const MANEUVERS = {
   right: { name: 'Barrel roll', text: 'Barrel roll! Nothing can hit you mid-roll.', steps: [{ axis: Z, angle: -2 * PI, dur: 0.7 }], slide: 1, dodge: true },
 };
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
+const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 
 export class Player {
   constructor(G) {
@@ -61,6 +63,7 @@ export class Player {
     this.shootCd = 0;
     this.bullets = [];
     this.ceilingWarned = 0;
+    this.surfaceWarned = -99;
     this.bulletGeo = new THREE.SphereGeometry(0.7, 6, 4);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: '#fff36a' });
   }
@@ -69,7 +72,7 @@ export class Player {
 
   spawn(x, z, yaw = 0) {
     const G = this.G;
-    const g = Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel);
+    const g = Math.max(G.terrain.surfaceHeight(x, z), waterLine());
     this.pos.set(x, g + 140, z);
     this.pos.y = Math.max(g + 20, Math.min(this.pos.y, G.terrain.ceilingHeight(x, z) - 40)); // in a cave, mid-gap
     this.prevPos.copy(this.pos);
@@ -150,15 +153,21 @@ export class Player {
           G.ui.notify('A mountain grew under you. We relocated you upward. Free of charge.', 'warn');
         }
       } else return this.crash('ground');
-    } else if (ground < sea && this.pos.y < sea + 0.6) {
+    } else if (!G.world.underwater && ground < sea && this.pos.y < sea + 0.6) {
       if (ghost) this.pos.y = sea + 0.6;
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = sea + 25;
       else return this.crash('water');
     }
+    // Underwater, the sea surface is a soft lid: you're held just under it and the nose eases down. No crash.
+    if (G.world.underwater && this.pos.y > sea - SURFACE_HOLD) {
+      this.pos.y = sea - SURFACE_HOLD;
+      if (!this.maneuver && this.forward.y > 0) { this.quat.multiply(_q.setFromAxisAngle(X, -1.5 * dt)).normalize(); this.updateAxes(); }
+      if (G.time - this.surfaceWarned > 10) { G.ui.notify('That\'s the surface. Planes stay under it here. House rules.', 'warn', 2.5, 1); this.surfaceWarned = G.time; }
+    }
     // Cave roof. Right after the world changes (or with Ghost Mode) you're moved into the open gap instead.
     const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z);
     if (this.pos.y > roof - 2.5) {
-      if (ghost) this.pos.y = roof - 2.5;
+      if (ghost || G.world.underwater) this.pos.y = roof - 2.5; // underwater the roof is the sea surface: never a crash
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = Math.max(ground + 12, roof - 25);
       else return this.crash('roof');
     }
@@ -205,7 +214,7 @@ export class Player {
 
   startManeuver(dir) {
     const G = this.G, M = MANEUVERS[dir];
-    const ground = Math.max(G.terrain.surfaceHeight(this.pos.x, this.pos.z), G.world.seaLevel);
+    const ground = Math.max(G.terrain.surfaceHeight(this.pos.x, this.pos.z), waterLine());
     const roof = G.terrain.ceilingHeight(this.pos.x, this.pos.z);
     // Turning back through a half loop needs room: 45 m below you for a Split-S, 45 m above for an Immelmann.
     if (dir === 'down' && this.pos.y - ground < 45) { G.ui.notify('Too low for a Split-S! Climb a bit first. The ground is not a stunt partner.', 'warn', 2.5, 1); return; }
