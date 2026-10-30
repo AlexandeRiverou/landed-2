@@ -146,7 +146,7 @@ recharge, higher fire rate, longer and more frequent power-ups, harder-hitting b
 score, and your best run is remembered on the title screen.
 
 **Bosses** (`src/enemies.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
-(a fresh random gap each time). There are 12, drawn from a shuffled deck so you meet them all before any repeats:
+(a fresh random gap each time). There are 15, drawn from a shuffled deck so you meet them all before any repeats:
 
 - King Drone the Unpleasant (summons minions)
 - Her Royal Honkness the Goose Queen (golden eggs)
@@ -160,11 +160,16 @@ score, and your best run is remembered on the title screen.
 - Steven the Seagull Overlord (dive-bombs; a hit steals your boost)
 - The Mother of All Spiky Balloons (spike novas, mines in your path)
 - Fort Grumpington (a ground boss: mortars and flak; never in space)
+- Admiral Inkworth the Sky Octopus (a lead boss: ink blobs, orb spirals from its arms; every tentacle shot off means
+  fewer orbs)
+- Captain Clawdia the Sky Crab (a lead boss: bubble streams, pincer shots from each claw; snap the claws off)
+- Sir Puffington the Pufferfish (a lead boss: water jets, then puffs up so bullets bounce off, then pops a spike nova)
 
 From the third boss on, they can roll a modifier (Jumbo, Turbo, Furious But Fragile, Shiny for double points). From the
-fourth on, they can show up as twins that share one health bar. Bosses circle you, taunt you, and get ENRAGED below
-half health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him,
-the fort's barrel cuts its mortars). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
+fourth on, they can show up as twins that share one health bar. Most bosses circle you; lead bosses fly ahead of you,
+facing back and weaving side to side, so they're always in your sights. Bosses taunt you, and get ENRAGED below half
+health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
+fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
 other win.
 
 **28 objective types** (`src/objectives.js`, `src/challenges.js`):
@@ -217,7 +222,7 @@ pauses the game, silences the engine and ducks the music. Close it with `Esc`, t
 It's a testing aid, so it's deliberately left off the title card.
 
 - **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 12, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
+- **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.

@@ -669,6 +669,91 @@ export function makeStorm(hat) {
   return g;
 }
 
+// Lead bosses fly ahead of you, facing back (+Z points at the player).
+export function makeOctopus() {
+  const g = new THREE.Group();
+  const skin = lam('#b8407a'), spots = lam('#8a2a5a');
+  add(g, Sph(5, 12, 9), skin, { y: 2.5, s: [1, 1.2, 1] });
+  for (const [x, y, z] of [[2.5, 5.5, -2], [-3, 4.5, -2.5], [0, 7.5, -1], [3.8, 2.5, -2.4]]) add(g, Sph(0.8, 6, 4), spots, { x, y, z });
+  for (const x of [-2, 2]) {
+    const eye = add(g, Sph(1.5, 10, 8), basic('#ffffff'), { x, y: 2.2, z: 4.2 });
+    add(eye, Sph(0.7, 6, 5), basic('#111111'), { y: -0.2, z: 1.1 });
+    weak(g, eye, 1.6);
+  }
+  add(g, Box(2, 0.5, 0.5), basic('#2a0a1a'), { y: 0.2, z: 4.8 }); // a stern little mouth
+  const tent = [];
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2 + PI / 8;
+    const t = new THREE.Group();
+    t.position.set(Math.cos(a) * 3.2, -1.5, Math.sin(a) * 3.2);
+    t.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45); // splayed outward
+    const arm = add(t, Cyl(1, 0.35, 10, 7), skin, { y: -5 });
+    add(arm, Sph(0.6, 6, 4), spots, { y: -5 });
+    breakable(g, arm, 2.6, 'tentacle', 2);
+    g.add(t);
+    tent.push(t);
+  }
+  g.userData.tentacles = tent;
+  return g;
+}
+
+export function makeCrab() {
+  const g = new THREE.Group();
+  const shell = lam('#e8502a'), dark = lam('#a8301a');
+  add(g, Sph(6, 12, 8), shell, { s: [1.4, 0.6, 1] });
+  add(g, Sph(4, 10, 6), dark, { y: 1.2, s: [1.3, 0.5, 0.9] });
+  for (const x of [-1.6, 1.6]) {
+    add(g, Cyl(0.3, 0.3, 3, 5), dark, { x, y: 4, z: 3.5 });
+    weak(g, add(g, Sph(1, 8, 6), basic('#ffffff'), { x, y: 5.8, z: 3.5 }), 1.2);
+    add(g, Sph(0.45, 5, 4), basic('#111111'), { x, y: 5.9, z: 4.4 });
+  }
+  const claws = [];
+  for (const s of [-1, 1]) {
+    const c = new THREE.Group();
+    c.position.set(s * 8, 0.5, 4);
+    add(c, Box(1.4, 1.4, 5), dark, { z: -1.5, ry: -s * 0.5 });
+    const pincer = add(c, Sph(2.6, 10, 6), shell, { z: 2.5, s: [1, 0.8, 1.4] });
+    add(pincer, Box(0.8, 0.8, 3.5), shell, { x: s * 0.9, y: 1.2, z: 2.6, rx: -0.3 });
+    add(pincer, Box(0.8, 0.8, 3.5), shell, { x: s * 0.9, y: -1.2, z: 2.6, rx: 0.3 });
+    breakable(g, pincer, 3, 'claw', 4);
+    g.add(c);
+    claws.push(c);
+  }
+  const legs = [];
+  for (const s of [-1, 1]) for (const z of [-3, -0.5, 2]) legs.push(add(g, Box(6, 0.6, 0.6), dark, { x: s * 9, y: -1.5, z, rz: s * -0.5 }));
+  g.userData.claws = claws;
+  g.userData.legs = legs;
+  return g;
+}
+
+export function makePuffer() {
+  const g = new THREE.Group();
+  const puff = new THREE.Group(); // inflates during the puff-up attack
+  add(puff, Sph(5, 12, 9), lam('#f2c84a'));
+  add(puff, Sph(4.9, 12, 9, 0, PI * 2, PI * 0.55, PI * 0.45), lam('#fff2c0'));
+  const up = new THREE.Vector3(0, 1, 0);
+  for (let k = 0; k < 26; k++) {
+    const y = 1 - (2 * (k + 0.5)) / 26, r = Math.sqrt(1 - y * y), a = k * 2.39996;
+    const v = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
+    const o = add(puff, Cone(0.5, 2, 5), lam('#8a6a2a'));
+    o.position.copy(v).multiplyScalar(5.3);
+    o.quaternion.setFromUnitVectors(up, v);
+  }
+  g.add(puff);
+  const mouth = add(g, Tor(1, 0.4, 6, 12), lam('#e86a5a'), { z: 5 });
+  weak(g, mouth, 1.4);
+  for (const x of [-2.2, 2.2]) {
+    add(g, Sph(1.3, 8, 6), basic('#ffffff'), { x, y: 2, z: 4 });
+    add(g, Sph(0.6, 6, 4), basic('#111111'), { x, y: 2, z: 5.1 });
+  }
+  const fins = [];
+  for (const s of [-1, 1]) fins.push(add(g, Box(0.3, 2.5, 3), lam('#e8a83a'), { x: s * 5, z: 1, rz: s * 0.3 }));
+  add(g, Box(0.4, 5, 3.5), lam('#e8a83a'), { z: -6.5 });
+  g.userData.puff = puff;
+  g.userData.wings = fins;
+  return g;
+}
+
 // ---------- objective pieces ----------
 
 export function makeRing(R, color) {
