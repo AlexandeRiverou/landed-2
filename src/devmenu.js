@@ -22,13 +22,41 @@ export class DevMenu {
   constructor(G) {
     this.G = G;
     this.isOpen = false;
-    this.since = null;   // performance.now() when the chord started
-    this.fired = false;  // the chord already toggled the menu: let go before it can again
+    this.since = null;   // performance.now() when the chord started (drives the hint pill)
+    this.timer = null;   // fires HOLD_MS after the chord is complete; key events, not frames, so slow devices still get it
+    this.down = new Set(); // chord keys held right now (tracked here: Input clears its keys on blur and while locked)
     this.objButtons = new Map();
     this.build();
-    // Esc closes the menu. Input (whose listener was added first) ignores every key but the chord while it's open,
-    // so Esc doesn't also reach the pause toggle.
-    addEventListener('keydown', (e) => { if (this.isOpen && e.code === 'Escape') { e.preventDefault(); this.close(); } });
+    addEventListener('keydown', (e) => {
+      // Esc closes the menu. Input (whose listener was added first) ignores every key but the chord while it's
+      // open, so Esc doesn't also reach the pause toggle.
+      if (this.isOpen && e.code === 'Escape') { e.preventDefault(); this.close(); }
+      // Auto-repeat is ignored, so after the chord toggles the menu you have to let go before it can again.
+      if (CHORD_KEYS.has(e.code) && !e.repeat) { this.down.add(e.code); this.arm(); }
+    });
+    addEventListener('keyup', (e) => { if (CHORD_KEYS.has(e.code)) { this.down.delete(e.code); this.disarm(); } });
+    addEventListener('blur', () => { this.down.clear(); this.disarm(); });
+  }
+
+  chordHeld() { return ONE.some((c) => this.down.has(c)) && ZERO.some((c) => this.down.has(c)); }
+
+  arm() {
+    if (this.timer || !this.G.started || !this.chordHeld()) return;
+    this.since = performance.now();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.since = null;
+      this.hint.classList.add('hidden');
+      if (this.isOpen) this.close(); else this.open();
+    }, HOLD_MS);
+  }
+
+  disarm() {
+    if (this.chordHeld()) return;
+    clearTimeout(this.timer);
+    this.timer = null;
+    this.since = null;
+    this.hint.classList.add('hidden');
   }
 
   // ---------- DOM ----------
@@ -123,20 +151,10 @@ export class DevMenu {
   // ---------- open / close ----------
 
   // Called every frame (paused or not). Real time, so a slow frame rate can't stretch the hold.
+  // Per frame: only the hint pill. Opening and closing run on the timer from arm().
   update() {
-    const G = this.G, k = G.input.keys;
-    const held = G.started && ONE.some((c) => k.has(c)) && ZERO.some((c) => k.has(c));
-    if (!held) { this.since = null; this.fired = false; this.hint.classList.add('hidden'); return; }
-    if (this.fired) return;
-    const now = performance.now();
-    this.since ??= now;
-    const t = now - this.since;
-    if (t >= HOLD_MS) {
-      this.fired = true;
-      this.hint.classList.add('hidden');
-      if (this.isOpen) this.close(); else this.open();
-      return;
-    }
+    if (this.since === null) return;
+    const t = Math.min(HOLD_MS, performance.now() - this.since);
     this.hint.classList.remove('hidden');
     this.hintText.textContent = `${this.isOpen ? 'Closing' : 'Developer menu'}… ${Math.ceil((HOLD_MS - t) / 1000)}s`;
     this.hintFill.style.width = `${(t / HOLD_MS) * 100}%`;
