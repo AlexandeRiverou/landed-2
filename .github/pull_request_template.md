@@ -15,6 +15,10 @@
 - [ ] `npm test` (headless smoke test)
 - [ ] Looked at it running (describe what you checked, add screenshots for visible changes)
 
+## Security review
+
+<!-- Verdict from the security agent (PASS / PASS WITH NOTES / BLOCK), findings fixed, notes left open. Write "n/a" for docs-only changes reviewed by hand. -->
+
 ## Reviewer notes
 
 <!-- Anything that needs a closer look: risky areas, trade-offs, follow-ups left out on purpose. -->
