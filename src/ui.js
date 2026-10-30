@@ -124,7 +124,7 @@ export class UI {
     e.hp.style.background = hpPct > 0.5 ? 'var(--good)' : hpPct > 0.25 ? 'var(--warn)' : 'var(--bad)';
     e.boost.style.width = `${p.freeBoost > 0 ? 100 : p.boost * 100}%`;
     e.boost.style.background = p.freeBoost > 0 ? '#ff4dc4' : '#3aa8ff';
-    const alt = Math.max(0, Math.round(p.pos.y - Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), waterLine())));
+    const alt = Math.max(0, Math.round(p.pos.y - Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y), waterLine())));
     e.speed.textContent = `SPD ${Math.round(p.speed * 3.6)} km/h · ALT ${alt} m`;
 
     if (this.bannerTimer > 0) { this.bannerTimer -= dt; if (this.bannerTimer <= 0) e.banner.classList.remove('show'); }

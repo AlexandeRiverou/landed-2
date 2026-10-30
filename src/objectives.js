@@ -11,8 +11,9 @@ const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const _dummy = new THREE.Object3D();
 
-// The ground, or the sea surface over water (underwater, the seabed).
-export const groundAt = (G, x, z) => Math.max(G.terrain.surfaceHeight(x, z), waterLine());
+// The ground, or the sea surface over water (underwater, the seabed). Over a tunnel it's the mountain
+// top, unless you give a `y` inside the tunnel.
+export const groundAt = (G, x, z, y) => Math.max(G.terrain.surfaceHeight(x, z, y), waterLine());
 
 export function clearance(G, x, z, r = 30) {
   let g = groundAt(G, x, z);
@@ -406,10 +407,10 @@ function mkLowFly(G) {
     caps: new Set(['easier']),
     signText: ['GO LOWER', '↓ ↓ ↓'],
     hints: ['The altitude readout is bottom-left. Get it under the limit.', 'Water counts as ground. Splashing does not.'],
-    target() { const p = G.player; return _b.set(p.pos.x + p.forward.x * 60, groundAt(G, p.pos.x, p.pos.z), p.pos.z + p.forward.z * 60); },
+    target() { const p = G.player; return _b.set(p.pos.x + p.forward.x * 60, groundAt(G, p.pos.x, p.pos.z, p.pos.y), p.pos.z + p.forward.z * 60); },
     onUpdate(dt, G) {
       const p = G.player;
-      const alt = p.pos.y - groundAt(G, p.pos.x, p.pos.z);
+      const alt = p.pos.y - groundAt(G, p.pos.x, p.pos.z, p.pos.y); // same as the HUD: in a tunnel, to its floor
       const low = !p.dead && alt < thr;
       if (low) { time += dt; this.progressed = true; if (!wasLow) G.ui.notify('Brrrrrrr (crop dusting noises)', 'info', 2, 0); }
       wasLow = low;

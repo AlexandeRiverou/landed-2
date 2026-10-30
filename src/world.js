@@ -37,6 +37,7 @@ export const ZONE_PALETTES = {
   salt: palette('Salt', { grass: '#f4f2ee', grass2: '#ffffff', forest: '#e8e4e0', sand: '#fbfaf6', desert: '#f0ebe2', desert2: '#e6ded2', rock: '#b8aca0', rock2: '#a09488', snow: '#ffffff', seabed: '#f6f4f0', water: '#b8c4e8', waterGlow: true, bands: ['#e8e0d8', '#f4eee8', '#d8d0c8', '#fffaf4'] }),
   toy: palette('Toy Box', { grass: '#4ad04a', grass2: '#8ae84a', forest: '#1fa04a', sand: '#ffe46a', desert: '#ffb43a', desert2: '#ff8a3a', rock: '#a0a4b8', rock2: '#80849a', snow: '#ffffff', seabed: '#3a9ae0', water: '#3ac8ff', bands: ['#ff5a5a', '#ffd23a', '#5ab4ff', '#c07aff'] }),
   jovian: palette('Jovian', { grass: '#f0c890', grass2: '#f6e2c0', forest: '#e8a060', sand: '#fff0d8', desert: '#d08850', desert2: '#c8743a', rock: '#e8b07a', rock2: '#d89a6a', snow: '#fff4e0', seabed: '#a85a2a', water: '#c0703a', bands: ['#e8b07a', '#f6e2c0', '#c8743a', '#f0c890'] }),
+  peaks: palette('Peaks', { grass: '#6f9a4a', grass2: '#8fb25a', forest: '#3f6a3a', sand: '#d8c89a', desert: '#c8a070', desert2: '#b08058', rock: '#8a8278', rock2: '#6a6460', snow: '#f4f6fa', seabed: '#6a7a6a', water: '#3a8ab8', bands: ['#a86a4a', '#c8946a', '#8a5a40', '#d8b088'] }),
   lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
 };
 
@@ -69,6 +70,8 @@ export const world = {
   grid: 0,           // > 0: neon grid lines every `grid` metres painted over dark ground (the synthwave zone)
   voxel: 0,          // > 0: the ground is built from blocks this many metres wide (Blockland)
   hillBase: 1,       // scales the broad rise every mountain range sits on (the salt flats want almost none)
+  ranges: 0,         // + spreads the mountain ranges over more of the land (Hollow Peaks)
+  tunnels: 0,        // 0..1: chance each TUNNEL_CELL square gets a tunnel bored through its mountain (Hollow Peaks)
 };
 export const WORLD_DEFAULTS = { ...world };
 
@@ -77,6 +80,7 @@ export function reseed(seed) {
   world.seed = seed >>> 0;
   const r = mulberry32(world.seed);
   for (const k of ['a', 'b', 'c', 'd', 'e', 'f']) N[k] = createNoise2D(r);
+  clearTunnels();
 }
 
 // The height the sea stops you at: its surface, or nowhere when you fly beneath it.
@@ -93,6 +97,7 @@ export function heightAt(x, z) {
     const h = landHeight((Math.floor(x / b) + 0.5) * b, (Math.floor(z / b) + 0.5) * b) - W.floor;
     return Math.round(h / s) * s + W.floor - craterDepthAt(x, z);
   }
+  if (W.tunnels) { tunnelColumn(x, z, _col); return _col.floor; }
   return landHeight(x, z) - craterDepthAt(x, z);
 }
 
@@ -100,7 +105,7 @@ export function heightAt(x, z) {
 function landHeight(x, z) {
   const W = world;
   const sel = N.a(x * 0.00042, z * 0.00042);
-  const mount = smoothstep(0.0, 0.5, sel);
+  const mount = smoothstep(0.0, 0.5, sel + W.ranges);
   const sea = 1 - smoothstep(-0.62, -0.32, sel);
 
   // Rolling base + small bumps.
@@ -169,6 +174,111 @@ export function ceilingAt(x, z, floor = heightAt(x, z)) {
   const s = N.f(x * 0.011 - 41, z * 0.011 + 90);
   if (s > 0.55) c -= (s - 0.55) * 260; // stalactites
   return Math.max(c, floor + CAVE_MIN_GAP);
+}
+
+// ---------- tunnels ----------
+// Hollow Peaks: big bores clean through the mountains. Each TUNNEL_CELL square holds at most one: a gently
+// curving tube with a flat floor and an arched roof that tapers into the floor at its sides. It stays inside
+// its cell, so a point only ever asks one tunnel. Rock is solid below the floor and from the roof up to the
+// mountain top: heightAt() is the floor, and tunnelColumn() adds the overhang, which Terrain builds as a
+// second mesh (roof underside + mountain top) only in the chunks that have one.
+export const TUNNEL_CELL = 720;
+const tunnelPlans = new Map(); // cell key → plan, or null for a cell without a tunnel
+export function clearTunnels() { tunnelPlans.clear(); }
+
+function tunnelPlan(cx, cz) {
+  const k = cellKey(cx, cz);
+  let t = tunnelPlans.get(k);
+  if (t === undefined) { t = planTunnel(cx, cz); tunnelPlans.set(k, t); }
+  return t;
+}
+
+// The tunnel's centre line at distance t along it.
+export function tunnelPoint(T, t, out = {}) {
+  const off = T.bend * Math.sin((Math.PI * t) / T.len);
+  out.x = T.ax + T.dx * t - T.dz * off;
+  out.z = T.az + T.dz * t + T.dx * off;
+  out.floor = T.f0 + ((T.f1 - T.f0) * t) / T.len;
+  return out;
+}
+
+// Try a few spots and headings in the cell; keep the first whose ends are open (floor at or above the
+// ground there) and whose middle third runs deep inside the mountain. No such heading: no tunnel here.
+function planTunnel(cx, cz) {
+  const W = world, rng = mulberry32(hash3(cx, cz, W.seed ^ 0x7a11e));
+  if (rng() >= W.tunnels) return null;
+  const hw = 28 + rng() * 17, H = 42 + rng() * 26, len = 340 + rng() * 200, bend = (rng() - 0.5) * 70;
+  const room = TUNNEL_CELL / 2 - Math.hypot(len / 2, hw + Math.abs(bend)) - 4;
+  const S = 16, M = new Array(S + 1), p = {};
+  let ox = 0, oz = 0, a0 = 0;
+  for (let k = 0; k < 32; k++) {
+    if (k % 8 === 0) { // a fresh spot in the cell every 8 headings
+      ox = (cx + 0.5) * TUNNEL_CELL + (rng() * 2 - 1) * room; oz = (cz + 0.5) * TUNNEL_CELL + (rng() * 2 - 1) * room; a0 = rng() * Math.PI;
+    }
+    const a = a0 + (k * Math.PI) / 8, dx = Math.cos(a), dz = Math.sin(a);
+    const T = { ax: ox - (dx * len) / 2, az: oz - (dz * len) / 2, dx, dz, len, hw, H, bend, f0: 0, f1: 0 };
+    for (let i = 0; i <= S; i++) { tunnelPoint(T, (i / S) * len, p); M[i] = landHeight(p.x, p.z); }
+    const low = W.seaLevel + 8; // never a flooded floor
+    let f0 = Math.max(M[0], low) + 2, f1 = Math.max(M[S], low) + 2;
+    const rise = 0.18 * len; // gentle enough to fly: a high end opens out of a cliff face instead
+    if (f1 - f0 > rise) f0 = f1 - rise; else if (f0 - f1 > rise) f1 = f0 - rise;
+    if (Math.max(f0, f1) + H > 1000) continue; // stay under the sky's soft ceiling
+    let ok = true;
+    for (let i = 5; i <= 11 && ok; i++) ok = M[i] > f0 + ((f1 - f0) * i) / S + H + 24;
+    if (ok) { T.f0 = f0; T.f1 = f1; T.r = Math.hypot(len / 2, hw + Math.abs(bend)); T.ox = ox; T.oz = oz; return T; }
+  }
+  return null;
+}
+
+// Tunnels whose cells lie within `r` of (x, z) (the smoke test and debugging use this).
+export function tunnelsNear(x, z, r) {
+  const out = [];
+  if (!world.tunnels) return out;
+  for (let cx = Math.floor((x - r) / TUNNEL_CELL); cx <= Math.floor((x + r) / TUNNEL_CELL); cx++) {
+    for (let cz = Math.floor((z - r) / TUNNEL_CELL); cz <= Math.floor((z + r) / TUNNEL_CELL); cz++) {
+      const t = tunnelPlan(cx, cz);
+      if (t) out.push(t);
+    }
+  }
+  return out;
+}
+
+// Does any tunnel reach into this box? Chunks without one skip the overhang work entirely.
+export function tunnelInBox(minX, minZ, maxX, maxZ) {
+  if (!world.tunnels) return false;
+  for (const t of tunnelsNear((minX + maxX) / 2, (minZ + maxZ) / 2, Math.max(maxX - minX, maxZ - minZ) / 2 + 1)) {
+    if (t.ox + t.r > minX && t.ox - t.r < maxX && t.oz + t.r > minZ && t.oz - t.r < maxZ) return true;
+  }
+  return false;
+}
+
+// The bore at (x, z): its floor and roof heights, or null outside every tunnel.
+const _bore = { floor: 0, roof: 0 };
+function boreAt(x, z) {
+  const T = tunnelPlan(Math.floor(x / TUNNEL_CELL), Math.floor(z / TUNNEL_CELL));
+  if (!T) return null;
+  const px = x - T.ax, pz = z - T.az, t = px * T.dx + pz * T.dz;
+  if (t < 0 || t > T.len) return null;
+  const s = Math.abs(pz * T.dx - px * T.dz - T.bend * Math.sin((Math.PI * t) / T.len)) / T.hw;
+  if (s >= 1) return null;
+  _bore.floor = T.f0 + ((T.f1 - T.f0) * t) / T.len;
+  _bore.roof = _bore.floor + T.H * Math.sqrt(1 - s * s); // an arch that meets the floor at the walls
+  return _bore;
+}
+
+// One column of a tunnel zone: the floor you'd land on, and the rock overhead (`under` = tunnel roof,
+// `top` = the mountain above it). Returns true when rock hangs over the floor here. Elsewhere under and
+// top collapse onto one height (the ground, or the roof line in a mouth), so the overhang mesh tapers
+// out to nothing instead of ending in a gap.
+const _col = { floor: 0, under: 0, top: 0 };
+export function tunnelColumn(x, z, out) {
+  const m = landHeight(x, z), c = craterDepthAt(x, z), b = world.tunnels ? boreAt(x, z) : null;
+  if (!b || m <= b.floor) { out.floor = out.under = out.top = m - c; return false; } // solid ground (or the bore is in the open air)
+  out.floor = b.floor - c;
+  if (m <= b.roof) { out.under = out.top = b.roof; return false; } // a mouth: the bore cuts open to the sky
+  out.under = b.roof;
+  out.top = Math.max(b.roof, m - c);
+  return true;
 }
 
 // Natural impact craters: one per 140 m cell at a random spot, bowl + raised rim.
