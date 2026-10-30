@@ -133,8 +133,13 @@ try {
       if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
-    // Lead bosses (the octopus & co.) hold a slot in front of you while you just fly on.
+    // Lead bosses (the octopus & co.) hold a slot in front of you while you just fly on. Over calm land, so a
+    // mountain range can't hold one back; called off rather than beaten, so no extra win reshapes the world.
     out.leadBosses = {};
+    const { amp, seaLevel } = G.world;
+    Object.assign(G.world, { amp: 0.15, seaLevel: -400 });
+    G.terrain.rebuildAll();
+    step(30);
     for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
       if (!def.lead) continue;
       G.powerups.active.clear();
@@ -150,10 +155,13 @@ try {
         }
       }
       out.leadBosses[kind] = { ahead: +(ahead / samples).toFixed(2), attacks: e.attacks, zone: G.zones.current.name };
-      e.hp = 0;
-      step(3);
+      G.objectives.current.dispose(G);
+      G.objectives.current = null;
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    Object.assign(G.world, { amp, seaLevel });
+    G.terrain.rebuildAll();
+    step(30);
     // Twins with a modifier: two bosses share one objective; it only completes when both are down.
     const twins = startBoss('gooseQueen', { mod: 'turbo', duo: true });
     step(30);
