@@ -21,6 +21,7 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await cp(join(root, 'src'), join(dist, 'src'), { recursive: true });
 await cp(join(root, 'style.css'), join(dist, 'style.css'));
+await cp(join(root, 'assets'), join(dist, 'assets'), { recursive: true });
 
 // Only the three.js files the game imports (plus their own relative imports).
 const vendor = join(dist, 'vendor', 'three');

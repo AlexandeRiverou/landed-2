@@ -235,6 +235,8 @@ body.touch #touch-controls { display: flex; }
   backdrop-filter: blur(2px);
   padding: 16px;
 }
+/* Title screen: the cover art (assets/cover.webp) replaces the live scene behind the card. */
+#title { background: #2b2a6a url(assets/cover.webp) center bottom / cover no-repeat; backdrop-filter: none; }
 .card {
   background: #fff;
   border: 4px solid var(--ink);
