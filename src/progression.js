@@ -20,7 +20,8 @@ const PERKS = [
 ];
 const LATER_PERK = { text: 'Hull +10', apply: (G) => { G.player.maxHealth += 10; G.player.health += 10; } };
 
-const STORE_KEY = 'loop-de-whoops-best';
+const STORE_KEY = 'landed-best';
+const OLD_STORE_KEY = 'loop-de-whoops-best'; // the game's old name: best runs saved under it still count
 // Points needed to reach `level`: 250, 750, 1500, 2500, 3750, ... (each level a bit further).
 export const xpForLevel = (level) => 125 * (level - 1) * level;
 
@@ -88,7 +89,7 @@ function rankFor(level) { return RANKS[Math.min(level, RANKS.length) - 1]; }
 
 function load() {
   try {
-    const b = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    const b = JSON.parse(localStorage.getItem(STORE_KEY) || localStorage.getItem(OLD_STORE_KEY) || 'null');
     if (b && Number.isFinite(b.score) && Number.isFinite(b.level)) return b;
   } catch { /* storage unavailable */ }
   return { score: 0, level: 1 };

@@ -1,4 +1,4 @@
-# Loop-de-Whoops ✈️
+# Landed ✈️
 
 A casual low-poly flying game with a procedurally generated world and an **extremely needy objective system**.
 If you ignore an objective, the game starts persuading you, and it gets more and more desperate.
@@ -38,7 +38,7 @@ The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs th
 - **On every pull request into `main`:** check, build and smoke test, with the zipped build attached to the run.
   Nothing is published.
 - **On every merge into `main`:** the same, then a new **GitHub Release** is published with
-  `loop-de-whoops-vX.Y.Z.zip` attached. Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
+  `landed-vX.Y.Z.zip` attached. Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
   major release, raise `"version"` in `package.json` (e.g. to `1.1.0`) in your PR, and the merge releases exactly that
   (logic in `scripts/next-version.mjs`). Re-running the workflow on an already released commit doesn't publish twice.
 - **Pushing a `v*` tag by hand** releases that tag.

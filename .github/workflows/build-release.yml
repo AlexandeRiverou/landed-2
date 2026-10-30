@@ -74,14 +74,14 @@ jobs:
       - name: Package release zip
         run: |
           mkdir -p release
-          name="loop-de-whoops-${{ steps.version.outputs.version }}"
+          name="landed-${{ steps.version.outputs.version }}"
           cp -r dist "release/$name"
           (cd release && zip -qr "$name.zip" "$name")
           ls -l release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: loop-de-whoops-${{ steps.version.outputs.version }}
+          name: landed-${{ steps.version.outputs.version }}
           path: release/*.zip
           if-no-files-found: error
 
@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: loop-de-whoops-${{ needs.build.outputs.version }}
+          name: landed-${{ needs.build.outputs.version }}
           path: release
 
       - name: Create GitHub Release
@@ -110,5 +110,5 @@ jobs:
           gh release create "$VERSION" release/*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Loop-de-Whoops $VERSION" \
+            --title "Landed $VERSION" \
             --generate-notes
