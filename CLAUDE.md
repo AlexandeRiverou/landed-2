@@ -80,6 +80,16 @@ code changes (a new PR, or more commits on one), update that preview in the same
 
 The preview shows the work under review, not necessarily `main`. After a merge, republish from `main` when asked.
 
+## 7. The agent team
+
+Changes can be run through the agent team described in **`docs/agents.md`**: the Orchestrator (`/orchestrate
+<request>`, defined in `.claude/skills/orchestrate/SKILL.md`) plans the work and delegates to the Developer, DevOps,
+Security and Documenter agents (`.claude/agents/`). The rules above bind every agent. In particular:
+
+- Only the Orchestrator (the main session) commits, pushes, opens PRs and updates the test preview.
+- Every change gets a Security review before its PR opens; a BLOCK verdict or a Medium+ finding is fixed first.
+- The PR description includes the Security review section.
+
 ## Project quick reference
 
 - Landed: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.

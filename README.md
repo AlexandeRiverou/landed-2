@@ -21,6 +21,12 @@ A playable preview lives at https://claude.ai/artifact/6vvTmbwBznvxiT49uftkHL (p
 every change (see `CLAUDE.md`). `npm run preview` stamps the build and prints the files to publish, and the title card shows
 which build you're playing.
 
+## The agent team
+
+Work on this repo can be driven by a team of Claude Code agents: run `/orchestrate <request>` and the Orchestrator
+plans it, delegates to the Developer, DevOps, Security and Documenter agents, and opens the PR. See
+[`docs/agents.md`](docs/agents.md).
+
 ## Building, testing and releasing
 
 ```bash
