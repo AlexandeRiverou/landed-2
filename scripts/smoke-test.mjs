@@ -142,13 +142,15 @@ try {
     step(30);
     for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
       if (!def.lead) continue;
+      // The last boss's drop is still lying around: a Time Freeze grabbed from it would stop this one cold.
       G.powerups.active.clear();
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
       const [e] = startBoss(kind, { mod: null, duo: false });
-      // Sampled twice a second for 8 s, after 3 s to fly in: terrain (a tunnel, say) can hold it back for a moment.
+      // Sampled twice a second for 6 s, after 6 s to fly in (it may spawn 800 m out, or behind you if you're turning).
       let ahead = 0, samples = 0;
-      for (let i = 0; i < 30 * 11; i++) {
+      for (let i = 0; i < 30 * 12; i++) {
         G.player.grace = 1; G.player.health = G.player.maxHealth; step(1);
-        if (i >= 90 && i % 15 === 0) {
+        if (i >= 180 && i % 15 === 0) {
           const to = e.pos.clone().sub(G.player.pos);
           samples++;
           if (to.dot(G.player.forward) > 40 && to.length() < 350) ahead++;
