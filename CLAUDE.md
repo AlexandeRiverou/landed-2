@@ -95,6 +95,8 @@ Security and Documenter agents (`.claude/agents/`). The rules above bind every a
 - Landed: a casual Three.js flying game. Plain ES modules in `src/`, no bundler. See `README.md`.
 - `window.G` holds the game state in the browser. `G.step(dt)` advances the simulation without rendering, which is
   useful for scripted tests.
+- Secret developer menu (hold `1` + `0` for 3 s mid-flight, or `G.devmenu.open()`): jump to any zone, boss or
+  objective; see README "Debugging".
 - Build & Release: `.github/workflows/build-release.yml` runs check, build and smoke test on every PR into `main`.
   **Every merge into `main` publishes a new versioned GitHub Release** (patch bump; raise `version` in `package.json` for
   minor/major), so a merged PR ships. Pushing a `v*` tag also publishes a release.

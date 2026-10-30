@@ -270,6 +270,33 @@ button {
 }
 button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
 
+/* Developer menu (hold 1 + 0 for 3 s): a scrollable card of small buttons, above every other overlay. */
+#dev-hint {
+  position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); width: 190px; z-index: 20;
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 10px; padding: 4px 10px;
+  font-size: 12px; font-weight: 700; text-align: center; pointer-events: none;
+}
+#dev-hint .track { height: 5px; margin-top: 3px; }
+#dev-hint .track > div { height: 100%; width: 0; background: #7a4cff; }
+#devmenu { z-index: 10; }
+#devmenu .card { max-width: 760px; max-height: 100%; overflow-y: auto; text-align: left; padding: 14px 18px; touch-action: pan-y; user-select: none; }
+#devmenu .dev-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#devmenu h1 { font-size: clamp(22px, 5vw, 30px); text-shadow: 0 3px 0 var(--ink); -webkit-text-stroke: 1.5px var(--ink); margin: 0; }
+#devmenu h2 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin: 12px 0 6px; opacity: 0.7; }
+#devmenu .dev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+#devmenu button {
+  margin: 0; padding: 5px 8px; font-size: 13px; border-width: 2px; border-radius: 10px; box-shadow: 0 3px 0 var(--ink);
+  background: #f4f0ff; text-align: left; overflow-wrap: anywhere;
+}
+#devmenu button:hover { background: #e9dbff; }
+#devmenu button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+#devmenu button.on { background: var(--accent); }
+#devmenu button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: 0 3px 0 var(--ink); }
+#devmenu .dev-close { flex: none; padding: 2px 12px; font-size: 18px; text-align: center; background: var(--accent); }
+#devmenu .dev-opts { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+#devmenu select { font-family: inherit; font-size: 13px; border: 2px solid var(--ink); border-radius: 8px; padding: 2px 4px; }
+#devmenu input[type=checkbox] { width: 16px; height: 16px; vertical-align: -3px; }
+
 @media (max-width: 640px) {
   #objective { width: 46vw; padding: 6px 8px; }
   #obj-title { font-size: 15px; }
@@ -284,4 +311,6 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #boss-bar { bottom: 110px; width: 60vw; }
   .relax-btn { top: auto; bottom: 14px; padding: 6px 10px; }
   .relax-btn .lbl, #relax-caption { display: none; }
+  #devmenu { padding: 8px; }
+  #devmenu .dev-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

@@ -687,6 +687,12 @@ export class Objectives {
     this.start(make(G), type);
   }
 
+  // A specific objective type, right now (developer menu).
+  startType(type) {
+    const t = TYPES.find((x) => x[0] === type);
+    if (t) this.start(t[2](this.G), type);
+  }
+
   start(obj, type) {
     const G = this.G;
     this.recent = [type, ...this.recent].slice(0, 4);

@@ -18,8 +18,10 @@ export class Input {
     this.gestures = [];
     this.lastTap = {};
     this.flickArmed = true;
+    this.lock = null; // a Set of codes: while set (developer menu open), only these keys are tracked, and no handlers run
 
     addEventListener('keydown', (e) => {
+      if (this.lock) { if (this.lock.has(e.code)) this.keys.add(e.code); return; }
       if (GAME_KEYS.has(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) { this.handlers[e.code]?.(); if (KEY_DIR[e.code]) this.tap(KEY_DIR[e.code]); }
       this.keys.add(e.code);

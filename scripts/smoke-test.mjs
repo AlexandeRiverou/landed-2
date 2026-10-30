@@ -382,6 +382,38 @@ try {
   await setUp(20); await keyTwice('ArrowDown'); report.stunts.lowSplitS = await measure();
   await setUp(200); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500); await page.keyboard.press('ArrowLeft'); report.stunts.slowTaps = await measure();
 
+  // Developer menu: hold 1 + 0 for 3 s of real time. It pauses the game and swallows gameplay keys.
+  const menu = () => page.evaluate(() => ({
+    open: !document.getElementById('devmenu').classList.contains('hidden'), paused: window.G.paused,
+    zone: window.G.zones.index, boss: window.G.objectives.current?.boss || null, type: window.G.objectives.current?.type || null,
+    space: window.G.input.keys.has('Space'),
+  }));
+  const hold = async () => { await page.keyboard.down('Digit1'); await page.keyboard.down('Digit0'); };
+  const release = async () => { await page.keyboard.up('Digit0'); await page.keyboard.up('Digit1'); };
+  report.devmenu = {};
+  await hold(); await page.waitForTimeout(1000); await release();
+  report.devmenu.shortHold = await menu();
+  // Still closed at 2 s; then wait (keys held) for the 3 s mark. A busy CI runner can fire the timer a little late.
+  await hold();
+  await page.waitForTimeout(2000);
+  report.devmenu.earlyOpen = (await menu()).open;
+  await page.waitForFunction(() => window.G.devmenu.isOpen, null, { timeout: 5000 }).catch(() => {});
+  await release();
+  await page.keyboard.down('Space');
+  report.devmenu.opened = await menu();
+  await page.keyboard.up('Space');
+  await page.click('#devmenu [data-zone="3"]');
+  report.devmenu.zone = await menu();
+  await page.evaluate(() => window.G.devmenu.open()); // the chord path is covered above; reopen directly to keep this quick
+  await page.click('#devmenu [data-boss="gooseQueen"]');
+  report.devmenu.boss = await menu();
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.click('#devmenu [data-objective="stars"]');
+  report.devmenu.objective = await menu();
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.keyboard.press('Escape');
+  report.devmenu.escaped = await menu();
+
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
@@ -419,6 +451,11 @@ try {
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],
     [(({ touchLeft: s, touchUp: u }) => s.name === 'Barrel roll' && s.side < -18 && u.name === 'Immelmann')(report.stunts), 'two touch flicks trigger stunts'],
     [!report.stunts.lowSplitS.name && !report.stunts.slowTaps.name, 'no Split-S near the ground, and slow taps are not a double tap'],
+    [!report.devmenu.shortHold.open && !report.devmenu.shortHold.paused, 'dev menu: a 1 s hold of 1 + 0 does nothing'],
+    [!report.devmenu.earlyOpen && report.devmenu.opened.open && report.devmenu.opened.paused && !report.devmenu.opened.space, 'dev menu: holding 1 + 0 for 3 s (not 2) opens it, pauses, and swallows gameplay keys'],
+    [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
+    [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
+    [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {
