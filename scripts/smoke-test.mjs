@@ -281,6 +281,17 @@ try {
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
     const { CURVE, AXIS_CURVE, CURVE_AXIS } = await import('./src/curve.js');
+    const { PROPS } = await import('./src/models.js');
+    const instances = (type, fn) => { // every placed (not blown-away) instance of a prop type in the loaded chunks
+      const m = new G.camera.matrix.constructor(), v = pp0.clone();
+      for (const c of G.terrain.chunks.values()) for (const im of c.props.children) {
+        if (im.geometry !== PROPS[type].geo) continue;
+        for (let k = 0; k < im.count; k++) { im.getMatrixAt(k, m); if (m.elements[0] || m.elements[2]) fn(v.setFromMatrixPosition(m)); }
+      }
+    };
+    const pp0 = G.player.pos;
+    const COUNTRY = ['picnicTable', 'tractor', 'camperVan', 'skiLift', 'gasStation'];
+    out.countrySeen = {};
     for (let i = 0; i < zoneCount; i++) {
       G.zones.enter(i);
       step(90);
@@ -292,6 +303,117 @@ try {
         planeUnderRoof: pp.y < roof, curve: +(CURVE.value * 1e4).toFixed(2),
         axisCurve: +(AXIS_CURVE.value * 1e4).toFixed(2), axis: [CURVE_AXIS.value.x, CURVE_AXIS.value.y], sea: G.world.seaLevel,
       });
+      for (const t of COUNTRY) instances(t, () => { out.countrySeen[t] = (out.countrySeen[t] || 0) + 1; });
+      if (z.world.city) {
+        // Metropolis: buildings are ground with sheer walls. Flying into one crashes (Ghost Mode skims onto the roof),
+        // an avenue is clear to fly down low (the crop-dusting objective completes there), and the props sit where they belong.
+        const W = await import('./src/world.js');
+        const p = G.player, V = pp.constructor, hp = p.health, cooldown = G.objectives.cooldown, puTimer = G.powerups.timer;
+        const B = G.world.city, sea = G.world.seaLevel, bx0 = Math.floor(pp.x / B), bz0 = Math.floor(pp.z / B);
+        const city = { tallest: 0, buildings: 0, meshes: [...G.terrain.chunks.values()].filter((c) => c.city).length };
+        let wall = null;
+        for (let bx = bx0 - 12; bx <= bx0 + 12; bx++) {
+          for (let bz = bz0 - 12; bz <= bz0 + 12; bz++) {
+            const blk = W.cityBlock(bx, bz);
+            for (const b of blk.lots) {
+              city.buildings++;
+              city.tallest = Math.max(city.tallest, b.tiers[b.tiers.length - 1].top - b.base);
+              const t = b.tiers[0], x = bx * B + (blk.x0 - bx * B) / 2, z = (t.z0 + t.z1) / 2; // the middle of the road west of it
+              if (!wall && t.top - b.base >= 40 && b.x0 - blk.x0 < 10 && W.cityGround(x, z) > sea + 3) wall = { x, z, t, street: W.cityGround(x, z) };
+            }
+          }
+        }
+        if (!wall) throw new Error('Metropolis: no building found to fly into');
+        const inside = new V((wall.t.x0 + wall.t.x1) / 2, 0, (wall.t.z0 + wall.t.z1) / 2);
+        city.street = Math.round(W.heightAt(wall.x, wall.z));
+        city.roof = Math.round(W.heightAt(inside.x, inside.z));
+        city.sheer = G.terrain.surfaceHeight(wall.t.x0 + 0.5, wall.z) === wall.t.top && G.terrain.surfaceHeight(wall.t.x0 - 0.5, wall.z) < wall.street + 1;
+        // Deterministic: the same seed plans the same city after the cache is cleared.
+        const sample = () => Array.from({ length: 40 }, (_, k) => W.heightAt(pp.x + (k % 8) * 37 - 150, pp.z + Math.floor(k / 8) * 53 - 130)).join();
+        const before = sample();
+        W.clearCity();
+        city.deterministic = sample() === before;
+
+        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        G.objectives.cooldown = 1e9;
+        G.powerups.timer = 1e9;
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.powerups.active.clear();
+        p.health = 1e6; // enemies aren't what this checks
+        p.maneuver = null;
+        let reason = null;
+        const crash = p.crash.bind(p);
+        p.crash = (r) => { reason ||= r; crash(r); };
+        const fly = (x, y, z, yaw, frames, each) => {
+          p.pos.set(x, y, z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true;
+          for (let k = 0; k < frames && !p.dead; k++) {
+            p.invuln = 0; p.grace = 0;
+            p.quat.setFromAxisAngle(new V(0, 1, 0), yaw); p.updateAxes(); // level, holding the heading
+            G.step(1 / 30);
+            each?.();
+          }
+        };
+        G.terrain.update(new V(wall.x, 0, wall.z), 200);
+        fly(wall.x, wall.street + 12, wall.z, -Math.PI / 2, 60); // heading +x, 12 m up, straight at the wall
+        city.wallCrash = reason;
+        reason = null;
+        G.powerups.active.set('ghost', 10);
+        fly(wall.x, wall.street + 12, wall.z, -Math.PI / 2, 30);
+        city.ghostOnRoof = !p.dead && reason === null && p.pos.y >= wall.t.top;
+        G.powerups.active.clear();
+
+        // Low down an avenue: find a dry, flat 500 m stretch, then crop-dust along it with no safety net.
+        let run = null;
+        for (let k = -6; k <= 6 && !run; k++) {
+          const x = (Math.floor(bx0 / 4) + k) * 4 * B + 20;
+          for (let z = pp.z - 1500; z < pp.z + 1500 && !run; z += B) {
+            let lo = Infinity, hi = -Infinity;
+            for (let d = 0; d <= 500; d += 8) { const g = W.cityGround(x, z + d); lo = Math.min(lo, g); hi = Math.max(hi, g); }
+            if (lo > sea + 3 && hi - lo < 4) run = { x, z, y: hi + 12 };
+          }
+        }
+        if (!run) throw new Error('Metropolis: no dry avenue found');
+        G.terrain.update(new V(run.x, 0, run.z + 250), 200);
+        G.objectives.completed = 1;
+        G.zones.sinceZone = 0;
+        G.objectives.cooldown = 0;
+        G.objectives.recent = window.OBJ_FOR_TEST.OBJECTIVE_TYPES.filter((t) => t !== 'lowfly');
+        G.objectives.next();
+        city.lowflyStarted = G.objectives.current?.type === 'lowfly';
+        const done = G.objectives.completed;
+        let maxAlt = 0;
+        reason = null;
+        fly(run.x, run.y, run.z, Math.PI, 30 * 9, () => { maxAlt = Math.max(maxAlt, p.pos.y - G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y)); }); // heading +z
+        city.avenue = { dead: p.dead, reason, maxAlt: Math.round(maxAlt), lowflyDone: G.objectives.completed > done };
+        p.crash = crash;
+        p.health = hp;
+        G.objectives.cooldown = cooldown;
+        G.powerups.timer = puTimer;
+
+        // Air objectives never put their targets inside (or under the roof of) a building.
+        city.buried = [];
+        for (const type of ['hoop', 'chain', 'stars', 'balloons']) {
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+          G.objectives.completed = 1;
+          G.objectives.recent = window.OBJ_FOR_TEST.OBJECTIVE_TYPES.filter((t) => t !== type);
+          G.objectives.next();
+          for (let k = 0; k < 30; k++) {
+            const t = G.objectives.current?.target();
+            if (t && t.y < W.heightAt(t.x, t.z) + 5) { city.buried.push(type); break; }
+            step(1);
+          }
+        }
+        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+
+        // City props: instanced, traffic on the streets (never in a building), rooftop things on the roofs.
+        city.props = {};
+        city.misplaced = [];
+        const CITY = ['car', 'taxi', 'bus', 'streetLamp', 'trafficLight', 'parkTree', 'bench', 'waterTower', 'helipad', 'antenna', 'billboard', 'crane', 'spire', 'statue', 'fountain'];
+        for (const t of CITY) instances(t, () => { city.props[t] = (city.props[t] || 0) + 1; });
+        for (const t of ['car', 'taxi', 'bus']) instances(t, (v) => { if (W.cityRoofAt(v.x, v.z) > -Infinity || Math.abs(v.y - W.cityGround(v.x, v.z)) > 0.5) city.misplaced.push(t); });
+        for (const t of ['waterTower', 'helipad', 'antenna', 'spire']) instances(t, (v) => { if (Math.abs(v.y - W.cityRoofAt(v.x, v.z)) > 0.5) city.misplaced.push(t); });
+        out.city = city;
+      }
       if (z.world.underwater) {
         // Underwater: nose held up for 8 s with no safety net. The surface holds the plane under it instead of crashing it.
         // Start in open water (the game's 8 s zone grace would cover a hill under the plane; this flight has none):
@@ -572,7 +694,12 @@ try {
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
-    [report.zones.length >= 27, 'every zone loads (27+)'],
+    [report.zones.length >= 28, 'every zone loads (28+)'],
+    [(({ city: c }) => c && c.meshes > 10 && c.tallest >= 100 && c.buildings > 200 && c.roof - c.street >= 40 && c.sheer && c.deterministic)(report), 'Metropolis: a street grid of buildings (towers 100 m+), roofs are ground with sheer walls, same seed same city'],
+    [(({ city: c }) => c && c.wallCrash === 'ground' && c.ghostOnRoof)(report), 'Metropolis: flying into a tower wall crashes (Ghost Mode skims onto the roof)'],
+    [(({ city: c }) => c && c.avenue.lowflyDone && !c.avenue.dead && c.avenue.maxAlt < 30 && c.lowflyStarted && c.buried.length === 0)(report), 'Metropolis: crop-dusting down an avenue works, and air objectives stay out of the buildings'],
+    [(({ city: c }) => c && Object.keys(c.props).length >= 10 && ['car', 'streetLamp', 'trafficLight'].every((t) => c.props[t] > 0) && ['waterTower', 'antenna', 'helipad'].some((t) => c.props[t] > 0) && c.misplaced.length === 0)(report), 'Metropolis: city props are instanced, traffic on the streets, rooftop props on the roofs'],
+    [['picnicTable', 'tractor', 'camperVan', 'skiLift'].every((t) => report.countrySeen[t] > 0), 'new countryside, desert and snow props turn up in their zones'],
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
     [report.zones.filter((z) => z.name !== 'Crystal Caverns' && z.name !== 'Sunken Reef').every((z) => z.roof === null), 'only the cave has a roof (and the reef, see below)'],
     [(({ underwater: u }, r) => r && r.roof === r.sea - 4 && r.planeUnderRoof && !u.dead && u.pressedSecs >= 1 && u.maxY < u.sea && u.aboveSurface.length === 0 && u.hues >= 6)(report, report.zones.find((z) => z.name === 'Sunken Reef')), 'underwater: the surface is the roof, the plane and objectives stay under it, and the seabed is colourful'],
