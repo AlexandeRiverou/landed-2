@@ -50,9 +50,10 @@ function drop(G, ...objs) {
   }
 }
 
-function nearestOf(G, list) {
+// Nearest object in the list (skipping any `skip` says no to), without building a new array each frame.
+function nearestOf(G, list, skip = null) {
   let best = null, bd = Infinity;
-  for (const m of list) { const d = m.position.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = m; } }
+  for (const m of list) { if (skip?.(m)) continue; const d = m.position.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = m; } }
   return best;
 }
 
@@ -598,7 +599,7 @@ export function mkHerd(G) {
     return b;
   });
   let push = 60, pull = 1.6, scale = 1, inPen = 0;
-  const free = () => balloons.filter((b) => !b.userData.penned);
+  const isPenned = (b) => b.userData.penned;
   return objective({
     type: 'herd', reward: 210, noun: 'the balloons',
     title: pick(['Balloon Herding', 'Sheepdog Of The Skies', 'Round Up The Floaties']),
@@ -606,7 +607,7 @@ export function mkHerd(G) {
     caps: new Set(['grow', 'easier']),
     signText: ['BALLOONS', 'NEED HERDING →'],
     hints: ['Fly THROUGH a balloon toward the pen: it gets shoved the way you\'re flying.', 'Gentle passes work. Balloons spook easily.', 'The pen pulls in balloons that get close. It wants them too.'],
-    target() { const b = nearestOf(G, free()); return b ? b.position : pen.position; },
+    target() { const b = nearestOf(G, balloons, isPenned); return b ? b.position : pen.position; },
     onUpdate(dt, G) {
       const p = G.player, c = pen.position, R = RP * scale;
       anim(pen, dt);
