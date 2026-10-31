@@ -350,7 +350,7 @@ try {
               city.buildings++;
               city.tallest = Math.max(city.tallest, b.tiers[b.tiers.length - 1].top - b.base);
               const t = b.tiers[0], x = bx * B + (blk.x0 - bx * B) / 2, z = (t.z0 + t.z1) / 2; // the middle of the road west of it
-              if (!wall && t.top - b.base >= 40 && b.x0 - blk.x0 < 10 && W.cityGround(x, z) > sea + 3) wall = { x, z, t, street: W.cityGround(x, z) };
+              if (!wall && t.top - W.cityGround(x, z) >= 40 && b.x0 - blk.x0 < 10 && W.cityGround(x, z) > sea + 3) wall = { x, z, t, street: W.cityGround(x, z) };
             }
           }
         }
@@ -358,7 +358,7 @@ try {
         const inside = new V((wall.t.x0 + wall.t.x1) / 2, 0, (wall.t.z0 + wall.t.z1) / 2);
         city.street = Math.round(W.heightAt(wall.x, wall.z));
         city.roof = Math.round(W.heightAt(inside.x, inside.z));
-        city.sheer = G.terrain.surfaceHeight(wall.t.x0 + 0.5, wall.z) === wall.t.top && G.terrain.surfaceHeight(wall.t.x0 - 0.5, wall.z) < wall.street + 1;
+        city.sheer = G.terrain.surfaceHeight(wall.t.x0 + 0.5, wall.z) === wall.t.top && G.terrain.surfaceHeight(wall.t.x0 - 0.5, wall.z) < W.cityGround(wall.t.x0 - 0.5, wall.z) + 1; // street level at the wall's foot (the road can slope)
         // Deterministic: the same seed plans the same city after the cache is cleared.
         const sample = () => Array.from({ length: 40 }, (_, k) => W.heightAt(pp.x + (k % 8) * 37 - 150, pp.z + Math.floor(k / 8) * 53 - 130)).join();
         const before = sample();
@@ -550,7 +550,7 @@ try {
         const aim = (t) => { const c = W.tunnelPoint(T, Math.min(T.len + 100, t + 25)); p.nudgeToward(new V(c.x, c.floor + T.H * 0.42, c.z), 1e9, 1); p.updateAxes(); };
         placeAt(2, 0.42);
         let under = 0, t = 2;
-        for (let k = 0; k < 30 * 40 && t < T.len + 10 && !p.dead; k++) {
+        for (let k = 0; k < 30 * 40 && t < T.len && !p.dead; k++) { // to the far mouth: past it, the land isn't the tunnel's
           p.invuln = 0; p.grace = 0;
           aim(t);
           G.step(1 / 30);
@@ -699,6 +699,22 @@ try {
   await page.evaluate(() => window.G.devmenu.open());
   await page.keyboard.press('Escape');
   report.devmenu.escaped = await menu();
+  // Touch chord: one finger in each top corner for 3 s. One corner alone does nothing.
+  const corners = (pts) => page.evaluate((pts) => {
+    const c = document.getElementById('game');
+    const touch = ([x, y], i) => new Touch({ identifier: 20 + i, target: c, clientX: x, clientY: y });
+    const ts = pts.map(touch), lift = !ts.length; // lift: every corner finger comes up
+    c.dispatchEvent(new TouchEvent(lift ? 'touchend' : 'touchstart', { changedTouches: lift ? [[20, 20], [1004, 20]].map(touch) : ts.slice(-1), touches: ts, bubbles: true, cancelable: true }));
+  }, pts);
+  await corners([[20, 20]]);
+  await page.waitForTimeout(3500);
+  report.devmenu.oneCorner = (await menu()).open;
+  await corners([[20, 20], [1004, 20]]);
+  await page.waitForFunction(() => window.G.devmenu.isOpen, null, { timeout: 6000 }).catch(() => {});
+  report.devmenu.touchOpened = await menu();
+  await corners([]);
+  report.devmenu.touchReleased = await page.evaluate(() => window.G.devmenu.since === null && window.G.input.stick.id === null);
+  await page.evaluate(() => window.G.devmenu.close());
 
   console.log(JSON.stringify(report, null, 2));
 
@@ -754,6 +770,7 @@ try {
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
+    [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {

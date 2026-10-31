@@ -217,9 +217,11 @@ upward for free.
 scripted tests in a headless browser.
 
 **Secret developer menu** (`src/devmenu.js`): during a flight, hold `1` and `0` together (top row or numpad) for 3
-seconds. A small "Developer menu… 3s" pill counts down while you hold; let go early and nothing happens. The menu
-pauses the game, silences the engine and ducks the music. Close it with `Esc`, the ✕ button, or the same 3 s hold.
-It's a testing aid, so it's deliberately left off the title card.
+seconds. On a touch screen, hold one finger in each top corner of the screen instead (each corner is a square 15% of
+the screen width, 60–120 px). A small "Developer menu… 3s" pill counts down while you hold; let go early, or slide a
+finger out of its corner, and nothing happens. The menu pauses the game, silences the engine and ducks the music.
+Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, so it's deliberately left off the title
+card.
 
 - **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
