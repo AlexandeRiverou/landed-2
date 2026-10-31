@@ -5,6 +5,7 @@ import { BOSSES, BOSS_MODS } from './enemies.js';
 import { OBJECTIVE_TYPES } from './objectives.js';
 import { POWERUPS } from './powerups.js';
 import { xpForLevel } from './progression.js';
+import { SECRETS } from './secrets.js';
 
 const HOLD_MS = 3000;
 const ONE = ['Digit1', 'Numpad1'], ZERO = ['Digit0', 'Numpad0'];
@@ -146,6 +147,11 @@ export class DevMenu {
     button(cheats, 'Complete objective', () => this.completeObjective());
     button(cheats, 'Level up', () => this.levelUp());
     button(cheats, 'Clear enemies', () => this.clearEnemies());
+
+    // Each secret's effect, recorded as found like the real trigger would.
+    const secrets = section('Secrets');
+    for (const s of SECRETS) button(secrets, `🥚 ${s.name}`, () => { this.close(); G.secrets.trigger(s.id); }, s.hint).dataset.secret = s.id;
+    button(secrets, 'Forget found secrets', () => { G.secrets.reset(); G.ui.notify('Secrets forgotten. Go find them again.', 'info', 3, 2); });
 
     this.root.append(card);
     document.body.append(this.hint, this.root);

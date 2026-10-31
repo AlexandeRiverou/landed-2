@@ -24,6 +24,7 @@ export const TOD = {
   pastel: { top: '#8ab4ec', horizon: '#ffdce8', bottom: '#f8e8f0', sun: '#fff4e8', sunI: 1.9, hemiSky: '#ffe8f4', hemiGround: '#d8d0e8', hemiI: 1.25, elev: 24, stars: 0 },
   jovian: { top: '#4a1e0a', horizon: '#f0a860', bottom: '#c0703a', sun: '#fff0d0', sunI: 2.0, hemiSky: '#ffc890', hemiGround: '#8a4a2a', hemiI: 1.0, elev: 25, stars: 0.4 },
   golden: { top: '#3a5a9a', horizon: '#f8c898', bottom: '#d8a078', sun: '#ffc890', sunI: 2.1, hemiSky: '#ffd8b8', hemiGround: '#5a4a5a', hemiI: 1.0, elev: 14, stars: 0.05 },
+  halloween: { top: '#1a0830', horizon: '#ff7a1a', bottom: '#3a1430', sun: '#ffb060', sunI: 1.4, hemiSky: '#c08aff', hemiGround: '#3a2a2a', hemiI: 0.95, elev: 10, stars: 0.6 }, // a secret (secrets.js)
   storm: { top: '#3a4048', horizon: '#8d949c', bottom: '#5a6068', sun: '#d8dde2', sunI: 0.9, hemiSky: '#a0a8b0', hemiGround: '#3a3f44', hemiI: 0.95, elev: 50, stars: 0 },
 };
 const COLOR_KEYS = ['top', 'horizon', 'bottom', 'sun', 'hemiSky', 'hemiGround'];
@@ -154,6 +155,7 @@ export const WEATHER = {
   petals: { colors: ['#ffb0d8', '#ffd0ec', '#ffffff'], size: 2.6, fall: 10, sway: 10, count: 1400, opacity: 1 },
   dust: { colors: ['#e0b080', '#c89060', '#f0d0a0'], size: 2, fall: 3, sway: 12, count: 1600, opacity: 0.6 },
   spores: { colors: ['#7af0ff', '#c07aff', '#7aff9a'], size: 1.8, fall: -4, sway: 4, count: 1200, opacity: 0.9 },
+  spooky: { colors: ['#ff7a1a', '#9a4aff', '#1a1020'], size: 2.6, fall: 5, sway: 12, count: 1600, opacity: 0.9 }, // embers and bats (a secret, secrets.js)
 };
 
 function dotTexture() {

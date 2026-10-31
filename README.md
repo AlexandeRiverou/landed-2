@@ -36,7 +36,7 @@ npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN neede
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
                   # world mutations, every objective, every boss, relax mode and
-                  # the developer menu;
+                  # the developer menu and the secrets;
                   # fails on any error
 ```
 
@@ -237,6 +237,10 @@ drift (a whole new map), your plane's paint job, an engine upgrade, cloud styles
 for every enemy. The terrain morphs chunk by chunk around you, and if a mountain grows under you, you get relocated
 upward for free.
 
+**Secrets** (`src/secrets.js`): there are 10 Easter eggs hidden in the game. Some you type, some you fly, some only
+show up on certain days. The title card counts how many you've found and drops a cryptic hint for one you haven't, and
+found secrets are remembered between flights. The full spoiler list is in [`docs/secrets.md`](docs/secrets.md).
+
 ## Debugging
 
 `window.G` holds the whole game state. `G.step(dt)` advances the simulation without rendering, which is handy for
@@ -256,6 +260,8 @@ card.
 - **Power-ups:** grab any of the 13.
 - **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode), Relax Mode
   on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
+- **Secrets:** trigger any of the 10 (it plays the effect and counts as found; hover a button for its hint), and
+  **Forget found secrets** to start the hunt over.
 
 Starting a boss or objective replaces the current one and turns Relax Mode off. While the menu is open, gameplay keys
 don't reach the game (`G.input.lock`), so `Space` won't fire behind it.
@@ -263,3 +269,6 @@ don't reach the game (`G.input.lock`), so `Space` won't fire behind it.
 From the console: `G.devmenu.open()` / `G.devmenu.close()`, `G.player.god = true`, and
 `G.objectives.startType('stars')` to start one objective type right now (unknown types are ignored; it doesn't check
 whether the zone allows it, and it doesn't clear the current objective, the menu does that first).
+`G.secrets.list()`, `G.secrets.trigger('konami')` and `G.secrets.reset()` work on the secrets, and
+`G.secrets.checkDate(new Date(2026, 9, 31))` pretends it's Halloween. The whole `G.secrets` API, and how to add a
+secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).
