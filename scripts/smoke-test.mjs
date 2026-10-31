@@ -80,6 +80,80 @@ try {
     }
     step(150);
 
+    // Quests finished through play (stunts, or the plane moved onto each target), never by complete():
+    // what's checked is that each one notices what the player did.
+    out.quests = {};
+    {
+      const p = G.player, cooldown = G.objectives.cooldown, puTimer = G.powerups.timer;
+      G.powerups.timer = 1e9; // no power-up (Magnet, Mega Plane...) gets grabbed and changes the rules
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      G.powerups.active.clear();
+      const fresh = (type) => {
+        if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+        G.objectives.cooldown = 1e9; // nothing new starts after it's done
+        G.zones.sinceZone = 0;
+        G.objectives.startType(type);
+        return G.objectives.current;
+      };
+      const visit = (v) => { p.pos.copy(v); p.prevPos.copy(v); step(1); };
+      // Barrel roll: an Immelmann's half roll doesn't count; real barrel rolls (double-tap stunts) do.
+      const roll = fresh('roll');
+      let done0 = G.objectives.completed;
+      p.maneuver = null;
+      p.quat.setFromAxisAngle(p.up.set(0, 1, 0), Math.atan2(-p.forward.x, -p.forward.z));
+      p.updateAxes();
+      p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 250;
+      p.maneuverCd = 0;
+      p.startManeuver('up');
+      step(75);
+      out.quests.halfRollIgnored = /Rolls 0\//.test(roll.progress);
+      for (let k = 0; k < 6 && G.objectives.current === roll; k++) { p.maneuverCd = 0; p.startManeuver(k % 2 ? 'left' : 'right'); step(40); }
+      out.quests.roll = G.objectives.current !== roll && G.objectives.completed === done0 + 1;
+      // Pizza delivery: fly into the box, the target switches to the drop-off, the pizza cools, deliver it.
+      const del = fresh('delivery');
+      done0 = G.objectives.completed;
+      const pizzaAt = del.target().clone();
+      visit(pizzaAt);
+      step(1);
+      const padAt = del.target().clone();
+      step(30);
+      const warmth = +(del.progress.match(/Warmth (\d+)%/) || [0, 100])[1];
+      out.quests.deliveryStages = padAt.distanceTo(pizzaAt) > 200 && warmth < 100;
+      visit(del.target());
+      step(1);
+      out.quests.delivery = G.objectives.current !== del && G.objectives.completed === done0 + 1;
+      // Constellation: touching a star out of order does nothing; flying through them in order draws it.
+      const con = fresh('constellation');
+      done0 = G.objectives.completed;
+      visit(con.starAt(con.stars - 1));
+      out.quests.constellationOrder = /Star 1 \//.test(con.progress) && G.objectives.current === con;
+      for (let k = 0; k < con.stars; k++) visit(con.target().clone());
+      step(45); // a moment to admire the drawing
+      out.quests.constellation = G.objectives.current !== con && G.objectives.completed === done0 + 1;
+      // Falling stars: each one caught in mid-air counts.
+      const met = fresh('meteors');
+      done0 = G.objectives.completed;
+      for (let k = 0; k < 5 && G.objectives.current === met; k++) {
+        for (let i = 0; i < 60 && !met.target(); i++) step(1); // the next one is on its way
+        visit(met.target().clone());
+      }
+      out.quests.meteors = G.objectives.current !== met && G.objectives.completed === done0 + 1;
+      // Photo safari: nose on the whale, close enough, long enough, three times (it bolts after each one).
+      const photo = fresh('photo');
+      done0 = G.objectives.completed;
+      for (let i = 0; i < 30 * 20 && G.objectives.current === photo; i++) {
+        const w = photo.target();
+        p.nudgeToward(w, 1e9, 1);
+        p.updateAxes();
+        p.pos.copy(w).addScaledVector(p.forward, -110);
+        p.prevPos.copy(p.pos);
+        step(1);
+      }
+      out.quests.photo = G.objectives.current !== photo && G.objectives.completed === done0 + 1;
+      G.objectives.cooldown = cooldown;
+      G.powerups.timer = puTimer;
+    }
+
     // A boss fight: fly at the boss with guns blazing until it falls.
     if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
     out.firstBossGap = G.objectives.nextBossAt;
@@ -727,7 +801,11 @@ try {
     [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
-    [report.objectiveTypes >= 28, 'all objective types are on the menu'],
+    [report.objectiveTypes >= 38, 'all objective types are on the menu (38+)'],
+    [report.quests.roll && report.quests.halfRollIgnored, 'barrel roll quest: real rolls count, an Immelmann\'s half roll does not'],
+    [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],
+    [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
+    [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
