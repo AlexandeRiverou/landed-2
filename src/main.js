@@ -48,7 +48,7 @@ G.progress = new Progress(G);
 G.powerups = new PowerUps(G);
 G.zones = new Zones(G);
 G.input = new Input(canvas);
-G.devmenu = new DevMenu(G); // secret: hold 1 + 0 for 3 s mid-flight
+G.devmenu = new DevMenu(G); // secret: hold 1 + 0 (or both top corners on touch) for 3 s mid-flight
 
 G.player.spawn(0, 0, Math.random() * Math.PI * 2);
 G.terrain.update(G.player.pos, 999);

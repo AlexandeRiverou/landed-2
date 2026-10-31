@@ -699,6 +699,22 @@ try {
   await page.evaluate(() => window.G.devmenu.open());
   await page.keyboard.press('Escape');
   report.devmenu.escaped = await menu();
+  // Touch chord: one finger in each top corner for 3 s. One corner alone does nothing.
+  const corners = (pts) => page.evaluate((pts) => {
+    const c = document.getElementById('game');
+    const touch = ([x, y], i) => new Touch({ identifier: 20 + i, target: c, clientX: x, clientY: y });
+    const ts = pts.map(touch), lift = !ts.length; // lift: every corner finger comes up
+    c.dispatchEvent(new TouchEvent(lift ? 'touchend' : 'touchstart', { changedTouches: lift ? [[20, 20], [1004, 20]].map(touch) : ts.slice(-1), touches: ts, bubbles: true, cancelable: true }));
+  }, pts);
+  await corners([[20, 20]]);
+  await page.waitForTimeout(3500);
+  report.devmenu.oneCorner = (await menu()).open;
+  await corners([[20, 20], [1004, 20]]);
+  await page.waitForFunction(() => window.G.devmenu.isOpen, null, { timeout: 6000 }).catch(() => {});
+  report.devmenu.touchOpened = await menu();
+  await corners([]);
+  report.devmenu.touchReleased = await page.evaluate(() => window.G.devmenu.since === null && window.G.input.stick.id === null);
+  await page.evaluate(() => window.G.devmenu.close());
 
   console.log(JSON.stringify(report, null, 2));
 
@@ -754,6 +770,7 @@ try {
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
+    [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {

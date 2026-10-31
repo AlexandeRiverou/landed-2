@@ -1,5 +1,5 @@
-// Secret developer menu for testing: hold 1 and 0 together for 3 seconds mid-flight. Jump to any zone,
-// boss or objective, grab power-ups, and cheat. The game pauses while it's open.
+// Secret developer menu for testing: hold 1 and 0 together for 3 seconds mid-flight (on touch screens: one finger
+// in each top corner). Jump to any zone, boss or objective, grab power-ups, and cheat. The game pauses while it's open.
 import { ZONES } from './zones.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
 import { OBJECTIVE_TYPES } from './objectives.js';
@@ -9,6 +9,18 @@ import { xpForLevel } from './progression.js';
 const HOLD_MS = 3000;
 const ONE = ['Digit1', 'Numpad1'], ZERO = ['Digit0', 'Numpad0'];
 const CHORD_KEYS = new Set([...ONE, ...ZERO]); // the only keys the game still tracks while the menu is open
+// Touch chord: a finger in each top corner. Corner size is 15% of the width, kept between 60 and 120 px.
+const cornerSize = () => Math.max(60, Math.min(120, innerWidth * 0.15));
+function cornersHeld(touches) {
+  const c = cornerSize();
+  let left = false, right = false;
+  for (const t of touches) {
+    if (t.clientY > c) continue;
+    if (t.clientX <= c) left = true;
+    else if (t.clientX >= innerWidth - c) right = true;
+  }
+  return left && right;
+}
 
 // Tiny DOM helper: text always goes in through textContent.
 function el(tag, cls, text) {
@@ -25,6 +37,7 @@ export class DevMenu {
     this.since = null;   // performance.now() when the chord started (drives the hint pill)
     this.timer = null;   // fires HOLD_MS after the chord is complete; key events, not frames, so slow devices still get it
     this.down = new Set(); // chord keys held right now (tracked here: Input clears its keys on blur and while locked)
+    this.corners = false;  // both top corners touched right now
     this.objButtons = new Map();
     this.build();
     addEventListener('keydown', (e) => {
@@ -35,10 +48,14 @@ export class DevMenu {
       if (CHORD_KEYS.has(e.code) && !e.repeat) { this.down.add(e.code); this.arm(); }
     });
     addEventListener('keyup', (e) => { if (CHORD_KEYS.has(e.code)) { this.down.delete(e.code); this.disarm(); } });
-    addEventListener('blur', () => { this.down.clear(); this.disarm(); });
+    // Touches are recounted from e.touches on every event, so a finger sliding out of its corner cancels too.
+    // Passive and on window: Input's canvas and button handlers still get every touch, and it works over the menu.
+    const touch = (e) => { this.corners = cornersHeld(e.touches); if (this.corners) this.arm(); else this.disarm(); };
+    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) addEventListener(type, touch, { passive: true });
+    addEventListener('blur', () => { this.down.clear(); this.corners = false; this.disarm(); });
   }
 
-  chordHeld() { return ONE.some((c) => this.down.has(c)) && ZERO.some((c) => this.down.has(c)); }
+  chordHeld() { return this.corners || (ONE.some((c) => this.down.has(c)) && ZERO.some((c) => this.down.has(c))); }
 
   arm() {
     if (this.timer || !this.G.started || !this.chordHeld()) return;
