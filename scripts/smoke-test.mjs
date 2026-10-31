@@ -41,6 +41,20 @@ try {
 
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+  // Secrets, part 1 (the rest is at the end): click the title 7 times before take-off. Six isn't enough.
+  const secretsReport = {};
+  await page.evaluate(() => window.G.secrets.reset()); // a clean slate, whatever today's date found at boot
+  // Real click events, sent in-page: Playwright's own clicks can stall for seconds while the terrain builds, and the
+  // clicks have to come within 1.5 s of each other.
+  const clickLogo = (n) => page.evaluate((n) => { for (let i = 0; i < n; i++) document.getElementById('logo').click(); }, n);
+  await clickLogo(6);
+  secretsReport.sixClicks = await page.evaluate(() => window.G.secrets.found.has('tinkerer'));
+  await clickLogo(1);
+  secretsReport.title = await page.evaluate(() => ({
+    found: window.G.secrets.found.has('tinkerer'), rolled: document.getElementById('logo').classList.contains('roll'),
+    toast: document.getElementById('secret-toast').classList.contains('show') && document.getElementById('secret-toast').textContent,
+    count: document.getElementById('secrets-count').textContent,
+  }));
   await page.click('#start');
   await page.evaluate(async () => {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
@@ -806,6 +820,96 @@ try {
   report.devmenu.touchReleased = await page.evaluate(() => window.G.devmenu.since === null && window.G.input.stick.id === null);
   await page.evaluate(() => window.G.devmenu.close());
 
+  // Secrets, part 2: each one through its real path where practical (real key presses, simulated flight, dates).
+  report.secrets = secretsReport;
+  const S = report.secrets;
+  const keys = async (codes) => { for (const c of codes) await page.keyboard.press(c); };
+  const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
+  const word = (w) => [...w].map((ch) => `Key${ch}`);
+  const sec = () => page.evaluate(() => {
+    const G = window.G;
+    return { found: [...G.secrets.found], fanfares: G.secrets.fanfares, rainbow: G.secrets.rainbow, score: G.score, theme: G.world.propTheme, relax: G.relax };
+  });
+  await page.evaluate(() => { const G = window.G; G.secrets.reset(); G.zones.enter(0); G.player.god = true; });
+  await page.keyboard.press('KeyP'); // paused: typing does nothing
+  await keys(word('QUACK'));
+  S.whilePaused = await page.evaluate(() => window.G.paused && window.G.secrets.found.size);
+  await page.keyboard.press('KeyP');
+  await page.evaluate(() => window.G.devmenu.open()); // dev menu open (G.input.lock): nor does the Konami code
+  await keys(KONAMI);
+  S.whileLocked = await page.evaluate(() => window.G.input.lock !== null && window.G.secrets.found.size);
+  await page.evaluate(() => window.G.devmenu.close());
+  await keys(KONAMI);
+  S.konami = await sec();
+  await keys(KONAMI);
+  S.konamiAgain = await sec();
+  await keys(word('QUACK'));
+  S.quack = await sec();
+  await keys(word('BOGEY'));
+  S.gary = await page.evaluate(() => {
+    const G = window.G, s = G.secrets, out = { found: s.found.has('gary'), flying: !!s.gary && s.garyModel.parent === G.scene, relax: G.relax };
+    for (let i = 0; i < 240; i++) { G.player.invuln = 99; G.step(1 / 30); }
+    out.gone = !s.gary && !s.garyModel.parent;
+    return out;
+  });
+  const beforeHonk = await sec();
+  await keys(word('GOOSE'));
+  S.honk = await sec();
+  await keys(word('GOOSE'));
+  S.honkAgain = await sec();
+  S.honkPoints = [S.honk.score - beforeHonk.score, S.honkAgain.score - S.honk.score];
+  S.afterWords = { relax: S.honkAgain.relax, paused: await page.evaluate(() => window.G.paused) };
+  S.wordsSafe = await page.evaluate(async () => { const m = await import('./src/secrets.js'); return Object.keys(m.WORDS).filter((w) => m.TOGGLE_LETTERS.test(w)); });
+  S.feats = await page.evaluate(async () => {
+    const G = window.G, p = G.player, s = G.secrets, out = {};
+    const { ZONES } = await import('./src/zones.js');
+    const step = (n, before) => { for (let i = 0; i < n; i++) { p.invuln = 99; before(); G.step(1 / 30); } };
+    // Edge of space: way up high counts in an ordinary zone, not in space.
+    G.zones.enter(ZONES.findIndex((z) => z.name === 'Low Orbit'));
+    step(5, () => { p.pos.y = 1200; });
+    out.edgeInSpace = s.found.has('edge');
+    G.zones.enter(0);
+    step(5, () => { p.pos.y = 1200; });
+    out.edge = s.found.has('edge');
+    // Lawnmower: 3+ s just above the ground. Upright doesn't count; upside down does.
+    const skim = (inverted) => () => {
+      if (inverted) { p.quat.set(0, 0, 1, 0); p.updateAxes(); } // rolled 180° about the nose
+      else { p.quat.identity(); p.updateAxes(); }
+      const x = p.pos.x + p.forward.x * p.speed / 30, z = p.pos.z + p.forward.z * p.speed / 30; // where this step ends
+      p.pos.y = Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel) + 2.5;
+    };
+    step(110, skim(false));
+    out.mowUpright = s.found.has('lawnmower');
+    step(60, skim(true));
+    out.mowEarly = s.found.has('lawnmower'); // 2 s isn't enough
+    step(50, skim(true));
+    out.lawnmower = s.found.has('lawnmower');
+    p.quat.identity(); p.updateAxes(); p.pos.y += 100;
+    // Dates (boot checks today; any date can be passed in).
+    out.plainDay = s.checkDate(new Date(2026, 6, 14));
+    s.checkDate(new Date(2025, 9, 31));
+    out.halloween = { found: s.found.has('halloween'), sky: G.sky.preset, weather: G.sky.weather.type, theme: G.world.propTheme };
+    s.checkDate(new Date(2025, 11, 25));
+    out.christmas = { found: s.found.has('christmas'), weather: G.sky.weather.type };
+    const rank = G.progress.rank;
+    s.checkDate(new Date(2026, 3, 1));
+    G.step(1 / 30);
+    out.april = { found: s.found.has('aprilFools'), rank: G.progress.rank, rankChanged: G.progress.rank !== rank, label: document.getElementById('score-label').textContent, hud: document.getElementById('rank').textContent };
+    s.trigger('tinkerer'); // its real path (7 title clicks) ran before take-off
+    out.list = s.list().length;
+    out.all = s.list().every((x) => x.found);
+    try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
+    return out;
+  });
+  // Found secrets survive a reload. The reload pretends it's April 1, so the boot-time date check runs too.
+  await page.clock.setFixedTime(new Date('2026-04-01T10:00:00'));
+  await page.reload();
+  await page.waitForFunction(() => window.G && window.G.secrets, null, { timeout: 30000 });
+  S.reloaded = await page.evaluate(() => ({
+    found: window.G.secrets.found.size, holiday: window.G.secrets.holiday, logo: document.getElementById('logo').textContent,
+    rank: window.G.progress.rank, count: document.getElementById('secrets-count').textContent,
+  }));
+
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
@@ -865,6 +969,20 @@ try {
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
+    [!S.sixClicks && S.title.found && S.title.rolled && /Secret found: Title Tinkerer \(1\/10\)/.test(S.title.toast) && /Secrets: 1\/10/.test(S.title.count), 'secrets: 7 clicks on the title (not 6) find one, with a toast and the title card counter'],
+    [S.whilePaused === 0 && S.whileLocked === 0, 'secrets: typed words and the Konami code are ignored while paused or in the dev menu'],
+    [S.konami.found.includes('konami') && S.konami.rainbow > 25 && S.konamiAgain.fanfares === S.konami.fanfares && S.konamiAgain.rainbow > 25, 'secrets: the Konami code turns on rainbow mode; re-entering it replays without a new fanfare'],
+    [S.quack.found.includes('quack') && S.quack.theme === 'duck', 'secrets: typing QUACK starts The Duckening'],
+    [S.gary.found && S.gary.flying && S.gary.gone, 'secrets: typing BOGEY sends Gary on a harmless flyby that ends'],
+    [S.honk.found.includes('honk') && S.honkPoints[0] >= 50 && S.honkPoints[1] < 50 && S.honkAgain.fanfares === S.honk.fanfares, 'secrets: typing GOOSE pays golden points once per flight'],
+    [S.wordsSafe.length === 0 && !S.gary.relax && !S.afterWords.relax && !S.afterWords.paused, 'secrets: no secret word contains a toggle key (R N M P I), so typing them leaves Relax Mode and pause alone'],
+    [!S.feats.edgeInSpace && S.feats.edge, 'secrets: edge of space counts very high up in an ordinary zone, not in space'],
+    [!S.feats.mowUpright && !S.feats.mowEarly && S.feats.lawnmower, 'secrets: lawnmower needs 3 s upside down just above the ground'],
+    [S.feats.plainDay === null && S.feats.halloween.found && S.feats.halloween.sky === 'halloween' && S.feats.halloween.weather === 'spooky' && S.feats.halloween.theme === 'spooky', 'secrets: Halloween dresses the world up (sky, bats, spooky props); ordinary days do nothing'],
+    [S.feats.christmas.found && S.feats.christmas.weather === 'snow', 'secrets: Christmas brings snow'],
+    [S.feats.april.found && S.feats.april.rankChanged && S.feats.april.hud === S.feats.april.rank && S.feats.april.label === 'POINTZ', 'secrets: April 1 renames the ranks and the HUD'],
+    [S.feats.list === 10 && S.feats.all && S.feats.stored === 10, 'secrets: all 10 found and saved in localStorage'],
+    [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }

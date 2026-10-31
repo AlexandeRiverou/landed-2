@@ -33,6 +33,7 @@ export class Progress {
     this.spawnMul = 1;
     this.pickupMul = 1;
     this.perks = [];
+    this.ranks = RANKS; // April 1 (secrets.js) swaps in sillier ones
     this.best = load();
     this.saveTimer = 0;
     this.el = {
@@ -47,7 +48,7 @@ export class Progress {
     }
   }
 
-  get rank() { return rankFor(this.level); }
+  get rank() { return rankFor(this.level, this.ranks); }
 
   update(dt) {
     const G = this.G;
@@ -85,7 +86,7 @@ export class Progress {
   }
 }
 
-function rankFor(level) { return RANKS[Math.min(level, RANKS.length) - 1]; }
+function rankFor(level, ranks = RANKS) { return ranks[Math.min(level, ranks.length) - 1]; }
 
 function load() {
   try {

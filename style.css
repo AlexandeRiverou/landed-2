@@ -64,6 +64,23 @@ html, body {
 #best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
 #best:empty { display: none; }
 #build-info:empty { display: none; }
+
+/* Secrets (src/secrets.js): the title card's holiday line and counter, the logo's barrel roll, and the found toast. */
+#holiday { margin: 2px 0 0; font-weight: 700; color: #ff7a1a; }
+#holiday:empty { display: none; }
+#secrets-count { margin-top: 6px; }
+#logo { cursor: pointer; display: inline-block; }
+#logo.roll { animation: logoroll 0.9s ease-in-out; }
+@keyframes logoroll { 0% { transform: none; } 40% { transform: rotate(200deg) scale(1.2); } 100% { transform: rotate(360deg); } }
+#secret-toast {
+  position: fixed; bottom: 72px; left: 50%; transform: translate(-50%, 30px); opacity: 0; z-index: 30; pointer-events: none;
+  background: linear-gradient(135deg, #fff6c8, #ffe08a); border: 3px solid var(--ink); border-radius: 16px;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.25), 0 0 24px #ffd23a; padding: 8px 16px; text-align: center; width: min(440px, 88vw);
+  transition: opacity 0.4s, transform 0.4s cubic-bezier(.2, 1.4, .4, 1);
+}
+#secret-toast.show { opacity: 1; transform: translate(-50%, 0); }
+#secret-toast b { display: block; font-size: 17px; }
+#secret-toast span { display: block; font-size: 13px; font-weight: 600; margin-top: 2px; }
 #build-info { font-family: ui-monospace, Menlo, monospace; }
 
 /* Active power-ups, stacked above the hull/boost bars. */

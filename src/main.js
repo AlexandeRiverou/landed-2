@@ -16,6 +16,7 @@ import { PowerUps } from './powerups.js';
 import { Progress } from './progression.js';
 import { Zones } from './zones.js';
 import { DevMenu } from './devmenu.js';
+import { Secrets } from './secrets.js';
 import { pick, T } from './texts.js';
 import { installCurvature } from './curve.js';
 
@@ -49,6 +50,7 @@ G.powerups = new PowerUps(G);
 G.zones = new Zones(G);
 G.input = new Input(canvas);
 G.devmenu = new DevMenu(G); // secret: hold 1 + 0 (or both top corners on touch) for 3 s mid-flight
+G.secrets = new Secrets(G); // Easter eggs; before the first terrain build, so a holiday prop theme is there from the start
 
 G.player.spawn(0, 0, Math.random() * Math.PI * 2);
 G.terrain.update(G.player.pos, 999);
@@ -185,6 +187,7 @@ function step(dt) {
   G.persuasion.update(dt);
   G.powerups.update(dt);
   G.zones.update(dt);
+  G.secrets.update(dt);
   p.events.length = 0;
   // Double Points: whatever was earned this frame counts twice.
   if (G.powerups.has('double') && G.score > scoreBefore) G.score += G.score - scoreBefore;
