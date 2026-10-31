@@ -350,7 +350,7 @@ try {
               city.buildings++;
               city.tallest = Math.max(city.tallest, b.tiers[b.tiers.length - 1].top - b.base);
               const t = b.tiers[0], x = bx * B + (blk.x0 - bx * B) / 2, z = (t.z0 + t.z1) / 2; // the middle of the road west of it
-              if (!wall && t.top - b.base >= 40 && b.x0 - blk.x0 < 10 && W.cityGround(x, z) > sea + 3) wall = { x, z, t, street: W.cityGround(x, z) };
+              if (!wall && t.top - W.cityGround(x, z) >= 40 && b.x0 - blk.x0 < 10 && W.cityGround(x, z) > sea + 3) wall = { x, z, t, street: W.cityGround(x, z) };
             }
           }
         }
