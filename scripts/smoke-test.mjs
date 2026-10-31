@@ -133,6 +133,37 @@ try {
       if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    // Lead bosses (the octopus & co.) hold a slot in front of you while you just fly on. Over calm land, so a
+    // mountain range can't hold one back; called off rather than beaten, so no extra win reshapes the world.
+    out.leadBosses = {};
+    const { amp, seaLevel } = G.world;
+    Object.assign(G.world, { amp: 0.15, seaLevel: -400 });
+    G.terrain.rebuildAll();
+    step(30);
+    for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
+      if (!def.lead) continue;
+      // The last boss's drop is still lying around: a Time Freeze grabbed from it would stop this one cold.
+      G.powerups.active.clear();
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      const [e] = startBoss(kind, { mod: null, duo: false });
+      // Sampled twice a second for 6 s, after 6 s to fly in (it may spawn 800 m out, or behind you if you're turning).
+      let ahead = 0, samples = 0;
+      for (let i = 0; i < 30 * 12; i++) {
+        G.player.grace = 1; G.player.health = G.player.maxHealth; step(1);
+        if (i >= 180 && i % 15 === 0) {
+          const to = e.pos.clone().sub(G.player.pos);
+          samples++;
+          if (to.dot(G.player.forward) > 40 && to.length() < 350) ahead++;
+        }
+      }
+      out.leadBosses[kind] = { ahead: +(ahead / samples).toFixed(2), attacks: e.attacks, zone: G.zones.current.name };
+      G.objectives.current.dispose(G);
+      G.objectives.current = null;
+      G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    }
+    Object.assign(G.world, { amp, seaLevel });
+    G.terrain.rebuildAll();
+    step(30);
     // Twins with a modifier: two bosses share one objective; it only completes when both are down.
     const twins = startBoss('gooseQueen', { mod: 'turbo', duo: true });
     step(30);
@@ -681,8 +712,9 @@ try {
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.objectiveTypes >= 28, 'all objective types are on the menu'],
-    [Object.keys(report.bosses).length >= 12, 'at least 12 bosses'],
+    [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
+    [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     [report.twins.count === 2 && report.twins.halfDone && report.twins.done && report.twins.name.startsWith('Turbo'), 'boss twins with a modifier both have to go down'],
     [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Relax mode clears objectives, enemies and pickups'],
     [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],

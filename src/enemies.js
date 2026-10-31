@@ -2,7 +2,7 @@
 // grumpy storm clouds, bee swarms, ad blimps, sky jellyfish, ground cannons, Rival Pilot Gary,
 // and (quest-only) evil pigeons. Regular enemies spawn in a cone in front of the player.
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 
@@ -43,6 +43,7 @@ function makeMarker() {
 
 // Bosses: one shows up every few completed objectives. They orbit you (or dig in, for the fort),
 // attack in patterns, and get ENRAGED (faster attacks) below half health.
+// Lead bosses (lead: distance) instead fly ahead of you, facing back, weaving side to side (sway).
 // face: how the model turns ('player', 'vel' = along its flight, 'spin', 'none').
 export const BOSSES = {
   kingDrone: {
@@ -129,6 +130,27 @@ export const BOSSES = {
     taunts: ['Fort Grumpington: "GET OFF MY LAWN. (The sky is my lawn.)"', 'Fort Grumpington: "In my day, planes were made of WOOD."', 'Fort Grumpington: "I have one setting: grump."'],
     rage: ['Fort Grumpington is extremely grumped.', 'The fort is shouting at clouds now. Literally.'],
   },
+  octopus: {
+    make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
+    name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
+    desc: 'A giant octopus that flies ahead of you, backwards, lobbing ink and spinning orb spirals from its arms. Shoot the tentacles off!',
+    taunts: ['Inkworth: "Eight arms. Zero hugs."', 'Inkworth: "I am leading this flight. Follow me. Into ink."', 'Inkworth: "Technically I am a sea creature. Technically you are lunch."'],
+    rage: ['The Admiral is turning a furious shade of purple.', 'All remaining arms are flailing with intent.'],
+  },
+  crab: {
+    make: makeCrab, scale: 3, crownY: 3.6, crownZ: -3, crownS: 1, radius: 22, hp: 90, speed: 34, lead: 160, sway: 80, dmg: 20, face: 'player',
+    name: 'Captain Clawdia, Terror of the Clouds', short: 'Captain Clawdia', noun: 'Captain Clawdia',
+    desc: 'A flying crab that scuttles sideways in front of you. Bubble streams and pincer shots. Snap off the claws!',
+    taunts: ['Clawdia: "Pinch, pinch. That\'s a warning."', 'Clawdia: "I walk sideways AND fly sideways. Beat that."', 'Clawdia: "You\'re not getting past me, sky shrimp."'],
+    rage: ['Clawdia is snapping at the air itself.', 'Captain Clawdia has gone full crustacean.'],
+  },
+  puffer: {
+    make: makePuffer, scale: 3.5, crownY: 6.5, crownS: 0.9, radius: 20, hp: 85, speed: 30, lead: 180, sway: 45, dmg: 22, face: 'player',
+    name: 'Sir Puffington the Inflatable', short: 'Sir Puffington', noun: 'Sir Puffington',
+    desc: 'A royal pufferfish that leads the way. Spits water jets, then puffs up (bullets bounce off) and pops a spike nova. Shoot it while it\'s small!',
+    taunts: ['Puffington: "I am not fat. I am ARMORED."', 'Puffington: "Pfffff. (That was me being intimidating.)"', 'Puffington: "One more word and I puff."'],
+    rage: ['Sir Puffington is puffing with rage. Also with air.', 'He is holding his breath out of pure spite.'],
+  },
 };
 
 // Later bosses can roll a modifier. Names get a prefix; stats get a nudge.
@@ -154,6 +176,7 @@ const BREAK_TEXT = {
   puff: 'You popped a piece of cloud. The cloud is shrinking.',
   wing: 'Wing clipped! She\'s flying slower now.',
   crown: 'CROWN KNOCKED OFF! It takes 30% more damage now. Also, embarrassment.',
+  claw: 'Claw snapped off! One less pincer to worry about.',
 };
 // Bosses shrug off what would floor a regular enemy, so some parts read differently on them.
 const BOSS_BREAK_TEXT = {
@@ -162,6 +185,7 @@ const BOSS_BREAK_TEXT = {
   gondola: 'Gondola gone! The Baron\'s bombing runs are mostly bluster now.',
   barrel: 'Barrel smashed! The fort can only manage sad little mortars now.',
   wing: 'Wing clipped! She\'s flying slower now.',
+  tentacle: 'Tentacle severed! Fewer arms, fewer orbs in the spiral.',
 };
 
 export class Enemies {
@@ -200,7 +224,7 @@ export class Enemies {
       type: 'boss', kind, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp, maxHp: hp, radius: def.radius * size,
       t: Math.random() * 10, cd: 3, state: 'idle', stateT: 0, quest: true, boss: true, anchor: pos.clone(), dead: false, attacks: 0, tauntT: 6,
       mod, short, name: mod ? `${mod.prefix} ${def.name}` : def.name, speedMul: mod?.speed || 1, cdMul: mod?.cd || 1,
-      orbitPhase: opts.phase || 0, burst: 0, burstT: 0, dash: 0, dashDir: new THREE.Vector3(),
+      orbitPhase: opts.phase || 0, burst: 0, burstT: 0, dash: 0, dashDir: new THREE.Vector3(), heading: new THREE.Vector3(),
     };
     this.list.push(e);
     return e;
@@ -235,6 +259,20 @@ export class Enemies {
     else if (e.dash > 0) {
       e.dash -= dt;
       e.vel.lerp(_w.copy(e.dashDir).multiplyScalar(d.speed * 2.4 * e.speedMul), 1 - Math.exp(-dt * 4));
+    } else if (d.lead) {
+      // Hold a slot ahead of the player (along a smoothed heading, so sharp turns don't whip it around).
+      _w.set(p.forward.x, 0, p.forward.z);
+      if (_w.lengthSq() < 0.01) _w.set(0, 0, -1);
+      if (e.heading.lengthSq() < 0.5) e.heading.copy(_w.normalize());
+      else e.heading.lerp(_w.normalize(), 1 - Math.exp(-dt * 1.5)).normalize();
+      const sway = Math.sin(e.t * 0.6 + e.orbitPhase) * d.sway;
+      _w.copy(p.pos).addScaledVector(e.heading, d.lead).add(_pp.set(-e.heading.z, 0, e.heading.x).multiplyScalar(sway));
+      _w.y += 10 + Math.sin(e.t * 0.8) * 10;
+      _w.sub(e.pos).multiplyScalar(1.6);
+      // Swinging back in front after a U-turn: go around the player, not through them.
+      if (dist < e.radius + 30) _w.addScaledVector(toP, -60 / Math.max(dist, 1)).y += 30;
+      const speed = p.speed * 1.8 + d.speed * e.speedMul * (e.enraged ? 1.25 : 1) * (e.slow || 1);
+      e.vel.lerp(_w.clampLength(0, speed), 1 - Math.exp(-dt * 3));
     } else {
       const ang = e.t * (d.orbitRate || 0.28) + e.orbitPhase;
       _w.set(Math.cos(ang) * d.orbit, 25 + Math.sin(e.t * 0.7) * 15, Math.sin(ang) * d.orbit).add(p.pos).sub(e.pos);
@@ -245,7 +283,18 @@ export class Enemies {
     if (e.burst > 0 && (e.burstT -= dt) <= 0 && !p.dead) {
       e.burst--;
       e.burstT = 0.12;
-      this.fireOrb(e.pos, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(e.pos), 105, 7, '#ff3ad0', 0.8);
+      const [speed, dmg, color, size] = e.burstShot || [105, 7, '#ff3ad0', 0.8];
+      this.fireOrb(e.pos, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(e.pos), speed, dmg, color, size);
+    }
+    // Sir Puffington stays puffed up (and bulletproof-ish) for a while, then pops a spike nova.
+    if (e.puffT > 0 && (e.puffT -= dt) <= 0) {
+      e.shield = 1;
+      for (let k = 0; k < 24; k++) {
+        const y = 1 - (2 * (k + 0.5)) / 24, r = Math.sqrt(1 - y * y), a = k * 2.39996;
+        this.fireOrb(e.pos, _w.set(Math.cos(a) * r, y, Math.sin(a) * r), 42, 12, '#e8c86a', 1);
+      }
+      G.audio.pop();
+      G.ui.notify('POP! Sir Puffington deflated. Shoot him now!', 'good', 2.5, 0);
     }
 
     e.tauntT -= dt;
@@ -351,6 +400,53 @@ export class Enemies {
             const y = 1 - (2 * (k + 0.5)) / count, r = Math.sqrt(1 - y * y), a = k * 2.39996;
             this.fireOrb(e.pos, new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r), 40, 12, '#c8c8d8', 1);
           }
+        }
+        break;
+      case 'octopus': {
+        cd = 2.6;
+        const arms = e.mesh.userData.parts.filter((x) => x.name === 'tentacle' && !x.broken);
+        if (n % 3 === 0 && arms.length) {
+          // Orb spiral: one orb from the tip of every arm still attached, fanned around the line to you.
+          const dir = _w.copy(toP).normalize(), side = new THREE.Vector3().crossVectors(dir, Y).normalize(), up = new THREE.Vector3().crossVectors(side, dir);
+          for (let k = 0; k < arms.length * 2; k++) {
+            const a = (k / (arms.length * 2)) * Math.PI * 2 + e.t, from = arms[k % arms.length].obj.getWorldPosition(new THREE.Vector3());
+            this.fireOrb(from, dir.clone().addScaledVector(side, Math.cos(a) * 0.35).addScaledVector(up, Math.sin(a) * 0.35), 42, 11, '#c86aff', 1.1);
+          }
+          G.audio.tone(260, 0.4, { type: 'sine', vol: 0.07, slide: 300 });
+        } else {
+          // Ink blobs: big, slow, aimed where you're going.
+          for (let k = 0; k < 3; k++) this.fireOrb(e.pos, lead(0.6, 45).add(new THREE.Vector3(rand(-12, 12), rand(-8, 8), rand(-12, 12))), 45, 15, '#3a1a5a', 2);
+          G.audio.tone(140, 0.25, { type: 'sine', vol: 0.08, slide: -60 });
+        }
+        break;
+      }
+      case 'crab': {
+        cd = 2.4;
+        const claws = e.mesh.userData.parts.filter((x) => x.name === 'claw' && !x.broken);
+        if (n % 2 === 0 && claws.length) {
+          // Pincer shots: a big orb from each claw, converging on where you'll be.
+          const at = lead(0.6, 65).add(e.pos);
+          for (const c of claws) { const from = c.obj.getWorldPosition(new THREE.Vector3()); this.fireOrb(from, at.clone().sub(from), 65, 16, '#ff6a3a', 1.8); }
+          e.snap = 0.4;
+          G.audio.tone(900, 0.12, { type: 'square', vol: 0.06, slide: -400 });
+        } else {
+          e.burst = e.enraged ? 10 : 7;
+          e.burstShot = [75, 6, '#bfefff', 1];
+        }
+        break;
+      }
+      case 'puffer':
+        if (e.puffT > 0) { cd = 1; break; }
+        if (n % 3 === 0) {
+          cd = 4;
+          e.puffT = 3;
+          e.shield = 0.2;
+          G.ui.notify('Sir Puffington is puffing up! Bullets bounce off. Wait for the pop!', 'warn', 2.5, 1);
+          G.audio.tone(180, 0.6, { type: 'sine', vol: 0.08, slide: 200 });
+        } else {
+          cd = 2.2;
+          for (let k = 0; k < 4; k++) this.fireOrb(e.pos, aim(0.1), 65, 10, '#5ad8ff', 0.9);
+          G.audio.tone(600, 0.15, { type: 'triangle', vol: 0.05, slide: -300 });
         }
         break;
       case 'fortGrump': {
@@ -497,12 +593,12 @@ export class Enemies {
         if (bp.distanceToSquared(e.pos) > broad) continue;
         const part = this.hitPart(e, bp);
         if (!part && bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2) continue;
-        const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1);
+        const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1) * (e.shield ?? 1);
         p.removeBullet(b);
         if (part) this.damagePart(e, part, dmg, bp);
         else {
           e.hp -= dmg * (e.def.armor ?? 1);
-          G.fx.sparkle(bp, e.def.armor ? '#9aa0a6' : '#ffaa55');
+          G.fx.sparkle(bp, e.def.armor || e.shield < 1 ? '#9aa0a6' : '#ffaa55');
           G.audio.hit();
         }
         if (e.hp <= 0) break;
@@ -561,7 +657,8 @@ export class Enemies {
       case 'gondola': e.noBombs = true; break;
       case 'barrel': e.disarmed = true; if (e.boss) e.hp -= e.maxHp * 0.1; break;
       case 'fin': if (e.boss) e.hp -= e.maxHp * 0.03; break;
-      case 'tentacle': if (n >= total) e.noZap = true; break;
+      case 'tentacle': if (n >= total) e.noZap = true; if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'claw': if (e.boss) e.hp -= e.maxHp * 0.1; break;
       case 'puff': e.radius *= 0.9; if (!e.boss && n >= total) e.hp = 0; else if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crown': e.vulnerable = 1.3; break;
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
@@ -686,6 +783,12 @@ export class Enemies {
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
     if (u.barrel) u.barrel.lookAt(this.G.player.pos);
+    if (u.legs) u.legs.forEach((l, k) => { l.rotation.x = Math.sin(e.t * 8 + k * 1.3) * 0.3; });
+    if (u.claws) {
+      e.snap = Math.max(0, (e.snap || 0) - dt);
+      u.claws.forEach((c, k) => { c.rotation.y = (k ? -1 : 1) * (e.snap > 0 ? 0.5 : Math.sin(e.t * 2) * 0.15); });
+    }
+    if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {
       const face = e.def.face, pp = this.G.player.pos;
       if (face === 'vel' && e.vel.lengthSq() > 1) e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
