@@ -358,7 +358,7 @@ try {
         const inside = new V((wall.t.x0 + wall.t.x1) / 2, 0, (wall.t.z0 + wall.t.z1) / 2);
         city.street = Math.round(W.heightAt(wall.x, wall.z));
         city.roof = Math.round(W.heightAt(inside.x, inside.z));
-        city.sheer = G.terrain.surfaceHeight(wall.t.x0 + 0.5, wall.z) === wall.t.top && G.terrain.surfaceHeight(wall.t.x0 - 0.5, wall.z) < wall.street + 1;
+        city.sheer = G.terrain.surfaceHeight(wall.t.x0 + 0.5, wall.z) === wall.t.top && G.terrain.surfaceHeight(wall.t.x0 - 0.5, wall.z) < W.cityGround(wall.t.x0 - 0.5, wall.z) + 1; // street level at the wall's foot (the road can slope)
         // Deterministic: the same seed plans the same city after the cache is cleared.
         const sample = () => Array.from({ length: 40 }, (_, k) => W.heightAt(pp.x + (k % 8) * 37 - 150, pp.z + Math.floor(k / 8) * 53 - 130)).join();
         const before = sample();
@@ -550,7 +550,7 @@ try {
         const aim = (t) => { const c = W.tunnelPoint(T, Math.min(T.len + 100, t + 25)); p.nudgeToward(new V(c.x, c.floor + T.H * 0.42, c.z), 1e9, 1); p.updateAxes(); };
         placeAt(2, 0.42);
         let under = 0, t = 2;
-        for (let k = 0; k < 30 * 40 && t < T.len + 10 && !p.dead; k++) {
+        for (let k = 0; k < 30 * 40 && t < T.len && !p.dead; k++) { // to the far mouth: past it, the land isn't the tunnel's
           p.invuln = 0; p.grace = 0;
           aim(t);
           G.step(1 / 30);
