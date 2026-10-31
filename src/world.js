@@ -234,7 +234,7 @@ function planTunnel(cx, cz) {
     if (Math.max(f0, f1) + H > 1000) continue; // stay under the sky's soft ceiling
     let ok = true;
     for (let i = 5; i <= 11 && ok; i++) ok = M[i] > f0 + ((f1 - f0) * i) / S + H + 24;
-    if (ok) { T.f0 = f0; T.f1 = f1; T.r = Math.hypot(len / 2, hw + Math.abs(bend)); T.ox = ox; T.oz = oz; return T; }
+    if (ok) { T.f0 = f0; T.f1 = f1; T.r = Math.hypot(len / 2 + MOUTH_EDGE, hw + Math.abs(bend)); T.ox = ox; T.oz = oz; return T; }
   }
   return null;
 }
@@ -262,16 +262,19 @@ export function tunnelInBox(minX, minZ, maxX, maxZ) {
 }
 
 // The bore at (x, z): its floor and roof heights, or null outside every tunnel.
-const _bore = { floor: 0, roof: 0 };
+const _bore = { floor: 0, roof: 0, past: false };
+const MOUTH_EDGE = 12; // m past each end, more than one terrain grid step (8 m)
 function boreAt(x, z) {
   const T = tunnelPlan(Math.floor(x / TUNNEL_CELL), Math.floor(z / TUNNEL_CELL));
   if (!T) return null;
-  const px = x - T.ax, pz = z - T.az, t = px * T.dx + pz * T.dz;
-  if (t < 0 || t > T.len) return null;
+  const px = x - T.ax, pz = z - T.az, u = px * T.dx + pz * T.dz;
+  if (u < -MOUTH_EDGE || u > T.len + MOUTH_EDGE) return null;
+  const t = Math.min(T.len, Math.max(0, u));
   const s = Math.abs(pz * T.dx - px * T.dz - T.bend * Math.sin((Math.PI * t) / T.len)) / T.hw;
   if (s >= 1) return null;
   _bore.floor = T.f0 + ((T.f1 - T.f0) * t) / T.len;
   _bore.roof = _bore.floor + T.H * Math.sqrt(1 - s * s); // an arch that meets the floor at the walls
+  _bore.past = u !== t; // just past an end: no bore here, only the roof line the rock's edge tapers to
   return _bore;
 }
 
@@ -282,7 +285,10 @@ function boreAt(x, z) {
 const _col = { floor: 0, under: 0, top: 0 };
 export function tunnelColumn(x, z, out) {
   const m = landHeight(x, z), c = craterDepthAt(x, z), b = world.tunnels ? boreAt(x, z) : null;
-  if (!b || m <= b.floor) { out.floor = out.under = out.top = m - c; return false; } // solid ground (or the bore is in the open air)
+  if (!b) { out.floor = out.under = out.top = m - c; return false; } // solid ground
+  // The bore in the open air, or just past a mouth: plain ground, and the rock's edge tapers out along the
+  // roof line (onto the ground, it would hang a lip of rock down into the bore across one grid cell).
+  if (b.past || m <= b.floor) { out.floor = m - c; out.under = out.top = Math.max(m - c, b.roof); return false; }
   out.floor = b.floor - c;
   if (m <= b.roof) { out.under = out.top = b.roof; return false; } // a mouth: the bore cuts open to the sky
   out.under = b.roof;
