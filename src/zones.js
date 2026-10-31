@@ -13,7 +13,7 @@ export const ZONE_EVERY = 3; // completed objectives per zone
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
 const SHAPE_LOCK = ['amp', 'shape', 'spikes', 'mesa', 'canyon'];
 const SPACE_LOCK = [...LOCK, 'sea', 'clouds', 'weather', 'amp', 'shape', 'islands', 'fog', 'canyon', 'mesa', 'spikes'];
-const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye']);
+const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors']); // meteors: stars fall to the ground
 
 export const ZONES = [
   {
@@ -48,7 +48,7 @@ export const ZONES = [
   {
     name: 'Crystal Caverns', blurb: 'You flew into a cave. There is a ceiling now. Please respect the ceiling.',
     world: { palette: 'cavern', cave: 1, amp: 0.45, terrace: 0, mesa: 0, canyon: 0.8, spikes: 1.1, seaLevel: -5, snowLine: 9999, floatingIslands: 0, propTheme: 'cave', propDensity: 1.1, tempBias: -0.2 },
-    sky: 'cave', weather: 'spores', clouds: ['#ffffff', 0], fog: 0.45, mood: 'dusk', noObjectives: ['altitude', 'stairs'],
+    sky: 'cave', weather: 'spores', clouds: ['#ffffff', 0], fog: 0.45, mood: 'dusk', noObjectives: ['altitude', 'stairs', 'meteors'], // no shooting stars under a rock ceiling
     lock: [...LOCK, 'weather', 'clouds', 'islands', 'fog', 'amp', 'sea', 'shape', 'spikes', 'mesa', 'canyon'],
   },
   {
@@ -70,7 +70,7 @@ export const ZONES = [
   {
     name: 'Sunken Reef', blurb: 'The sea won. You fly underwater now. The surface is the ceiling; the fish are unimpressed.',
     world: { palette: 'reef', underwater: 1, seaLevel: 250, amp: 0.35, roughness: 1.2, terrace: 0, mesa: 0.6, canyon: 0, spikes: 0.7, snowLine: 9999, floatingIslands: 0, propTheme: 'reef', propDensity: 1.3, tempBias: -0.1 },
-    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs'],
+    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors'], // shooting stars don't do underwater
     lock: [...LOCK, ...SHAPE_LOCK, 'weather', 'clouds', 'islands', 'fog', 'sea', 'decor'],
   },
   {
