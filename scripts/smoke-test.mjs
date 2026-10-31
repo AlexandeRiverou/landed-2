@@ -716,6 +716,8 @@ try {
     G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e));
     G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
     if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    // Also end persuasion: a leftover tailwind from an earlier objective would keep steering the plane mid-stunt.
+    G.persuasion.reset(null);
     G.objectives.cooldown = 1e9;
     p.maneuverCd = 0;
     p.maneuver = null;
