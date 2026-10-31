@@ -166,6 +166,9 @@ export function mkDelivery(G) {
 // ---------- barrel roll ----------
 
 const ROLL_RATE_MIN = 1.5; // rad/s about the nose: only a real roll is this fast (a normal bank tops out at 2, and only to 52°)
+// A roll counts at 90% of the turn: the measured sum of a full 360° stunt can land a hair short (float rounding,
+// or a tiny last frame below ROLL_RATE_MIN), depending on frame timing. Half a roll (an Immelmann's) stays far off.
+const ROLL_COUNTS_AT = 0.9;
 
 export function mkRoll(G) {
   let need = Math.random() < 0.5 ? 2 : 3, done = 0, acc = 0, idle = 0, req = 1;
@@ -188,7 +191,8 @@ export function mkRoll(G) {
         acc += d;
         idle = 0;
       } else if ((idle += dt) > 0.6) acc = 0;
-      if (Math.abs(acc) >= Math.PI * 2 * req) {
+      const full = Math.PI * 2 * req * ROLL_COUNTS_AT;
+      if (Math.abs(acc) >= full) {
         acc = 0;
         done++;
         this.progressed = true;
@@ -196,7 +200,7 @@ export function mkRoll(G) {
         G.fx.sparkle(p.pos, '#7ad8ff');
         if (done < need) G.ui.notify(pick(['Wheee! Again!', 'One more! The horizon is getting dizzy.', 'Nice roll. Do it again, but with feeling.']), 'good', 2);
       }
-      const pct = Math.min(100, Math.round((Math.abs(acc) / (Math.PI * 2 * req)) * 100));
+      const pct = Math.min(100, Math.round((Math.abs(acc) / full) * 100));
       this.progress = `↻ Rolls ${done}/${need} · current ${pct}%`;
       return done >= need ? 'done' : null;
     },

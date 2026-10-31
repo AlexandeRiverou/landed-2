@@ -109,6 +109,20 @@ try {
       out.quests.halfRollIgnored = /Rolls 0\//.test(roll.progress);
       for (let k = 0; k < 6 && G.objectives.current === roll; k++) { p.maneuverCd = 0; p.startManeuver(k % 2 ? 'left' : 'right'); step(40); }
       out.quests.roll = G.objectives.current !== roll && G.objectives.completed === done0 + 1;
+      // Frame timing doesn't matter: each real roll counts once, whatever the dt (odd ones leave a tiny last step).
+      const roll2 = fresh('roll');
+      step(1);
+      done0 = G.objectives.completed;
+      const need = +roll2.progress.match(/Rolls 0\/(\d)/)[1];
+      out.quests.rollAnyDt = true;
+      [0.0349, 1 / 60, 0.0371].slice(0, need).forEach((dt, k) => {
+        p.maneuverCd = 0;
+        p.startManeuver(k % 2 ? 'left' : 'right');
+        for (let i = 0; i < Math.ceil(2 / dt); i++) { p.invuln = 99; G.step(dt); }
+        const counted = k + 1 < need ? new RegExp(`Rolls ${k + 1}/`).test(roll2.progress) : G.objectives.current !== roll2;
+        if (!counted) out.quests.rollAnyDt = false;
+      });
+      out.quests.rollAnyDt &&= G.objectives.completed === done0 + 1;
       // Pizza delivery: fly into the box, the target switches to the drop-off, the pizza cools, deliver it.
       const del = fresh('delivery');
       done0 = G.objectives.completed;
@@ -803,6 +817,7 @@ try {
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.objectiveTypes >= 38, 'all objective types are on the menu (38+)'],
     [report.quests.roll && report.quests.halfRollIgnored, 'barrel roll quest: real rolls count, an Immelmann\'s half roll does not'],
+    [report.quests.rollAnyDt, 'barrel roll quest: each roll counts once at any frame rate (dt 0.0349, 1/60, 0.0371)'],
     [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],
     [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
     [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
