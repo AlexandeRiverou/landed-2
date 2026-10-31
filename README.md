@@ -172,7 +172,7 @@ health. Shooting off parts weakens them (the crown makes them take more damage, 
 fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
 other win.
 
-**28 objective types** (`src/objectives.js`, `src/challenges.js`):
+**38 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
 
 - *Hoops:* hoop, tiny precision hoop, timed speed hoop, a hoop that wanders around, a hoop that shrinks until it's gone.
 - *Ring chains:* slalom, corkscrew, climbing staircase, downhill dive, and a time trial.
@@ -184,6 +184,32 @@ other win.
   painted on the ground.
 - *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
   arrive twice as fast).
+- *Quests* (new verbs, `src/quests.js`):
+  - **Pizza Delivery:** fly into the pizza box, then take it to the drop-off pad under the light beam (over a void or
+    in space it's a floating mailbox). It cools 2.4% a second once you have it. At 0% the customer eats cereal and
+    you fail.
+  - **Barrel Roll:** do 2 or 3 full rolls with the double-tap left/right stunt. Ordinary banking doesn't count.
+  - **Rival Race:** Gary, in a purple plane, races you through 5 or 6 rings. The white one is the finish. If he gets
+    there first, you lose.
+  - **Constellation:** 6 to 8 numbered stars make a heart, the Big Dipper, a lightning bolt or a snake. Fly through
+    them in order and the guide lines light up. Out-of-order stars don't count.
+  - **Sneak Past The Searchlight:** fly through the green hoop while a beam sweeps around it (a lamp on a tower, or a
+    floating eye where there's no ground). About 1.5 s in the beam and you're spotted; the third time, you fail.
+  - **Hot Potato:** carry a birthday cake with a 12 s fuse. Each ring adds 7 s (16 s max). Six rings and it pops into
+    confetti. Let the fuse run out and your windscreen gets frosted.
+  - **Balloon Herding:** push 3 balloons into the green pen. Your plane shoves the air: fly through a balloon toward
+    the pen.
+  - **Sky Melody:** fly through numbered notes in order to play Twinkle Twinkle Little Star, Ode To Joy, Mary Had A
+    Little Lamb or Frère Jacques. A wrong note starts the tune over. It never fails, it just judges you.
+  - **Catch The Falling Stars:** catch 5 shooting stars before they hit the ground. Not offered in zones without
+    ground (Stratosphere, Low Orbit, Meteor Belt, Gas Giant), Crystal Caverns or Sunken Reef.
+  - **Photo Safari:** keep the shy sky whale centred on your nose, within 180 m, for 3 s to take a photo. It needs 3
+    photos and bolts after every flash.
+
+Adding a type: write a maker that returns `objective({...})` (in `src/challenges.js` or `src/quests.js`), then add
+`['name', weight, maker]` to `TYPES` in `src/objectives.js`. The developer menu and the smoke test's start/complete
+loop pick it up on their own. If it needs ground, add it to `GROUND_OBJECTIVES` in `src/zones.js`; to keep it out of
+one zone, list it in that zone's `noObjectives`.
 
 **Relax Mode** (`src/main.js`): press `R` or the ☁️ Relax Mode button to take a break. Objectives and enemies leave,
 no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, so
@@ -226,7 +252,7 @@ card.
 - **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
-- **Objectives:** start any of the 28 types. Types the current zone doesn't offer are greyed out.
+- **Objectives:** start any of the 38 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.
 - **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode), Relax Mode
   on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
