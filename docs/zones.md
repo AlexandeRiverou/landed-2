@@ -81,6 +81,16 @@ the HUD altitude measures to the roof under you. `Terrain.surfaceHeight()` inclu
 city it's the same as `heightAt()`. Anything placed with `groundAt()` (objective targets, for one) lands on the
 roof when it's over a building.
 
+### Flattened ground (runways)
+
+The Land On The Runway objective (`src/runway.js`) flattens a rectangle of ground with `Terrain.flatten(x, z, yaw,
+hw, hl, y, blend)`, which returns an id for `Terrain.unflatten(id)`. Underneath, `addPad()` / `removePad()` /
+`clearPads()` in `src/world.js` feed `heightAt()`, so the mesh, collisions and props all see the flat strip, and
+`padAt(x, z)` says how flattened a spot is (props don't stand on it). Zone changes clear every pad, and flattened
+ground under a runway is cleaned up later. `landing` is a ground objective (`GROUND_OBJECTIVES`), so no-ground zones
+skip it. If a new zone has tunnels or buildings, or no dry land worth landing on, list `'landing'` in its
+`noObjectives` like Hollow Peaks, Metropolis and Sunken Reef do.
+
 ### Asking at an altitude (tunnels)
 
 Over a tunnel, one spot has two grounds: the tunnel floor and the mountain top. `Terrain.surfaceHeight(x, z, y)`,

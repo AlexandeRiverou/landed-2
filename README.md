@@ -35,8 +35,8 @@ npm run check     # syntax check every module
 npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN needed)
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
-                  # world mutations, every objective, every boss, relax mode and
-                  # the developer menu and the secrets;
+                  # world mutations, every objective, every boss, landing, taxiing
+                  # and take-off, relax mode, the developer menu and the secrets;
                   # fails on any error
 ```
 
@@ -67,14 +67,29 @@ Environments → `github-pages` allows deployments from `main` only.
 | Climb / dive | `W` `S` or `↑` `↓` (`I` inverts) |
 | Bank & turn | `A` `D` or `←` `→` |
 | Rudder | `Q` `E` |
-| Boost | `Shift` |
+| Boost | `Shift` (also on the ground) |
+| Land | come in slow, wings level, gentle sink, onto flat dry ground |
+| Taxi | on the ground: `A` `D`, `←` `→` or `Q` `E` steer; `Shift` boosts |
+| Take off | on the ground: pull up (`W` / `↑`, or the touch stick up) |
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
 | Relax Mode | `R` or the ☁️ Relax Mode button at the top |
 | Stunts | double-tap `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll |
-| Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts |
+| Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts; on the ground the stick steers, and pushing it up takes off |
 
 ## What's in it
+
+**Landing** (`src/player.js`): it's in the name. Touch down gently on flat dry ground and you land instead of
+crashing: sink under 7 m/s, wings within about 25° of level, nose not pointed steeply down, and not mid-stunt. Come
+in too hard, too steep or too banked, or hit water or a wall, and it's still a crash. Every touchdown kicks up dust
+and gets a grade: **BUTTER!** (150 pts), **Nice landing!** (80), **Firm landing.** (40) or **That counts.
+Technically.** (10). Points only pay after 15 s in the air since your last touchdown or respawn, so no hopping for
+cash. On the ground you roll out to taxi speed; steer with roll or yaw, `Shift` boosts, shooting still works, and
+pitch down and stunts do nothing. **Pull up to take off**: the plane speeds up and lifts off at about 31 m/s. Roll
+off an edge and you're flying again; roll into a steep slope, a building or the sea and you crash. Metropolis roofs
+and streets are fair game, and landing works in Relax Mode, so you can park somewhere nice and enjoy the view.
+Ghost Mode skims the ground instead of landing. The first time you're low, slow and level over good ground (or nearly
+land but crash), the game gives you a one-time tip.
 
 **Procedural world** (`src/world.js`, `src/terrain.js`): an infinite, chunked terrain built from seeded simplex noise. It has
 ridged mountain ranges, mesas with sheer cliff walls, stepped terraces, river canyons, rock pinnacles, open sea with
@@ -172,7 +187,7 @@ health. Shooting off parts weakens them (the crown makes them take more damage, 
 fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
 other win.
 
-**38 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
+**39 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
 
 - *Hoops:* hoop, tiny precision hoop, timed speed hoop, a hoop that wanders around, a hoop that shrinks until it's gone.
 - *Ring chains:* slalom, corkscrew, climbing staircase, downhill dive, and a time trial.
@@ -181,7 +196,10 @@ other win.
 - *Stunts:* loop-de-loop (detected from your pitch rotation), flying upside down, going really fast, crop dusting (low
   flying), climbing to an altitude.
 - *Places:* buzzing a giant landmark, a three-stop sightseeing tour, flying under a stone arch, shooting a bullseye
-  painted on the ground.
+  painted on the ground, and **Land On The Runway** (`src/runway.js`): a 24 × 180 m strip with lights and piano
+  keys, flattened into the ground 520–820 m ahead. Touch down on it, then roll along it for 2 s or slow below
+  12 m/s. If there's no dry land nearby, it makes you a little runway island. Not offered in Hollow Peaks, Metropolis,
+  Sunken Reef or the zones with no ground.
 - *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
   arrive twice as fast).
 - *Quests* (new verbs, `src/quests.js`):
@@ -256,7 +274,7 @@ card.
 - **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
-- **Objectives:** start any of the 38 types. Types the current zone doesn't offer are greyed out.
+- **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.
 - **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode), Relax Mode
   on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
@@ -270,5 +288,7 @@ From the console: `G.devmenu.open()` / `G.devmenu.close()`, `G.player.god = true
 `G.objectives.startType('stars')` to start one objective type right now (unknown types are ignored; it doesn't check
 whether the zone allows it, and it doesn't clear the current objective, the menu does that first).
 `G.secrets.list()`, `G.secrets.trigger('konami')` and `G.secrets.reset()` work on the secrets, and
-`G.secrets.checkDate(new Date(2026, 9, 31))` pretends it's Halloween. The whole `G.secrets` API, and how to add a
+`G.secrets.checkDate(new Date(2026, 9, 31))` pretends it's Halloween. `G.player.landed` is set while you're on the
+ground, `G.player.lastLanding` holds the latest touchdown (`{ grade, title, sink, bank, points, x, z }`), and the
+player pushes a `'landed'` event on each one. The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).
