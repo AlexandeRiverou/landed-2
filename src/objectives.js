@@ -413,7 +413,7 @@ function mkLowFly(G) {
     onUpdate(dt, G) {
       const p = G.player;
       const alt = p.pos.y - groundAt(G, p.pos.x, p.pos.z, p.pos.y); // same as the HUD: in a tunnel, to its floor
-      const low = !p.dead && alt < thr;
+      const low = !p.dead && !p.landed && alt < thr; // taxiing isn't crop dusting
       if (low) { time += dt; this.progressed = true; if (!wasLow) G.ui.notify('Brrrrrrr (crop dusting noises)', 'info', 2, 0); }
       wasLow = low;
       this.progress = `🌾 ${time.toFixed(1)} / ${need}s below ${thr} m (now ${Math.round(alt)} m)`;

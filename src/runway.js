@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { disposeTree } from './models.js';
 import { pick, rand } from './texts.js';
 import { objective, flatForward, underRoof } from './objectives.js';
-import { waterLine, heightAt, craterDepthAt } from './world.js';
+import { waterLine, heightAt, craterDepthAt, padAt } from './world.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const W = 24, L = 180;   // strip width and length in metres, before persuasion grows it
@@ -19,6 +19,20 @@ const NEED = 2, STOP = 12; // seconds on the strip after touchdown, or slower th
 // Strip-local (x across, z along; -z is the landing direction) to world, for a strip at c turned by yaw.
 const toWorld = (c, yaw, lx, lz, out) => out.set(c.x + lx * Math.cos(yaw) + lz * Math.sin(yaw), 0, c.z - lx * Math.sin(yaw) + lz * Math.cos(yaw));
 const _w = new THREE.Vector3();
+
+// Pads an ended runway left flattened because you were rolling on it then (ground never vanishes under the wheels).
+// Each goes back to normal at the next chance (the next runway ending or starting) once you're not on it any more,
+// so a zone never holds more than a pad or two, however many runways end early (Relax, dev-menu jumps...).
+const leftPads = new Set();
+const onPad = (p, id) => !!p.landed && padAt(p.pos.x, p.pos.z, id) > 0;
+function unflatten(G, id) {
+  const p = G.player;
+  if (padAt(p.pos.x, p.pos.z, id) > 0) p.grace = Math.max(p.grace, 3); // the land comes back up under you: lifted, not crashed
+  G.terrain.unflatten(id);
+}
+function releasePads(G) {
+  for (const id of leftPads) if (!onPad(G.player, id)) { unflatten(G, id); leftPads.delete(id); }
+}
 
 // How well a strip fits at centre c, heading `dir` (the way you land): { c, yaw, ok, score }, c.y being the height
 // to flatten to (the average, kept above the sea). Lower score is flatter. Water or a tunnel under it, a low cave
@@ -97,6 +111,7 @@ function makeRunway() {
 
 export function mkLanding(G) {
   const p = G.player;
+  releasePads(G);
   const strip = { ...findStrip(G, p.pos, flatForward(G)), scale: 1 };
   const g = makeRunway();
   G.scene.add(g);
@@ -180,7 +195,13 @@ export function mkLanding(G) {
       need = 1;
       return 'New rule: landing NEAR the runway counts, as long as you taxi onto it. And one second on it is plenty.';
     },
-    // The flattened ground stays (until the next zone): you may well be rolling along it right now.
-    dispose(G) { G.scene.remove(g); disposeTree(g); },
+    // The flattened ground stays only if you're rolling along it right now (see leftPads).
+    dispose(G) {
+      G.scene.remove(g);
+      disposeTree(g);
+      if (onPad(p, pad)) leftPads.add(pad);
+      else unflatten(G, pad);
+      releasePads(G);
+    },
   });
 }

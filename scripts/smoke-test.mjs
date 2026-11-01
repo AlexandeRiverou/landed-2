@@ -60,6 +60,8 @@ try {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
     window.OBJ_FOR_TEST = await import('./src/objectives.js');
     window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
+    window.QUESTS_FOR_TEST = await import('./src/quests.js');
+    window.WORLD_FOR_TEST = await import('./src/world.js');
   });
 
   const report = await page.evaluate(async () => {
@@ -158,6 +160,17 @@ try {
       for (let k = 0; k < con.stars; k++) visit(con.target().clone());
       step(45); // a moment to admire the drawing
       out.quests.constellation = G.objectives.current !== con && G.objectives.completed === done0 + 1;
+      // A falling star never starts inside the ground: aimed at a valley floor with a wall 400 m over you all around
+      // it, it starts over the wall (offset sideways, it would otherwise be born inside a hill and fizzle uncatchably).
+      {
+        const surface = G.terrain.surfaceHeight, wall = p.pos.y + 400;
+        let aim = null; // the first height asked for is the spot it aims at
+        G.terrain.surfaceHeight = (x, z) => { aim ||= { x, z }; return Math.hypot(x - aim.x, z - aim.z) < 30 ? 0 : wall; };
+        const s = window.QUESTS_FOR_TEST.mkMeteors(G), sp = s.target().clone();
+        out.quests.starClear = sp.y > G.terrain.surfaceHeight(sp.x, sp.z) + 2;
+        G.terrain.surfaceHeight = surface;
+        s.dispose(G);
+      }
       // Falling stars: each one caught in mid-air counts.
       const met = fresh('meteors');
       done0 = G.objectives.completed;
@@ -236,6 +249,29 @@ try {
         fly(at(85, 4.5), glide, 90);
         out.ghostLanded = !!p.landed || p.dead;
         G.powerups.active.clear();
+        // Back on the (ended) runway's strip: taxiing isn't crop dusting, and runways that end keep their flattened
+        // ground only while you're rolling on it. Starting and dropping runways (dev-menu jumps, Relax) never piles up
+        // pads, and the ground under the wheels never moves.
+        {
+          const W = window.WORLD_FOR_TEST;
+          p.spawn(p.pos.x, p.pos.z, S.yaw);
+          fly(at(85, 4.5), glide, 150, () => p.landed);
+          const pads = { landed: !!p.landed };
+          const dust = fresh('lowfly');
+          free(30);
+          pads.dusting = dust.progress;
+          const g0 = G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y);
+          for (let k = 0; k < 4; k++) { fresh('landing'); free(2); } // each dropped as the next starts
+          fresh('lowfly');
+          pads.whileRolling = W.padCount();
+          pads.groundKept = !!p.landed && Math.abs(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) - g0) < 0.01;
+          p.spawn(p.pos.x + 900, p.pos.z, S.yaw); // took off and flew away
+          for (let k = 0; k < 6; k++) { fresh('landing'); step(2); }
+          pads.max = W.padCount();
+          fresh('lowfly');
+          pads.after = W.padCount();
+          out.pads = pads;
+        }
         p.crash = crash;
         p.spawn(p.pos.x, p.pos.z, S.yaw);
         p.health = hp;
@@ -990,6 +1026,7 @@ try {
     [report.quests.rollAnyDt, 'barrel roll quest: each roll counts once at any frame rate (dt 0.0349, 1/60, 0.0371)'],
     [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],
     [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
+    [report.quests.starClear, 'a falling star never starts inside the ground (born over a hill, it would fizzle uncatchably)'],
     [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
     [report.landing.landed && !report.landing.dead && report.landing.grade && report.landing.sink < 7 && report.landing.points > 0, 'landing: a gentle, level descent onto flat ground lands, graded, with a bonus'],
     [report.landing.done, 'landing objective: touch down on the runway and roll along it to complete it'],
@@ -997,6 +1034,8 @@ try {
     [report.hop.landed && report.hop.points === 0, 'landing: hopping straight back down earns no bonus'],
     [report.diveCrash === 'ground' && report.waterCrash.reason === 'water' && !report.waterCrash.landed, 'landing: a steep dive onto flat ground still crashes, and so does settling onto water'],
     [report.ghostLanded === false, 'landing: Ghost Mode skims the ground instead of landing'],
+    [report.pads.landed && /🌾 0\.0 \//.test(report.pads.dusting), 'landing: taxiing on the ground is not crop dusting'],
+    [report.pads.groundKept && report.pads.whileRolling === 1 && report.pads.max === 1 && report.pads.after === 0, 'runways that end flatten no ground for good: only under a plane rolling on it, gone once it leaves'],
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],

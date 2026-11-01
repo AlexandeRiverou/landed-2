@@ -492,9 +492,12 @@ function padded(x, z, h) {
   }
   return h;
 }
-export function padAt(x, z) {
+// How flattened (x, z) is (0..1), by any pad, or only by pad `id` if given.
+export function padAt(x, z, id) {
   let w = 0;
-  for (const P of pads.values()) if (x >= P.minX && x <= P.maxX && z >= P.minZ && z <= P.maxZ) w = Math.max(w, padWeight(P, x, z));
+  for (const [k, P] of pads) {
+    if ((id === undefined || k === id) && x >= P.minX && x <= P.maxX && z >= P.minZ && z <= P.maxZ) w = Math.max(w, padWeight(P, x, z));
+  }
   return w;
 }
 
@@ -512,6 +515,7 @@ export function removePad(id) {
   return P ? { minX: P.minX, maxX: P.maxX, minZ: P.minZ, maxZ: P.maxZ } : null;
 }
 export function clearPads() { pads.clear(); }
+export const padCount = () => pads.size; // for the smoke test
 
 export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7, CITY: 8 };
 
