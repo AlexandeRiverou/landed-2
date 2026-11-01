@@ -347,6 +347,9 @@ try {
       // The last boss's drop is still lying around: a Time Freeze grabbed from it would stop this one cold.
       G.powerups.active.clear();
       G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      // Fly on level, keeping the heading: the fights above leave the nose pointed at the last boss, maybe nearly
+      // straight up or down, and hands off it stays there. A lead boss holds a slot ahead along your *flat* heading.
+      G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
       const [e] = startBoss(kind, { mod: null, duo: false });
       // Sampled twice a second for 6 s, after 6 s to fly in (it may spawn 800 m out, or behind you if you're turning).
       let ahead = 0, samples = 0;
