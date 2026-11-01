@@ -1,7 +1,7 @@
 // Infinite chunked terrain. Chunks build nearest-first a few per frame; a rebuild
 // (after the world mutates) swaps chunks in progressively so the world "morphs".
 import * as THREE from 'three';
-import { world, heightAt, groundHeight, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt, clearTunnels, clearCity, tunnelInBox, tunnelColumn, cityRoofAt } from './world.js';
+import { world, heightAt, groundHeight, ceilingAt, terrainInfo, CAT, addCrater, craterDepthAt, addPad, removePad, padAt, clearTunnels, clearCity, tunnelInBox, tunnelColumn, cityRoofAt } from './world.js';
 import { mulberry32, hash3 } from './noise.js';
 import { PROPS, propMaterial } from './models.js';
 import { buildCityMesh, cityProps } from './city.js';
@@ -127,7 +127,20 @@ export class Terrain {
 
   // Blast a crater: the height function changes at once; the chunks under it rebuild over the next frames.
   deform(x, z, r, depth) {
-    const box = addCrater(x, z, Math.max(r, STEP), depth); // anything narrower than the vertex grid wouldn't show
+    this.touch(addCrater(x, z, Math.max(r, STEP), depth)); // anything narrower than the vertex grid wouldn't show
+  }
+
+  // Flatten a rectangle (centre, yaw, half width, half length) to height y, blending out over `blend` metres.
+  // Returns an id for unflatten(). Same as a crater: the chunks under it rebuild over the next frames.
+  flatten(x, z, yaw, hw, hl, y, blend) {
+    const { id, box } = addPad(x, z, yaw, hw, hl, y, blend);
+    this.touch(box);
+    return id;
+  }
+  unflatten(id) { const box = removePad(id); if (box) this.touch(box); }
+
+  // Mark the built chunks overlapping a box for a rebuild.
+  touch(box) {
     for (let cx = Math.floor(box.minX / CHUNK); cx <= Math.floor(box.maxX / CHUNK); cx++) {
       for (let cz = Math.floor(box.minZ / CHUNK); cz <= Math.floor(box.maxZ / CHUNK); cz++) {
         if (this.chunks.has(key(cx, cz))) this.dirty.add(key(cx, cz));
@@ -455,7 +468,8 @@ export class Terrain {
         else _s.setScalar(s);
         _p.set(it.x, it.y - m.sink * s, it.z);
         // Anything standing in a crater was blown away (sky and sea props are out of reach).
-        if (!m.sea && !AIRBORNE.has(type) && craterDepthAt(it.x, it.z) > 1) _s.setScalar(0);
+        // Nor does anything stand on flattened ground (a runway).
+        if (!m.sea && !AIRBORNE.has(type) && (craterDepthAt(it.x, it.z) > 1 || padAt(it.x, it.z) > 0.3)) _s.setScalar(0);
         im.setMatrixAt(i, _m.compose(_p, _q, _s));
         if (m.tints) _c.copy(m.tints[Math.floor(rng() * m.tints.length)]);
         else { const b = 0.85 + rng() * 0.3; _c.setRGB(b, b, b); }

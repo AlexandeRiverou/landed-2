@@ -774,7 +774,10 @@ export function mkMeteors(G) {
     const lx = p.x + f.x * d, lz = p.z + f.z * d, ly = groundAt(G, lx, lz);
     const a = rand(0, Math.PI * 2), off = rand(60, 140);
     star.position.set(lx + Math.cos(a) * off, Math.max(p.y + rand(110, 170), ly + 220), lz + Math.sin(a) * off);
-    star.position.y = underRoof(G, star.position.x, star.position.z, star.position.y, 15);
+    // Clear of the ground under the star itself too: offset sideways, it can start over a hill taller than the
+    // landing spot, and a star born inside a mountain fizzles before anyone could catch it.
+    const sp = star.position;
+    sp.y = underRoof(G, sp.x, sp.z, Math.max(sp.y, clearance(G, sp.x, sp.z, 10) + 40), 15);
     vel.set(lx - star.position.x, ly - star.position.y, lz - star.position.z).divideScalar(rand(10, 13) / slow);
     tail.quaternion.setFromUnitVectors(Y, _a.copy(vel).normalize().negate());
     star.visible = true;

@@ -2,7 +2,7 @@
 // sky, weather, music). Every few completed objectives you fly on into the next one, from green
 // meadows up through the stratosphere into orbit, a meteor belt, the Moon and beyond.
 import * as THREE from 'three';
-import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearTunnels, clearCity } from './world.js';
+import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearPads, clearTunnels, clearCity } from './world.js';
 import { Asteroids } from './asteroids.js';
 import { CURVE, AXIS_CURVE, CURVE_AXIS, noCurve } from './curve.js';
 import { disposeTree } from './models.js';
@@ -13,7 +13,7 @@ export const ZONE_EVERY = 3; // completed objectives per zone
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
 const SHAPE_LOCK = ['amp', 'shape', 'spikes', 'mesa', 'canyon'];
 const SPACE_LOCK = [...LOCK, 'sea', 'clouds', 'weather', 'amp', 'shape', 'islands', 'fog', 'canyon', 'mesa', 'spikes'];
-const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors']); // meteors: stars fall to the ground
+const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors', 'landing']); // meteors: stars fall to the ground
 
 export const ZONES = [
   {
@@ -43,6 +43,7 @@ export const ZONES = [
     name: 'Hollow Peaks', blurb: 'Huge mountains with holes clean through them. Yes, you can fly in there. The mountain is fine with it.',
     world: { palette: 'peaks', ranges: 0.55, hillBase: 3, tunnels: 1, amp: 2.2, roughness: 1.1, terrace: 0.35, mesa: 0.5, canyon: 1.6, canyonWidth: 1.8, spikes: 0.5, seaLevel: -30, snowLine: 480, floatingIslands: 0.1, tempBias: -0.15 },
     sky: 'morning', weather: 'clear', clouds: ['#ffffff', 30], fog: 1.15, mood: 'day',
+    noObjectives: ['landing'], // a runway can't be flattened over a tunnel, and the flat valleys are rare
     lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'weather', 'islands'], // reshaped mountains would move the tunnels under you
   },
   {
@@ -64,13 +65,13 @@ export const ZONES = [
   {
     name: 'Metropolis', blurb: 'Skyscrapers at golden hour. The avenues are wide, the alleys are a dare, and the windows are very clean. Keep them that way.',
     world: { palette: 'metro', city: 112, amp: 0.04, hillBase: 0.05, roughness: 0.15, terrace: 0, mesa: 0, canyon: 0, spikes: 0, seaLevel: 0, snowLine: 9999, propTheme: 'city', propDensity: 0.6, floatingIslands: 0, balloons: 0.5, tempBias: -0.4 },
-    sky: 'golden', weather: 'clear', clouds: ['#ffe0c8', 25, 520], fog: 1.15, mood: 'dusk', noObjectives: ['gate'], // a 64 m stone arch doesn't fit down a street
+    sky: 'golden', weather: 'clear', clouds: ['#ffe0c8', 25, 520], fog: 1.15, mood: 'dusk', noObjectives: ['gate', 'landing'], // a 64 m stone arch doesn't fit down a street; the towers would stand on a runway
     lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands', 'scale'], // the street plan sits on the ground and the sea line: keep both still
   },
   {
     name: 'Sunken Reef', blurb: 'The sea won. You fly underwater now. The surface is the ceiling; the fish are unimpressed.',
     world: { palette: 'reef', underwater: 1, seaLevel: 250, amp: 0.35, roughness: 1.2, terrace: 0, mesa: 0.6, canyon: 0, spikes: 0.7, snowLine: 9999, floatingIslands: 0, propTheme: 'reef', propDensity: 1.3, tempBias: -0.1 },
-    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors'], // shooting stars don't do underwater
+    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors', 'landing'], // shooting stars don't do underwater; nor do runways
     lock: [...LOCK, ...SHAPE_LOCK, 'weather', 'clouds', 'islands', 'fog', 'sea', 'decor'],
   },
   {
@@ -203,6 +204,7 @@ export class Zones {
     world.palette = ZONE_PALETTES[palette] || PALETTES.find((p) => p.name === palette) || PALETTES[0];
     if (!keepSeed) reseed((Math.random() * 1e9) | 0); // a fresh landscape for every zone
     clearCraters(); // the old zone's blast holes don't belong in the new world
+    clearPads(); // nor its flattened runway ground
     clearTunnels(); // nor its tunnels
     clearCity(); // nor its city plan (it was made for the old world's ground)
     G.sky.setPreset(z.sky, instant);

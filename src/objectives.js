@@ -6,6 +6,7 @@ import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
+import { mkLanding } from './runway.js';
 import { waterLine } from './world.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -412,7 +413,7 @@ function mkLowFly(G) {
     onUpdate(dt, G) {
       const p = G.player;
       const alt = p.pos.y - groundAt(G, p.pos.x, p.pos.z, p.pos.y); // same as the HUD: in a tunnel, to its floor
-      const low = !p.dead && alt < thr;
+      const low = !p.dead && !p.landed && alt < thr; // taxiing isn't crop dusting
       if (low) { time += dt; this.progressed = true; if (!wasLow) G.ui.notify('Brrrrrrr (crop dusting noises)', 'info', 2, 0); }
       wasLow = low;
       this.progress = `🌾 ${time.toFixed(1)} / ${need}s below ${thr} m (now ${Math.round(alt)} m)`;
@@ -644,7 +645,7 @@ const TYPES = [
   ['hunt', 1.1, mkHunt], ['pest', 1, C.mkPest], ['survive', 0.8, C.mkSurvive],
   ['delivery', 1.2, Q.mkDelivery], ['roll', 1.1, Q.mkRoll], ['race', 1.2, Q.mkRace], ['constellation', 1.1, Q.mkConstellation],
   ['searchlight', 1.1, Q.mkSearchlight], ['bomb', 1.2, Q.mkBomb], ['herd', 1, Q.mkHerd], ['melody', 1.2, Q.mkMelody],
-  ['meteors', 1.1, Q.mkMeteors], ['photo', 1.2, Q.mkPhoto],
+  ['meteors', 1.1, Q.mkMeteors], ['photo', 1.2, Q.mkPhoto], ['landing', 1.2, mkLanding],
 ];
 export const OBJECTIVE_TYPES = TYPES.map((t) => t[0]);
 
