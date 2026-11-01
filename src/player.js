@@ -23,6 +23,22 @@ const MANEUVERS = {
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 
+// Landing. A touchdown is a landing (not a crash) when the sink rate (m/s), bank (rad), nose (forward.y) and
+// wings (up.y) are within these, on dry ground whose slope (rise per metre) is gentle enough.
+const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
+const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels down, on a runway's asphalt (times Mega / Tiny Plane's scale)
+// On the ground: roll out to taxi speed (m/s), braking/accelerating at these m/s², turning at TAXI_TURN rad/s.
+// Pulling up takes off once you're at LIFTOFF × cruise speed. Bonus points need this long in the air first (s).
+const TAXI_SPEED = 10, BRAKE = 10, THROTTLE = 12, TAXI_TURN = 0.9, LIFTOFF = 0.7, BONUS_AIRTIME = 15;
+// Softest first: a touchdown gets the first grade whose sink (m/s) and bank (rad) limits it meets.
+const LANDING_GRADES = [
+  { id: 'butter', title: 'BUTTER!', sink: 1.5, bank: 0.09, points: 150, texts: 'landButter' },
+  { id: 'nice', title: 'Nice landing!', sink: 3.5, bank: 0.2, points: 80, texts: 'landNice' },
+  { id: 'firm', title: 'Firm landing.', sink: 5.5, bank: 0.35, points: 40, texts: 'landFirm' },
+  { id: 'technically', title: 'That counts. Technically.', sink: Infinity, bank: Infinity, points: 10, texts: 'landMeh' },
+];
+const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
+
 export class Player {
   constructor(G) {
     this.G = G;
@@ -64,6 +80,11 @@ export class Player {
     this.bullets = [];
     this.ceilingWarned = 0;
     this.surfaceWarned = -99;
+    this.landed = null;      // on the ground: { yaw, t, ground } (see taxi)
+    this.lastLanding = null; // the latest touchdown: { grade, title, sink, bank, points, x, z }
+    this.airTime = 0;        // seconds airborne since the last touchdown or respawn (landing bonus needs BONUS_AIRTIME)
+    this.everLanded = false;
+    this.tipShown = false;   // the landing tip shows once per session
     this.bulletGeo = new THREE.SphereGeometry(0.7, 6, 4);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: '#fff36a' });
   }
@@ -83,6 +104,8 @@ export class Player {
     this.invuln = 3;
     this.maneuver = null; // a crash ends any stunt
     this.dodging = false;
+    this.landed = null;
+    this.airTime = 0;
     this.model.group.visible = true;
     this.loopAccum = 0;
     this.updateAxes();
@@ -112,8 +135,28 @@ export class Player {
     this.sinceHit += dt;
     if (this.sinceHit > 4 && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen);
 
-    // Double-tap stunts take over the controls while they run.
     this.maneuverCd = Math.max(0, this.maneuverCd - dt);
+    if (this.landed ? !this.taxi(dt, input) : !this.fly(dt, input)) return; // false: crashed
+
+    // Shooting.
+    this.shootCd -= dt;
+    if (input.shoot && this.shootCd <= 0) this.fire();
+
+    // Visuals.
+    const g = this.model.group;
+    g.position.copy(this.pos);
+    g.quaternion.copy(this.quat);
+    g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, this.sizeScale, 1 - Math.exp(-dt * 4)));
+    g.visible = this.invuln <= 0 || Math.floor(G.time * 12) % 2 === 0;
+    this.model.prop.rotation.z += dt * (30 + this.speed * 0.5);
+    if (this.boosting && Math.random() < 0.6) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -6), '#7ad8ff');
+  }
+
+  // Normal flight. Returns false if the plane crashed.
+  fly(dt, input) {
+    const G = this.G;
+    this.airTime += dt;
+    // Double-tap stunts take over the controls while they run.
     if (input.gesture && !this.maneuver && this.maneuverCd <= 0) this.startManeuver(input.gesture);
     if (this.maneuver) this.stepManeuver(dt);
     else this.steer(dt, input);
@@ -128,14 +171,9 @@ export class Player {
     if (Math.abs(this.loopAccum) >= Math.PI * 2 * this.loopRequirement) { this.events.push('loop'); this.loopAccum = 0; }
 
     // Speed + boost.
-    const turbo = G.powerups.has('turbo');
-    const boosting = turbo || this.freeBoost > 0 || (input.boost && this.boost > 0.02);
-    if (this.freeBoost > 0) this.freeBoost -= dt;
-    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * 0.35 * this.stats.boostDrain);
-    else this.boost = Math.min(1, this.boost + dt * 0.15 * this.stats.boostRegen);
+    const boosting = this.throttle(dt, input);
     const target = (boosting ? this.baseSpeed * 1.7 : this.baseSpeed) - this.forward.y * 10;
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
-    this.boosting = boosting;
 
     this.prevPos.copy(this.pos);
     this.pos.addScaledVector(this.forward, this.speed * dt).addScaledVector(this.wind, dt);
@@ -152,11 +190,17 @@ export class Player {
           this.graceNotified = true;
           G.ui.notify('A mountain grew under you. We relocated you upward. Free of charge.', 'warn');
         }
-      } else return this.crash('ground');
+      } else if (this.canLand(ground, dt)) { this.touchdown(ground, dt); return true; } // the normal path only: no landing by accident
+      else {
+        const nearly = this.up.y > 0.5 && this.forward.y > -0.45 && ground > waterLine() && !G.world.underwater; // close, but no
+        this.crash('ground');
+        if (nearly) this.showTip();
+        return false;
+      }
     } else if (!G.world.underwater && ground < sea && this.pos.y < sea + 0.6) {
       if (ghost) this.pos.y = sea + 0.6;
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = sea + 25;
-      else return this.crash('water');
+      else { this.crash('water'); return false; }
     }
     // Underwater, the sea surface is a soft lid: you're held just under it and the nose eases down. No crash.
     if (G.world.underwater && this.pos.y > sea - SURFACE_HOLD) {
@@ -169,21 +213,10 @@ export class Player {
     if (this.pos.y > roof - 2.5) {
       if (ghost || G.world.underwater) this.pos.y = roof - 2.5; // underwater the roof is the sea surface: never a crash
       else if (this.grace > 0 || this.invuln > 0) this.pos.y = Math.max(ground + 12, roof - 25);
-      else return this.crash('roof');
+      else { this.crash('roof'); return false; }
     }
-
-    // Shooting.
-    this.shootCd -= dt;
-    if (input.shoot && this.shootCd <= 0) this.fire();
-
-    // Visuals.
-    const g = this.model.group;
-    g.position.copy(this.pos);
-    g.quaternion.copy(this.quat);
-    g.scale.setScalar(THREE.MathUtils.lerp(g.scale.x, this.sizeScale, 1 - Math.exp(-dt * 4)));
-    g.visible = this.invuln <= 0 || Math.floor(G.time * 12) % 2 === 0;
-    this.model.prop.rotation.z += dt * (30 + this.speed * 0.5);
-    if (boosting && Math.random() < 0.6) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -6), '#7ad8ff');
+    if (!ghost) this.landingTip(ground);
+    return true;
   }
 
   // Normal flying. Roll input sets a target bank angle (casual: let go → wings level).
@@ -210,6 +243,135 @@ export class Player {
     }
     q.normalize();
     this.updateAxes();
+  }
+
+  // Boost: drains while held (Turbo and free boost cost nothing), recharges otherwise. Returns whether it's on.
+  throttle(dt, input) {
+    const turbo = this.G.powerups.has('turbo');
+    const boosting = turbo || this.freeBoost > 0 || (input.boost && this.boost > 0.02);
+    if (this.freeBoost > 0) this.freeBoost -= dt;
+    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * 0.35 * this.stats.boostDrain);
+    else this.boost = Math.min(1, this.boost + dt * 0.15 * this.stats.boostRegen);
+    this.boosting = boosting;
+    return boosting;
+  }
+
+  bank() { return Math.asin(THREE.MathUtils.clamp(-this.right.y, -1, 1)); }
+
+  // Steepest rise per metre of the ground a few metres around (x, z), asked at height y (tunnel floors count).
+  slopeAt(x, z, y) {
+    const h = (dx, dz) => this.G.terrain.surfaceHeight(x + dx, z + dz, y);
+    return Math.max(Math.abs(h(4, 0) - h(-4, 0)), Math.abs(h(0, 4) - h(0, -4))) / 8;
+  }
+
+  // Reaching the ground gently, wings level and nose up enough, on dry and flat-enough ground: that's a landing.
+  // Not mid-stunt, and never on the seabed. The ground under the last position must be close too (no wall in the way).
+  canLand(ground, dt) {
+    const G = this.G, p = this.pos, q = this.prevPos;
+    if (this.maneuver || G.world.underwater || ground <= waterLine()) return false;
+    const sink = (q.y - p.y) / dt;
+    return sink < LAND.sink && Math.abs(this.bank()) < LAND.bank && this.forward.y > LAND.noseDown && this.up.y > LAND.upright
+      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.slopeAt(p.x, p.z, p.y) < LAND.slope;
+  }
+
+  touchdown(ground, dt) {
+    const G = this.G;
+    const sink = Math.max(0, (this.prevPos.y - this.pos.y) / dt), bank = Math.abs(this.bank());
+    const grade = LANDING_GRADES.find((g) => sink <= g.sink && bank <= g.bank);
+    const points = this.airTime >= BONUS_AIRTIME ? grade.points : 0; // no farming points by hopping
+    this.lastLanding = { grade: grade.id, title: grade.title, sink: +sink.toFixed(2), bank: +((bank * 180) / PI).toFixed(1), points, x: this.pos.x, z: this.pos.z };
+    this.landed = { yaw: Math.atan2(-this.forward.x, -this.forward.z), t: 0 };
+    this.everLanded = true;
+    this.airTime = 0;
+    this.events.push('landed');
+    G.score += points;
+    this.sitOnGround(ground);
+    G.fx.emit(_v.copy(this.pos).addScaledVector(this.up, -WHEELS * this.sizeScale), 26, { colors: DUST, speed: 14, life: 1.1, size: 5, gravity: -6, up: 7 });
+    G.audio.tone(72, 0.3, { type: 'sine', vol: 0.22, slide: -30 });
+    G.audio.noise(0.2, { vol: 0.12, freq: 500 });
+    G.ui.notify(`${grade.title} ${pick(T[grade.texts])}${points ? ` +${points}` : ' (No points for hops: fly a while first.)'}`, 'good', 3.5, 2);
+  }
+
+  // Wings level, the nose following the slope under the wheels.
+  sitOnGround(ground) {
+    const G = this.G, p = this.pos, yaw = this.landed.yaw;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const rise = G.terrain.surfaceHeight(p.x + fx * 3, p.z + fz * 3, p.y) - G.terrain.surfaceHeight(p.x - fx * 3, p.z - fz * 3, p.y);
+    this.landed.ground = ground;
+    p.y = ground + WHEELS * this.sizeScale;
+    this.quat.setFromAxisAngle(Y, yaw).multiply(_q.setFromAxisAngle(X, THREE.MathUtils.clamp(Math.atan2(rise, 6), -0.3, 0.3)));
+    this.updateAxes();
+  }
+
+  // On the ground: roll out to taxi speed (boost speeds you up), steer with roll or yaw (about world up), pull up to
+  // take off. Pitch down and stunts do nothing here. Rolling off an edge just makes you airborne; a wall still crashes.
+  // Returns false if the plane crashed.
+  taxi(dt, input) {
+    const G = this.G, L = this.landed;
+    L.t += dt;
+    const boosting = this.throttle(dt, input), pull = input.pitch > 0.3;
+    const target = boosting ? this.baseSpeed * 1.7 : pull ? this.baseSpeed : TAXI_SPEED;
+    const rate = this.speed > target ? BRAKE : boosting ? THROTTLE * 1.5 : THROTTLE;
+    this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
+    L.yaw -= THREE.MathUtils.clamp(input.roll + input.yaw, -1, 1) * TAXI_TURN * dt;
+    if (pull && this.speed >= this.baseSpeed * LIFTOFF) { this.liftoff(); return true; }
+
+    this.prevPos.copy(this.pos);
+    const run = this.speed * dt;
+    this.pos.x -= Math.sin(L.yaw) * run;
+    this.pos.z -= Math.cos(L.yaw) * run;
+    const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z, this.pos.y);
+    const was = L.ground; // the ground under the wheels a moment ago
+    const ghost = G.powerups.has('ghost') || this.god;
+    if (ground - was > 1.5 + run * 0.6) { // a wall, or a cliff face
+      if (!ghost) {
+        if (this.grace <= 0 && this.invuln <= 0) { this.crash('ground'); return false; }
+        this.landed = null; // right after the world changes: moved up out of the way, like in the air
+        this.pos.y = ground + 30;
+        return true;
+      } // Ghost Mode rolls right up it
+    } else if (was - ground > 1 + run * 0.8) { // the ground dropped away: you're flying again
+      this.landed = null;
+      G.ui.notify('Ran out of ground. Good news: you\'re a plane.', 'info', 2.5, 0);
+      return true;
+    }
+    if (ground < waterLine()) { // rolled into the sea
+      this.landed = null;
+      if (ghost) this.pos.y = waterLine() + 0.6;
+      else if (this.grace > 0 || this.invuln > 0) this.pos.y = waterLine() + 25;
+      else { this.crash('water'); return false; }
+      return true;
+    }
+    this.sitOnGround(ground);
+    if (this.pos.y > G.terrain.ceilingHeight(this.pos.x, this.pos.z, this.pos.y) - 2.5 && !ghost) { this.crash('roof'); return false; }
+    if (this.speed > 15 && Math.random() < 0.5) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -3).addScaledVector(this.up, -2), DUST[0]);
+    return true;
+  }
+
+  liftoff() {
+    const G = this.G, yaw = this.landed.yaw;
+    this.landed = null;
+    this.quat.setFromAxisAngle(Y, yaw).multiply(_q.setFromAxisAngle(X, 0.18)); // a little nose-up: you climb from here
+    this.updateAxes();
+    this.pos.y += 0.4;
+    G.audio.tone(220, 0.4, { type: 'triangle', vol: 0.06, slide: 220 });
+    G.ui.notify(pick(T.takeoff), 'good', 2.5, 0);
+  }
+
+  // The landing tip: shown once, the first time you're low, slow-ish and level over flat dry ground (or after a
+  // crash that was nearly a landing), and never after your first real landing.
+  landingTip(ground) {
+    if (this.tipShown || this.everLanded) return;
+    const G = this.G, alt = this.pos.y - ground;
+    if (alt > 25 || this.boosting || this.speed > this.baseSpeed * 1.15 || Math.abs(this.bank()) > 0.3 || this.forward.y < -0.2 || this.up.y < 0.8) return;
+    if (G.world.underwater || ground <= waterLine() || this.slopeAt(this.pos.x, this.pos.z, this.pos.y) > 0.15) return;
+    this.showTip();
+  }
+
+  showTip() {
+    if (this.tipShown || this.everLanded) return;
+    this.tipShown = true;
+    this.G.ui.notify(pick(T.landingTip), 'info', 6, 2);
   }
 
   startManeuver(dir) {
@@ -332,6 +494,7 @@ export class Player {
   crash(reason) {
     const G = this.G;
     this.dead = true;
+    this.landed = null;
     this.deadTimer = 2.2;
     this.health = 0;
     this.model.group.visible = false;

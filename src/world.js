@@ -170,7 +170,7 @@ function landHeight(x, z) {
   }
   if (W.craters > 0) h -= moonCraters(x, z) * W.craters;
   if (W.underwater) h = Math.min(h, W.seaLevel - W.floor - REEF_GAP); // reef tops flatten out well under the surface
-  return h + W.floor;
+  return pads.size ? padded(x, z, h + W.floor) : h + W.floor;
 }
 
 // The cave roof: a lumpy rock ceiling that follows the floor at a safe distance, with stalactites
@@ -470,6 +470,48 @@ export function addCrater(x, z, r, depth) {
 }
 
 export function clearCraters() { craters.clear(); }
+
+// Flattened ground (the runway objective's strip): a rectangle turned by yaw where the land sits at exactly y,
+// blending back to its natural height over `blend` metres around it. Read by landHeight, so like a crater it shows
+// everywhere (mesh, collision, props) once the chunks under it rebuild.
+const pads = new Map();
+let padIds = 0;
+
+// 0..1: how much of (x, z) a pad has flattened (1 inside it, fading to 0 across the blend), and to what height.
+function padWeight(P, x, z) {
+  const dx = x - P.x, dz = z - P.z;
+  const lx = Math.abs(dx * P.cos - dz * P.sin) - P.hw, lz = Math.abs(dx * P.sin + dz * P.cos) - P.hl;
+  const out = Math.hypot(Math.max(lx, 0), Math.max(lz, 0));
+  return out >= P.blend ? 0 : 1 - smoothstep(0, P.blend, out);
+}
+function padded(x, z, h) {
+  for (const P of pads.values()) {
+    if (x < P.minX || x > P.maxX || z < P.minZ || z > P.maxZ) continue;
+    const w = padWeight(P, x, z);
+    if (w > 0) h = lerp(h, P.y, w);
+  }
+  return h;
+}
+export function padAt(x, z) {
+  let w = 0;
+  for (const P of pads.values()) if (x >= P.minX && x <= P.maxX && z >= P.minZ && z <= P.maxZ) w = Math.max(w, padWeight(P, x, z));
+  return w;
+}
+
+// Adds a pad; returns its id and the bounding box it touches, so the caller can rebuild.
+export function addPad(x, z, yaw, hw, hl, y, blend) {
+  const reach = Math.hypot(hw, hl) + blend, id = ++padIds;
+  const box = { minX: x - reach, maxX: x + reach, minZ: z - reach, maxZ: z + reach };
+  pads.set(id, { x, z, hw, hl, y, blend, cos: Math.cos(yaw), sin: Math.sin(yaw), ...box });
+  return { id, box };
+}
+// Removes a pad; returns the box it covered (null if it's already gone).
+export function removePad(id) {
+  const P = pads.get(id);
+  pads.delete(id);
+  return P ? { minX: P.minX, maxX: P.maxX, minZ: P.minZ, maxZ: P.maxZ } : null;
+}
+export function clearPads() { pads.clear(); }
 
 export const CAT = { SEA: 0, BEACH: 1, GRASS: 2, FOREST: 3, DESERT: 4, ROCK: 5, SNOW: 6, MESA: 7, CITY: 8 };
 

@@ -178,6 +178,70 @@ try {
         step(1);
       }
       out.quests.photo = G.objectives.current !== photo && G.objectives.completed === done0 + 1;
+      // Landing, on the runway objective's strip (its ground is flattened, so this never depends on the terrain roll):
+      // a gentle, level descent lands and rolling along the strip completes it; pulling up takes off; hopping straight
+      // back down scores nothing; a steep dive onto the same flat ground still crashes, settling onto water too, and
+      // Ghost Mode skims instead of landing. No safety net (invuln / grace) on any of these.
+      {
+        const V = p.pos.constructor, Q = p.quat.constructor, UP = new V(0, 1, 0), hp = p.health;
+        G.enemies.spawnTimer = 1e9;
+        G.enemies.list.filter((e) => !e.quest).forEach((e) => G.enemies.removeEnemy(e));
+        p.health = 1e6; // enemies aren't what this checks
+        const celebrate = G.mutations.celebrate;
+        G.mutations.celebrate = () => []; // nor is the world reshaping itself after the win
+        const run = fresh('landing');
+        done0 = G.objectives.completed;
+        const S = run.strip;
+        step(60); // the chunks under the flattened strip rebuild
+        const at = (lz, up) => new V(S.c.x + lz * Math.sin(S.yaw), S.c.y + up, S.c.z + lz * Math.cos(S.yaw)); // strip-local z: + is the near end
+        const nose = (pitch) => new Q().setFromAxisAngle(UP, S.yaw).multiply(new Q().setFromAxisAngle(new V(1, 0, 0), pitch));
+        const glide = nose(-Math.asin(0.06)); // sinking about 2.6 m/s
+        let reason = null;
+        const crash = p.crash.bind(p);
+        p.crash = (r) => { reason ||= r; crash(r); };
+        const fly = (from, q, frames, until = () => false) => {
+          p.pos.copy(from); p.prevPos.copy(from); p.maneuver = null; p.landed = null;
+          p.dead = false; p.model.group.visible = true; p.health = 1e6; p.speed = p.baseSpeed; p.freeBoost = 0; // cruising, no boost
+          for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; p.quat.copy(q); p.updateAxes(); G.step(1 / 30); }
+        };
+        const free = (frames, until = () => false) => { for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); } }; // hands off the stick
+        fly(at(85, 4.5), glide, 150, () => p.landed);
+        const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding };
+        free(150, () => G.objectives.current !== run);
+        Object.assign(L, { done: G.objectives.current !== run && G.objectives.completed === done0 + 1, rollSpeed: Math.round(p.speed), stillLanded: !!p.landed });
+        G.objectives.cooldown = 1e9; // completing it re-armed the cooldown: nothing new (a boss!) starts mid-check
+        const before = p.lastLanding;
+        fly(at(85, 4.5), glide, 150, () => p.landed);
+        out.hop = { landed: !!p.landed && p.lastLanding !== before, points: p.lastLanding.points };
+        free(20);
+        G.input.keys.add('KeyW'); // from that hop: roll a moment, pull up for 1.5 s, then let go
+        const y0 = p.pos.y;
+        free(45);
+        G.input.keys.delete('KeyW');
+        const y1 = p.pos.y;
+        free(60);
+        out.takeoff = { airborne: !p.landed && !p.dead, lifted: Math.round(y1 - y0), climb: Math.round(p.pos.y - y1) };
+        reason = null;
+        fly(at(-40, 40), nose(-0.7), 90);
+        out.diveCrash = reason;
+        p.spawn(p.pos.x, p.pos.z, S.yaw);
+        reason = null;
+        const sea = G.world.seaLevel;
+        G.world.seaLevel = S.c.y + 10; // a flood over the strip, just for this
+        fly(at(85, 14.5), glide, 150, () => p.landed);
+        out.waterCrash = { reason, landed: !!p.landed };
+        G.world.seaLevel = sea;
+        p.spawn(p.pos.x, p.pos.z, S.yaw);
+        G.powerups.active.set('ghost', 10);
+        fly(at(85, 4.5), glide, 90);
+        out.ghostLanded = !!p.landed || p.dead;
+        G.powerups.active.clear();
+        p.crash = crash;
+        p.spawn(p.pos.x, p.pos.z, S.yaw);
+        p.health = hp;
+        G.mutations.celebrate = celebrate;
+        G.enemies.spawnTimer = 5;
+      }
       G.objectives.cooldown = cooldown;
       G.powerups.timer = puTimer;
     }
@@ -927,6 +991,12 @@ try {
     [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],
     [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
     [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
+    [report.landing.landed && !report.landing.dead && report.landing.grade && report.landing.sink < 7 && report.landing.points > 0, 'landing: a gentle, level descent onto flat ground lands, graded, with a bonus'],
+    [report.landing.done, 'landing objective: touch down on the runway and roll along it to complete it'],
+    [report.takeoff.airborne && report.takeoff.lifted > 0 && report.takeoff.climb > 5, 'landing: pulling up on the ground takes off and climbs away'],
+    [report.hop.landed && report.hop.points === 0, 'landing: hopping straight back down earns no bonus'],
+    [report.diveCrash === 'ground' && report.waterCrash.reason === 'water' && !report.waterCrash.landed, 'landing: a steep dive onto flat ground still crashes, and so does settling onto water'],
+    [report.ghostLanded === false, 'landing: Ghost Mode skims the ground instead of landing'],
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],

@@ -84,6 +84,35 @@ export const T = {
     "Lithobraking is not an approved maneuver.",
     "The ground says hi. Very firmly.",
   ],
+  // Landing grades (see LANDING_GRADES in player.js), softest first.
+  landButter: [
+    "Smooth as butter. The passengers didn't even wake up.",
+    "So soft the ground didn't notice. Neither did we.",
+    "Textbook. Somebody frame this landing.",
+  ],
+  landNice: [
+    "Wheels down, all the bits still attached. Lovely.",
+    "A proper landing! Flight school would be shocked.",
+    "The grass applauds politely.",
+  ],
+  landFirm: [
+    "Your spine has filed a complaint.",
+    "The suspension is reconsidering its career.",
+    "That shook the snacks loose. Still counts.",
+  ],
+  landMeh: [
+    "The wheels touched first. We checked. Barely.",
+    "Ground contact achieved. Dignity pending.",
+    "Any landing you can taxi away from is a good one.",
+  ],
+  takeoff: [
+    "Wheels up! Back where you belong.",
+    "Airborne again. The ground will miss you.",
+    "Take-off! The runway waves goodbye.",
+  ],
+  landingTip: [
+    "Tip: come in slow, wings level, gentle sink, and you can LAND. It's in the name.",
+  ],
   crashWater: [
     "Splash! The fish are filing a complaint.",
     "Planes are not submarines. Noted for next time.",
