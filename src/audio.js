@@ -1,7 +1,7 @@
 // Tiny WebAudio synth: no audio files, just beeps with ambition (plus a calm soundtrack, see music.js).
 import { Music } from './music.js';
 export class Sfx {
-  constructor() { this.ctx = null; this.muted = false; }
+  constructor() { this.ctx = null; this.muted = false; this.nextThump = 0; }
 
   init() {
     if (this.ctx) { this.ctx.resume?.(); return; }
@@ -71,6 +71,12 @@ export class Sfx {
   pop() { this.tone(600, 0.12, { type: 'square', vol: 0.08, slide: 600 }); this.noise(0.08, { vol: 0.15, freq: 3000 }); }
   shoot() { this.tone(700, 0.06, { type: 'triangle', vol: 0.018, slide: -350 }); }
   hit() { this.noise(0.15, { vol: 0.25, freq: 2000 }); this.tone(160, 0.15, { type: 'sawtooth', vol: 0.1, slide: -80 }); }
+  // A bullet hitting the ground: a soft low thud. At most one per 70 ms, so a burst rumbles instead of clipping.
+  thump() {
+    if (!this.ctx || this.ctx.currentTime < this.nextThump) return;
+    this.nextThump = this.ctx.currentTime + 0.07;
+    this.noise(0.18, { vol: 0.12, freq: 500 }); this.tone(110, 0.16, { type: 'sine', vol: 0.12, slide: -60 });
+  }
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }
   zap() { this.tone(1400, 0.2, { type: 'sawtooth', vol: 0.08, slide: -1200 }); this.noise(0.2, { vol: 0.2, freq: 5000 }); }

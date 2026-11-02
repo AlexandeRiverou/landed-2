@@ -19,6 +19,7 @@ const CEIL_GLOW = [rgb('#7af0ff'), rgb('#c07aff'), rgb('#7aff9a')];
 const TUNNEL_ROCK = [rgb('#4a4440'), rgb('#3a3634'), rgb('#57504a')];
 const THIN = 0.01; // overhang thinner than this is no overhang
 const NO_PROPS = 255; // category for tunnel floors and mouths: nothing grows in there
+const DIRTY_EVERY = 0.05, DIRTY_MAX = 4, DIRTY_MS = 8; // crater rebuilds: how often, how many chunks, time cap (see update)
 
 const TABLES = {
   [CAT.GRASS]: [['roundTree', 3], ['pine', 1.5], ['birch', 1.2], ['bush', 3], ['rock', 0.6], ['house', 0.35], ['gnome', 0.06], ['appleTree', 1.2], ['flowers', 1.5], ['haybale', 0.4], ['sheep', 0.5], ['cow', 0.3], ['scarecrow', 0.12], ['well', 0.08], ['picnicTable', 0.12], ['tractor', 0.1], [null, 2]],
@@ -169,17 +170,25 @@ export class Terrain {
       if (!best) break;
       this.build(best[0], best[1]);
     }
-    // Rebuild cratered chunks at most every 0.15 s: sustained fire into the ground then costs one
-    // rebuild per batch of hits instead of one per frame.
+    // Rebuild cratered chunks every DIRTY_EVERY s, nearest the player first: up to DIRTY_MAX chunks a
+    // pass, stopping early once DIRTY_MS is spent (a chunk takes ~3 ms). Sustained fire into the ground
+    // then costs one batch of rebuilds per few frames, and the hole still opens as you shoot.
     const now = this.G.time;
     if (this.dirty.size && now >= this.nextDirtyBuild) {
-      for (const k of this.dirty) {
-        this.dirty.delete(k);
-        const c = this.chunks.get(k);
-        if (c) this.build(c.cx, c.cz);
-        break;
+      const t0 = performance.now();
+      for (let n = 0; n < DIRTY_MAX && this.dirty.size && performance.now() - t0 < DIRTY_MS; n++) {
+        let best = null, bestD = Infinity;
+        for (const k of this.dirty) {
+          const c = this.chunks.get(k);
+          if (!c) { this.dirty.delete(k); continue; }
+          const d = (c.cx - pcx) ** 2 + (c.cz - pcz) ** 2;
+          if (d < bestD) { bestD = d; best = c; }
+        }
+        if (!best) break;
+        this.dirty.delete(key(best.cx, best.cz));
+        this.build(best.cx, best.cz);
       }
-      this.nextDirtyBuild = now + 0.15;
+      this.nextDirtyBuild = now + DIRTY_EVERY;
     }
     for (const [k, c] of this.chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;

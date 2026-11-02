@@ -1,10 +1,11 @@
 // Quests: objectives with new verbs. Pizza delivery, barrel rolls, a race against Gary, joining up a
-// constellation, sneaking past a searchlight, a cake with a fuse, herding balloons, playing a tune on
+// constellation, sneaking past searchlights, a cake with a fuse, digging up treasure, playing a tune on
 // floating notes, catching falling stars and a photo safari.
 // Same contract as objectives.js: hooks the persuasion system can use on a player who ignores them.
 import * as THREE from 'three';
-import { makeRing, setRingColor, makeStar, makeBalloon, makePlane, makeLandmark, makeTextSprite, disposeTree } from './models.js';
+import { makeRing, setRingColor, makeStar, makePlane, makeLandmark, makeTextSprite, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
+import { heightAt, groundHeight, waterLine, craterDepthAt } from './world.js';
 import { objective, pointAhead, groundAt, clearance, underRoof, inFront, flatForward, faceFlat, anim, moveToward, spinRing, crossRing } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
@@ -48,13 +49,6 @@ function drop(G, ...objs) {
     o.traverse((s) => { if (s.isSprite) { s.material.map?.dispose(); s.material.dispose(); s.userData.keep = true; } });
     disposeTree(o);
   }
-}
-
-// Nearest object in the list (skipping any `skip` says no to), without building a new array each frame.
-function nearestOf(G, list, skip = null) {
-  let best = null, bd = Infinity;
-  for (const m of list) { if (skip?.(m)) continue; const d = m.position.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = m; } }
-  return best;
 }
 
 // ---------- pizza delivery ----------
@@ -408,18 +402,14 @@ export function mkConstellation(G) {
 
 // ---------- sneak past the searchlight ----------
 
-export function mkSearchlight(G) {
-  const R = 18, L = 320, CATCH = 1.5, MAX_CATCHES = 3;
-  const hoop = makeRing(R, '#7aff6a');
-  hoop.position.copy(pointAhead(G, 480, 600, 0.5, 40, 90));
-  faceFlat(hoop, G.player.pos);
-  G.scene.add(hoop);
-  // The lamp stands off to one side of the hoop and a bit higher, on a tower; with no ground, it's a floating eye.
-  _a.subVectors(hoop.position, G.player.pos).setY(0).normalize().applyAxisAngle(Y, (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2);
+const BEAM_L = 360, BEAM_HALF = 0.24; // beam reach (m) and half-angle (rad)
+
+// A searchlight at `pos`, a bit above the hoop: on a tower, or with no ground under it a floating eye. Its beam
+// points down local -Y; aim() swings beam and head along `axis`.
+function makeLamp(G, pos) {
   const rig = new THREE.Group();
-  rig.position.copy(hoop.position).addScaledVector(_a, 70);
-  rig.position.y = underRoof(G, rig.position.x, rig.position.z, Math.max(hoop.position.y + 45, clearance(G, rig.position.x, rig.position.z, 10) + 20), 12);
-  const floating = !!G.zones.current.noGround || rig.position.y - groundAt(G, rig.position.x, rig.position.z) > FAR_DOWN;
+  rig.position.copy(pos);
+  const floating = !!G.zones.current.noGround || pos.y - groundAt(G, pos.x, pos.z) > FAR_DOWN;
   const head = new THREE.Group();
   if (floating) {
     head.add(mesh(new THREE.SphereGeometry(8, 14, 10), lam('#ffffff')), mesh(new THREE.SphereGeometry(4, 12, 8), lam('#3ab0ff'), 0, 0, 5.6));
@@ -429,55 +419,97 @@ export function mkSearchlight(G) {
     const housing = mesh(new THREE.CylinderGeometry(4, 5, 8, 10), lam('#2b2b3a'));
     housing.rotation.x = Math.PI / 2;
     head.add(housing, mesh(new THREE.CircleGeometry(4, 14), new THREE.MeshBasicMaterial({ color: '#fff3a0' }), 0, 0, 4.1));
-    const h = Math.max(4, rig.position.y - groundAt(G, rig.position.x, rig.position.z) - 5);
+    const h = Math.max(4, pos.y - groundAt(G, pos.x, pos.z) - 5);
     rig.add(mesh(new THREE.CylinderGeometry(2.5, 5, h, 8), lam('#8a8378'), 0, -5 - h / 2, 0), mesh(new THREE.CylinderGeometry(7, 7, 1.5, 12), lam('#5a5a66'), 0, -5, 0));
   }
-  rig.add(head);
-  const beamGeo = new THREE.ConeGeometry(L * Math.tan(0.16), L, 24, 1, true);
-  beamGeo.translate(0, -L / 2, 0); // apex at the lamp, pointing down local -Y
-  const beamMat = glowMat('#fff3a0', 0.16);
-  beamMat.side = THREE.DoubleSide;
-  const beam = new THREE.Mesh(beamGeo, beamMat);
-  rig.add(beam);
-  G.scene.add(rig);
+  const beamGeo = new THREE.ConeGeometry(BEAM_L * Math.tan(BEAM_HALF), BEAM_L, 24, 1, true);
+  beamGeo.translate(0, -BEAM_L / 2, 0); // apex at the lamp
+  const mat = glowMat('#fff3a0', 0.16);
+  mat.side = THREE.DoubleSide;
+  const beam = new THREE.Mesh(beamGeo, mat);
+  rig.add(head, beam);
   const axis = new THREE.Vector3();
-  let half = 0.16, sweep = 0.7, spotted = 0, catches = 0, grace = 0, phase = Math.random() * 6;
-  const cosHalf = () => Math.cos(half);
+  rig.userData = {
+    axis, mat,
+    // Point the beam at (yaw, pitch below the horizon).
+    aim(yaw, pitch) {
+      axis.set(Math.cos(pitch) * Math.sin(yaw), -Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw));
+      beam.quaternion.setFromUnitVectors(DOWN, axis);
+      head.lookAt(_a.copy(rig.position).add(axis));
+    },
+    // Is p inside a beam of half-angle `half`?
+    sees(p, half) { _b.subVectors(p, rig.position); const d = _b.length(); return d < BEAM_L && _b.dot(axis) > d * Math.cos(half); },
+    widen(half) { const k = Math.tan(half) / Math.tan(BEAM_HALF); beam.scale.set(k, 1, k); },
+  };
+  G.scene.add(rig);
+  return rig;
+}
+
+export function mkSearchlight(G) {
+  const R = 18, CATCH = 0.6, MAX_CATCHES = 2, GRACE = 1.5, DECAY = 0.1;
+  const hoop = makeRing(R, '#7aff6a');
+  hoop.position.copy(pointAhead(G, 480, 600, 0.5, 40, 90));
+  faceFlat(hoop, G.player.pos);
+  G.scene.add(hoop);
+  // Two lamps, one each side of the hoop and a bit higher, sweeping opposite ways. Their phases are set so the
+  // beams cross the hoop in turn, half a turn apart: that gap is the way in.
+  _c.subVectors(hoop.position, G.player.pos).setY(0).normalize().applyAxisAngle(Y, Math.PI / 2);
+  const lamps = [1, -1].map((s) => {
+    const v = hoop.position.clone().addScaledVector(_c, s * 70);
+    v.y = underRoof(G, v.x, v.z, Math.max(hoop.position.y + 45, clearance(G, v.x, v.z, 10) + 20), 12);
+    return makeLamp(G, v);
+  });
+  const toHoop = Math.atan2(hoop.position.x - lamps[0].position.x, hoop.position.z - lamps[0].position.z);
+  const phase = [Math.random() * 6, 0];
+  phase[1] = 2 * toHoop - phase[0];
+  let half = BEAM_HALF, sweep = 1.1, turn = 0, spotted = 0, catches = 0, grace = 0;
   return objective({
-    type: 'searchlight', reward: 220, noun: 'the hoop',
-    title: pick(['Sneak Past The Searchlight', 'Mission: Improbable', 'Stealth Mode (Propeller Edition)']),
-    desc: `Fly through the green hoop. A searchlight sweeps around it: stay out of the beam. Spotted ${MAX_CATCHES} times and the mission is off.`,
+    type: 'searchlight', reward: 220, noun: 'the hoop', lamps, // lamps: for the smoke test
+    title: pick(['Sneak Past The Searchlights', 'Mission: Improbable', 'Stealth Mode (Propeller Edition)']),
+    desc: `Fly through the green hoop. Two searchlights sweep around it: stay out of the beams. Under a second in the light and you're spotted. Spotted ${MAX_CATCHES} times and the mission is off.`,
     caps: new Set(['grow', 'easier']),
-    signText: ['SHHH!', 'HOOP →', '(AVOID THE LIGHT)'],
-    hints: ['Watch the beam sweep round, then dash in right behind it.', 'Crossing the beam quickly is fine. Flying along it is not.', 'Low and fast. Very ninja.'],
+    signText: ['SHHH!', 'HOOP →', '(AVOID THE LIGHTS)'],
+    hints: [
+      'The beams cross the hoop in turn. Wait out of reach, then dash in right behind one.',
+      'Hiding low won\'t work: the guards tilt the beams to your height. Timing will.',
+      'Crossing a beam fast is fine. Lingering is not: being spotted wears off only slowly.',
+      'Boost (Shift) for the last stretch. Very ninja.',
+    ],
     target() { return hoop.position; },
     onUpdate(dt, G) {
       const p = G.player;
       spinRing(hoop, dt, this.t);
       anim(hoop, dt);
       if (p.pos.distanceTo(hoop.position) > 150) faceFlat(hoop, p.pos, dt);
-      // The beam circles the lamp, nodding up and down so it sweeps the whole approach.
-      const yaw = this.t * sweep + phase, pitch = 0.36 + Math.sin(this.t * 0.6) * 0.14;
-      axis.set(Math.cos(pitch) * Math.sin(yaw), -Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw));
-      beam.quaternion.setFromUnitVectors(DOWN, axis);
-      head.lookAt(_a.copy(rig.position).add(axis));
-      _b.subVectors(p.pos, rig.position);
-      const d = _b.length();
-      const lit = !p.dead && grace <= 0 && d < L && _b.dot(axis) > d * cosHalf();
+      // The beams circle their lamps (opposite ways). The guards tilt them to your height as you come in, so
+      // dodging is about timing the sweep, not hiding under it.
+      turn += dt * sweep; // accumulated, so a slower sweep (easier) doesn't make the beams jump
+      lamps.forEach((l, i) => {
+        const u = l.userData;
+        _b.subVectors(p.pos, l.position);
+        const want = THREE.MathUtils.clamp(Math.atan2(-_b.y, Math.hypot(_b.x, _b.z)), 0.05, 1.1);
+        u.pitch ??= want;
+        u.pitch += (want - u.pitch) * (1 - Math.exp(-dt * 2));
+        u.aim((i ? -turn : turn) + phase[i], u.pitch);
+      });
+      const lit = !p.dead && grace <= 0 && lamps.some((l) => l.userData.sees(p.pos, half));
       grace = Math.max(0, grace - dt);
-      spotted = lit ? spotted + dt : Math.max(0, spotted - dt * 0.25);
+      spotted = lit ? spotted + dt : Math.max(0, spotted - dt * DECAY);
       const k = Math.min(1, spotted / CATCH);
-      beamMat.color.setRGB(1, 0.95 - k * 0.75, 0.62 - k * 0.5);
-      beamMat.opacity = grace > 0 ? 0.06 : 0.16 + k * 0.12;
-      if (lit && Math.random() < dt * 6) G.audio.tone(900 + k * 600, 0.06, { type: 'square', vol: 0.03 });
+      for (const l of lamps) {
+        const m = l.userData.mat;
+        m.color.setRGB(1, 0.95 - k * 0.75, 0.62 - k * 0.5);
+        m.opacity = grace > 0 ? 0.06 : 0.16 + k * 0.12;
+      }
+      if (lit && Math.random() < dt * 8) G.audio.tone(900 + k * 600, 0.06, { type: 'square', vol: 0.03 });
       if (spotted >= CATCH) {
         spotted = 0;
         catches++;
-        grace = 2.5;
+        grace = GRACE;
         G.audio.zap();
         G.ui.tint('#ff3a3a', 1.5);
-        if (catches >= MAX_CATCHES) { G.ui.notify('SPOTTED. Mission over. The guard is writing a very long report.', 'bad', 3); return 'fail'; }
-        G.ui.notify(`SPOTTED! (${catches}/${MAX_CATCHES}) The guard rubs his eyes. Go, go, go!`, 'bad', 3);
+        if (catches >= MAX_CATCHES) { G.ui.notify('SPOTTED. Mission over. The guards are writing a very long report. Together.', 'bad', 3); return 'fail'; }
+        G.ui.notify(`SPOTTED! (${catches}/${MAX_CATCHES}) The guards rub their eyes. You have a second and a half. GO!`, 'bad', 3);
       }
       this.progress = `👁 Spotted ${Math.round(k * 100)}% · caught ${catches}/${MAX_CATCHES}`;
       const r = crossRing(hoop, p.prevPos, p.pos, R);
@@ -489,10 +521,10 @@ export function mkSearchlight(G) {
     easier() {
       sweep *= 0.65;
       half = Math.max(0.08, half * 0.8);
-      beam.scale.set(Math.tan(half) / Math.tan(0.16), 1, Math.tan(half) / Math.tan(0.16));
-      return 'The guard had a big lunch. The light sweeps slower and the beam got narrower.';
+      for (const l of lamps) l.userData.widen(half);
+      return 'The guards had a big lunch. The lights sweep slower and the beams got narrower.';
     },
-    dispose(G) { drop(G, hoop, rig); },
+    dispose(G) { drop(G, hoop, ...lamps); },
   });
 }
 
@@ -575,86 +607,150 @@ export function mkBomb(G) {
   });
 }
 
-// ---------- balloon herding ----------
+// ---------- X marks the spot ----------
 
-export function mkHerd(G) {
-  const RP = 42, n = 3, PUSH_R = 50;
-  const pen = new THREE.Group();
-  pen.position.copy(pointAhead(G, 420, 520, 0.5, 50, 80));
-  const hoop = makeRing(RP, '#7aff6a');
-  hoop.rotation.x = Math.PI / 2; // lying flat
-  const wall = mesh(new THREE.CylinderGeometry(RP, RP, 40, 32, 1, true), glowMat('#7aff6a', 0.1));
-  wall.material.side = THREE.DoubleSide;
-  const sign = makeTextSprite(['BALLOON', 'PEN'], 26, { bg: null, fg: '#7aff6a' });
-  sign.position.y = 34;
-  pen.add(hoop, wall, sign);
-  G.scene.add(pen);
-  // Balloons start roughly between you and the pen, so the first push is the right way.
-  _a.subVectors(G.player.pos, pen.position).setY(0).normalize();
-  const colors = ['#ff4d6d', '#ffd23a', '#4dd6ff'];
-  const balloons = colors.map((c, k) => {
-    const b = makeBalloon(c);
-    _b.copy(_a).applyAxisAngle(Y, (k - 1) * 0.8 + rand(-0.2, 0.2));
-    b.position.copy(pen.position).addScaledVector(_b, rand(95, 130));
-    b.position.y += rand(-10, 15);
-    lift(G, b.position, 20, 15);
-    b.userData = { vel: new THREE.Vector3(), penned: false, phase: Math.random() * 10, slot: new THREE.Vector3(Math.cos(k * 2.1) * 14, 0, Math.sin(k * 2.1) * 14) };
-    G.scene.add(b);
-    return b;
-  });
-  let push = 60, pull = 1.6, scale = 1, inPen = 0;
-  const isPenned = (b) => b.userData.penned;
+const X_ARM = 10, X_SEG = 2, DIG_R = 10; // X arm half-length and segment length (m); dug depth counts this far out
+// Where a dig spot is checked: the middle and a ring a bit wider than the X, so none of it hangs over the water.
+const DIG_RING = [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => [Math.cos(k * Math.PI / 4) * 18, Math.sin(k * Math.PI / 4) * 18])];
+
+// A good patch of ground to dig, dMin..dMax ahead: dry, no tunnel under it, no building on it, room under a cave
+// roof, not too steep. With none ahead (open sea, say), anywhere around, out to 3 × `wide` m (after a flood the dry
+// land can be far off); failing that, the least bad of the tries (the beacon shows where it is either way).
+function digSpot(G, dMin, dMax, spread, wide = 1100) {
+  let best = null, worst = Infinity;
+  const tryAt = (a, d) => {
+    const f = flatForward(G).applyAxisAngle(Y, a), p = G.player.pos;
+    const x = p.x + f.x * d, z = p.z + f.z * d, h0 = heightAt(x, z);
+    let bad = G.terrain.ceilingHeight(x, z) - h0 < 50 ? 20 : 0;
+    for (const [dx, dz] of DIG_RING) {
+      const h = heightAt(x + dx, z + dz);
+      if (h < waterLine() + 2) bad += 20;                     // treasure is never buried at sea (that's a shipwreck)
+      if (h - groundHeight(x + dx, z + dz) > 0.5) bad += 20;  // a rooftop: bullets would bounce off the building
+      if (G.terrain.overhang(x + dx, z + dz)) bad += 20;      // on a mountain with a tunnel through it
+      bad += Math.abs(h - h0) / 4;
+    }
+    if (bad < worst) { worst = bad; best = new THREE.Vector3(x, h0, z); }
+  };
+  for (let k = 0; k < 40 && worst > 2; k++) tryAt(rand(-spread, spread), rand(dMin, dMax));
+  for (let k = 0; k < 200 && worst >= 20 && wide > dMax; k++) tryAt(rand(-Math.PI, Math.PI), rand(Math.min(dMin, 300), wide * (1 + k / 100)));
+  return best;
+}
+
+// A low-poly treasure chest: lid on a hinge (userData.lid), a pile of coins and a gold glow.
+function makeChest() {
+  const g = new THREE.Group();
+  const wood = lam('#8a5a2b'), gold = lam('#ffcc33', { emissive: '#8a5a00', emissiveIntensity: 0.6 });
+  g.add(mesh(new THREE.BoxGeometry(6, 3.6, 4), wood, 0, 1.8, 0), mesh(new THREE.BoxGeometry(5.4, 0.6, 3.4), gold, 0, 3.7, 0));
+  for (const x of [-2.2, 2.2]) g.add(mesh(new THREE.BoxGeometry(0.5, 3.7, 4.1), gold, x, 1.8, 0));
+  const lid = new THREE.Group();
+  lid.position.set(0, 3.6, -2); // hinged at the back
+  lid.add(mesh(new THREE.BoxGeometry(6.1, 1.6, 4.1), wood, 0, 0.8, 2), mesh(new THREE.BoxGeometry(1, 1, 0.4), gold, 0, 0.4, 4.15));
+  for (const x of [-2.2, 2.2]) lid.add(mesh(new THREE.BoxGeometry(0.5, 1.7, 4.2), gold, x, 0.8, 2));
+  g.add(lid, mesh(new THREE.SphereGeometry(9, 12, 8), glowMat('#ffd23a', 0.3), 0, 3, 0));
+  g.userData.lid = lid;
+  g.scale.setScalar(1.4);
+  return g;
+}
+
+export function mkTreasure(G) {
+  const spot = digSpot(G, 400, 550, 0.5);
+  // The X: short flat segments, each kept on the ground under it, so it sinks into the hole as you dig.
+  const cross = new THREE.Group();
+  const segGeo = new THREE.BoxGeometry(X_SEG + 0.2, 0.3, 3.2), xMat = new THREE.MeshBasicMaterial({ color: '#ff3a2a' });
+  const segs = [];
+  for (const a of [Math.PI / 4, -Math.PI / 4]) {
+    for (let s = -X_ARM + X_SEG / 2; s < X_ARM; s += X_SEG) {
+      const m = new THREE.Mesh(segGeo, xMat);
+      m.rotation.y = a;
+      m.userData.off = [Math.cos(a) * s, -Math.sin(a) * s];
+      cross.add(m);
+      segs.push(m);
+    }
+  }
+  const halo = mesh(new THREE.CylinderGeometry(X_ARM * 1.15, X_ARM * 1.15, 0.4, 24), glowMat('#ff8a3a', 0.25));
+  const beamH = Math.max(20, Math.min(160, G.terrain.ceilingHeight(spot.x, spot.z) - spot.y - 8)); // a cave roof caps the beam
+  const beam = mesh(new THREE.CylinderGeometry(5, 8, beamH, 12, 1, true), glowMat('#ffb04a', 0.35), 0, beamH / 2, 0);
+  beam.material.side = THREE.DoubleSide;
+  const sign = makeTextSprite(['DIG', 'HERE ↓'], 14, { bg: '#fff6d8', fg: '#d8433a' });
+  sign.position.y = Math.min(beamH, 40);
+  const marker = new THREE.Group(); // halo, beam and sign stand on the X's centre
+  marker.add(halo, beam, sign);
+  G.scene.add(cross, marker);
+  const chest = makeChest();
+  chest.visible = false;
+  G.scene.add(chest);
+  let need = 10, scale = 1, base = 0, dug = 0, shown = 0, rise = -1, hinted = false;
+  // Depth dug at the X: the deepest crater spot within DIG_R (scaled) of its centre. Lenient on purpose: aiming at the
+  // ground from a moving plane is hard enough.
+  const R6 = [0, 1, 2, 3, 4, 5].map((k) => [Math.cos(k * Math.PI / 3), Math.sin(k * Math.PI / 3)]);
+  const depthNow = () => {
+    let d = craterDepthAt(spot.x, spot.z);
+    for (const r of [DIG_R * 0.5 * scale, DIG_R * scale]) for (const [cx, cz] of R6) d = Math.max(d, craterDepthAt(spot.x + cx * r, spot.z + cz * r));
+    return d;
+  };
+  const place = () => {
+    base = depthNow(); // an old hole here doesn't count as digging
+    cross.position.set(spot.x, 0, spot.z);
+    marker.position.set(spot.x, G.terrain.surfaceHeight(spot.x, spot.z), spot.z);
+  };
+  place();
+  const tgt = new THREE.Vector3();
   return objective({
-    type: 'herd', reward: 210, noun: 'the balloons',
-    title: pick(['Balloon Herding', 'Sheepdog Of The Skies', 'Round Up The Floaties']),
-    desc: 'Three balloons wandered off. Push them into the green pen. Your plane shoves the air around it: fly past (or through) a balloon to send it where you are going.',
-    caps: new Set(['grow', 'easier']),
-    signText: ['BALLOONS', 'NEED HERDING →'],
-    hints: ['Fly THROUGH a balloon toward the pen: it gets shoved the way you\'re flying.', 'Gentle passes work. Balloons spook easily.', 'The pen pulls in balloons that get close. It wants them too.'],
-    target() { const b = nearestOf(G, balloons, isPenned); return b ? b.position : pen.position; },
+    type: 'treasure', reward: 220, noun: 'the X',
+    title: pick(['X Marks The Spot', 'Buried Treasure (Some Assembly Required)', 'Dig It!', 'Pirate Pension Plan']),
+    desc: `A big X on the ground ahead marks buried treasure. You have no shovel. You have guns. Shoot the X until the hole is ${need} m deep. Pirates hate this one simple trick.`,
+    caps: new Set(['grow', 'teleport', 'easier']),
+    signText: ['TREASURE', 'X MARKS IT →', '(BRING GUNS)'],
+    hints: ['Shoot the X (Space / click). Treasure doesn\'t dig itself.', 'Dive at the X from high up and keep firing, then pull up before you join the treasure.', 'Every bullet that lands near the middle digs deeper. Make another pass!'],
+    target() { return tgt.set(spot.x, underRoof(G, spot.x, spot.z, marker.position.y + 12, 10), spot.z); },
     onUpdate(dt, G) {
-      const p = G.player, c = pen.position, R = RP * scale;
-      anim(pen, dt);
-      hoop.userData.studs.rotation.z += dt * 0.5;
-      for (const b of balloons) {
-        const u = b.userData, ph = this.t + u.phase;
-        b.rotation.z = Math.sin(ph) * 0.15;
-        if (u.penned) { _c.copy(c).add(u.slot); _c.y += Math.sin(ph * 1.5) * 2; b.position.lerp(_c, 1 - Math.exp(-dt * 1.5)); continue; }
-        _a.subVectors(b.position, p.pos);
-        const d = _a.length();
-        if (!p.dead && d < PUSH_R && d > 0.01) {
-          // The air push: half "away from the plane", half "along its wake". Fly through one and it goes your way.
-          const k = 1 - d / PUSH_R;
-          _a.multiplyScalar(0.5 / d).addScaledVector(p.forward, 0.5);
-          _a.y *= 0.3;
-          u.vel.addScaledVector(_a, push * k * k * dt);
-        }
-        _b.subVectors(c, b.position);
-        const h = Math.hypot(_b.x, _b.z);
-        if (h < R * 1.7) u.vel.addScaledVector(_b.setY(0).normalize(), pull * dt); // the pen's gentle suction
-        else if (h > 450) u.vel.addScaledVector(_b.setY(0).normalize(), 3 * dt);  // too far: drift home
-        u.vel.y += (c.y - b.position.y) * 0.25 * dt;
-        u.vel.x += Math.sin(ph * 0.3) * 0.4 * dt;
-        u.vel.multiplyScalar(Math.exp(-dt * 0.7));
-        b.position.addScaledVector(u.vel, dt);
-        const floor = clearance(G, b.position.x, b.position.z, 8) + 14;
-        if (b.position.y < floor) { b.position.y = floor; u.vel.y = Math.max(0, u.vel.y); }
-        b.position.y = underRoof(G, b.position.x, b.position.z, b.position.y, 15);
-        if (h < R * 0.9 && Math.abs(b.position.y - c.y) < 22) {
-          u.penned = true;
-          inPen++;
-          this.progressed = true;
-          G.fx.sparkle(b.position, '#7aff6a');
-          G.audio.ding(1 + inPen * 0.15);
-          if (inPen < n) G.ui.notify(pick(['One in the pen! It seems happy. Balloons always seem happy.', 'Herded! Good dog. Er, plane.']), 'good', 2.5);
-        }
+      // Everything rides the ground under it (the hole deepens; persuasion can grow or move the X).
+      for (const m of segs) {
+        const [ox, oz] = m.userData.off;
+        m.position.set(ox * scale, G.terrain.surfaceHeight(spot.x + ox * scale, spot.z + oz * scale) + 0.6, oz * scale);
+        m.scale.set(scale, 1, scale);
       }
-      this.progress = `🎈 ${inPen} / ${n} in the pen`;
-      return inPen >= n ? 'done' : null;
+      marker.position.y = G.terrain.surfaceHeight(spot.x, spot.z);
+      halo.scale.set(scale, 1, scale);
+      halo.material.opacity = 0.18 + Math.sin(this.t * 4) * 0.1;
+      xMat.color.setHSL(0.02, 1, 0.5 + Math.sin(this.t * 5) * 0.12);
+      if (rise >= 0) {
+        // The chest pops out of the hole, bounces, and flips its lid.
+        rise += dt;
+        const k = Math.min(1, rise / 1.2);
+        const from = marker.position.y - 6, to = Math.max(spot.y, marker.position.y) + 1; // hole bottom → ground level
+        chest.position.set(spot.x, from + (to - from) * (1 - (1 - k) ** 3) + Math.sin(rise * 9) * Math.max(0, 1.6 - rise), spot.z);
+        chest.rotation.y += dt * 1.2;
+        chest.userData.lid.rotation.x = -Math.min(1.9, Math.max(0, rise - 1) * 3);
+        if (Math.random() < dt * 25) G.fx.emit(_a.copy(chest.position).setY(chest.position.y + 6), 3, { colors: ['#ffd23a', '#ffe680', '#ffffff'], speed: 14, life: 1, size: 3, gravity: -25, up: 22 });
+        return rise > 2.6 ? 'done' : null;
+      }
+      dug = Math.max(dug, depthNow() - base);
+      if (dug > shown + 0.3) { shown = dug; this.progressed = true; }
+      this.progress = `⛏ Dug ${Math.min(dug, need).toFixed(1)} / ${need} m`;
+      if (!hinted && dug > need / 2) { hinted = true; G.ui.notify(pick(['Clonk! You hit something wooden. Keep going!', 'Halfway down. A worm is filing a complaint.', 'Something glints down there. Dig, dig, dig!']), 'good', 2.5); }
+      if (dug < need) return null;
+      rise = 0;
+      chest.visible = true;
+      marker.visible = false;
+      G.fx.confetti(_a.set(spot.x, spot.y + 4, spot.z));
+      G.fx.sparkle(_a, '#ffd23a');
+      G.audio.success();
+      [0, 0.12, 0.24, 0.36].forEach((d, i) => G.audio.tone(1568 * (1 + i * 0.12), 0.18, { type: 'triangle', vol: 0.1, delay: 0.5 + d })); // coins
+      G.ui.notify(pick(['TREASURE! It\'s full of gold. And one sock. Pirates, honestly.', 'You found the treasure! Finders keepers. That\'s the law.', 'Arrr! Gold! The worms are furious.']), 'good', 3);
+      return null;
     },
-    grow(f) { scale = Math.min(scale * f, 2.5); pen.userData.tscale = scale; },
-    easier() { push *= 1.4; pull *= 2; return 'Balloons are now 40% more pushable, and the pen sucks harder. In a nice way.'; },
-    dispose(G) { drop(G, pen, ...balloons); },
+    grow(f) { scale = Math.min(scale * f, 2.5); },
+    teleport(G) {
+      if (rise >= 0) return;
+      spot.copy(digSpot(G, 220, 300, 0.3, 600));
+      place();
+    },
+    easier() {
+      need = Math.max(3, Math.round(need * 0.65 * 2) / 2);
+      return `We loosened the soil. The treasure is only ${need} m down now. It was trying to come up anyway.`;
+    },
+    dispose(G) { drop(G, cross, marker, chest); },
   });
 }
 

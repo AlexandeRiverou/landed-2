@@ -644,7 +644,7 @@ const TYPES = [
   ['buzz', 1.4, mkBuzz], ['tour', 1, C.mkTour], ['gate', 1.3, mkGate], ['bullseye', 1.1, C.mkBullseye],
   ['hunt', 1.1, mkHunt], ['pest', 1, C.mkPest], ['survive', 0.8, C.mkSurvive],
   ['delivery', 1.2, Q.mkDelivery], ['roll', 1.1, Q.mkRoll], ['race', 1.2, Q.mkRace], ['constellation', 1.1, Q.mkConstellation],
-  ['searchlight', 1.1, Q.mkSearchlight], ['bomb', 1.2, Q.mkBomb], ['herd', 1, Q.mkHerd], ['melody', 1.2, Q.mkMelody],
+  ['searchlight', 1.1, Q.mkSearchlight], ['bomb', 1.2, Q.mkBomb], ['treasure', 1.1, Q.mkTreasure], ['melody', 1.2, Q.mkMelody],
   ['meteors', 1.1, Q.mkMeteors], ['photo', 1.2, Q.mkPhoto], ['landing', 1.2, mkLanding],
 ];
 export const OBJECTIVE_TYPES = TYPES.map((t) => t[0]);

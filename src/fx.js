@@ -65,7 +65,7 @@ export class FX {
     for (let k = 0; k < n; k++) {
       const i = this.cursor;
       this.cursor = (this.cursor + 1) % this.N;
-      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      const u = o.ring ? Math.random() * 0.2 - 0.1 : Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
       const sp = speed * (o.uniform ? 1 : rand(0.3, 1));
       this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
       this.vel[i * 3] = r * Math.cos(th) * sp + (o.vx || 0);
@@ -93,6 +93,11 @@ export class FX {
   confetti(p) { this.emit(p, 160, { colors: FIREWORK_COLORS, speed: 55, life: 3, size: 4, gravity: -12, drag: 2, up: 30 }); }
   sparkle(p, color = '#fff3a0') { this.emit(p, 50, { colors: [color, '#ffffff'], speed: 30, life: 0.9, size: 4 }); }
   splash(p) { this.emit(p, 120, { colors: ['#ffffff', '#b8e0ff', '#7ac8ff'], speed: 35, life: 1.6, size: 6, gravity: -40, up: 45 }); }
+  // A bullet hitting the ground: a fountain of dirt and a ring of dust rolling out along the ground.
+  dirt(p) {
+    this.emit(p, 36, { colors: ['#8a6a4a', '#b89a70', '#6a5a4a', '#4a3424'], speed: 30, life: 1.1, size: 8, gravity: -45, up: 32 });
+    this.emit(p, 24, { colors: ['#8a7458', '#6a5a44'], speed: 45, life: 0.9, size: 8, drag: 3, up: 3, ring: true });
+  }
   trail(p, color) { this.emit(p, 1, { color, speed: 2, life: 0.5, size: 2.5 }); }
 
   lightning(a, b) {

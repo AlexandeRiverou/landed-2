@@ -13,7 +13,7 @@ export const ZONE_EVERY = 3; // completed objectives per zone
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
 const SHAPE_LOCK = ['amp', 'shape', 'spikes', 'mesa', 'canyon'];
 const SPACE_LOCK = [...LOCK, 'sea', 'clouds', 'weather', 'amp', 'shape', 'islands', 'fog', 'canyon', 'mesa', 'spikes'];
-const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors', 'landing']); // meteors: stars fall to the ground
+const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors', 'landing', 'treasure']); // meteors: stars fall to the ground; treasure: dug out of it
 
 export const ZONES = [
   {
