@@ -109,6 +109,11 @@ try {
         if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
         G.objectives.cooldown = 1e9; // nothing new starts after it's done
         G.zones.sinceZone = 0;
+        // A win just before reshapes the world (celebrate → rebuildAll), but surfaceHeight reads the old chunks
+        // until each is rebuilt, a couple a frame. Play has a 4 s cooldown before the next objective; here wait for
+        // the rebuild, or a quest placed now sits on the old ground and the risen mountains swallow its targets.
+        for (let i = 0; i < 600 && G.terrain.stale; i++) step(1);
+        if (G.terrain.stale) throw new Error('terrain still rebuilding after 20 s');
         G.objectives.startType(type);
         return G.objectives.current;
       };
