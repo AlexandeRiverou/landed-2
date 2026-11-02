@@ -842,6 +842,7 @@ try {
     p.updateAxes();
     p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + above;
     G.input.lastTap = {};
+    G.input.clearKeyTaps();
     window.STUNT0 = { pos: p.pos.clone(), f: p.forward.clone(), r: p.right.clone() };
   }, above);
   const measure = () => page.evaluate(() => {
@@ -874,6 +875,10 @@ try {
   await setUp(200); await flick(0, -90); report.stunts.touchUp = await measure();
   await setUp(20); await keyTwice('ArrowDown'); report.stunts.lowSplitS = await measure();
   await setUp(200); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500); await page.keyboard.press('ArrowLeft'); report.stunts.slowTaps = await measure();
+  // Holding a key to steer (300 ms: past KEY_TAP_HOLD_MS, inside the old 350 ms window), then pressing it again, is not
+  // a double tap; nor is W, D, W.
+  await setUp(200); await page.keyboard.down('ArrowUp'); await page.waitForTimeout(300); await page.keyboard.up('ArrowUp'); await page.keyboard.press('ArrowUp'); report.stunts.heldThenTap = await measure();
+  await setUp(200); await page.keyboard.press('KeyW'); await page.keyboard.press('KeyD'); await page.keyboard.press('KeyW'); report.stunts.otherKeyBetween = await measure();
 
   // Developer menu: hold 1 + 0 for 3 s of real time. It pauses the game and swallows gameplay keys.
   const menu = () => page.evaluate(() => ({
@@ -1076,6 +1081,7 @@ try {
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],
     [(({ touchLeft: s, touchUp: u }) => s.name === 'Barrel roll' && s.side < -18 && u.name === 'Immelmann')(report.stunts), 'two touch flicks trigger stunts'],
     [!report.stunts.lowSplitS.name && !report.stunts.slowTaps.name, 'no Split-S near the ground, and slow taps are not a double tap'],
+    [!report.stunts.heldThenTap.name && !report.stunts.otherKeyBetween.name, 'a held key then a tap, or W D W, is not a double tap'],
     [!report.devmenu.shortHold.open && !report.devmenu.shortHold.paused, 'dev menu: a 1 s hold of 1 + 0 does nothing'],
     [!report.devmenu.earlyOpen && report.devmenu.opened.open && report.devmenu.opened.paused && !report.devmenu.opened.space, 'dev menu: holding 1 + 0 for 3 s (not 2) opens it, pauses, and swallows gameplay keys'],
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],

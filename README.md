@@ -74,7 +74,7 @@ Environments → `github-pages` allows deployments from `main` only.
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
 | Relax Mode | `R` or the ☁️ Relax Mode button at the top |
-| Stunts | double-tap `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll |
+| Stunts | quick double-tap (two short taps, not a hold) `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll. Holding a key to steer and pressing it again won't trigger a stunt |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts; on the ground the stick steers, and pushing it up takes off |
 
 ## What's in it

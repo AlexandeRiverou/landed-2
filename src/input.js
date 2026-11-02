@@ -1,9 +1,14 @@
 // Keyboard, mouse and touch → { pitch, roll, yaw, boost, shoot, gesture }.
 // A gesture is a double tap of a direction key, or two quick flicks of the touch stick the same way.
+// Keyboard: a tap is a press released within KEY_TAP_HOLD_MS; the gesture fires on the next press of the same
+// direction (W/↑ and S/↓ etc. count as one) if it starts within KEY_DOUBLE_TAP_MS of that release. Pressing any
+// other direction in between cancels it, so steering by holding and re-pressing a key never turns the plane around.
 const clamp1 = (v) => Math.max(-1, Math.min(1, v));
 const GAME_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const KEY_DIR = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
-const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_MS = 350;   // touch: two flicks the same way within this make a gesture
+const KEY_TAP_HOLD_MS = 200; // keyboard: a press held longer than this is steering, not a tap
+const KEY_DOUBLE_TAP_MS = 250; // keyboard: the second press must start within this of the first tap's release
 const FLICK_OUT = 55, FLICK_BACK = 22; // px: a flick pushes the stick past FLICK_OUT; it re-arms once back inside FLICK_BACK
 
 export class Input {
@@ -16,18 +21,23 @@ export class Input {
     this.stick = { id: null, sx: 0, sy: 0, dx: 0, dy: 0 };
     this.touchFire = false; this.touchBoost = false;
     this.gestures = [];
-    this.lastTap = {};
+    this.lastTap = {};   // touch: dir → time of the last flick
+    this.keyDownAt = {}; // keyboard: dir → when its key went down
+    this.keyTap = null;  // keyboard: { dir, t } of the last short tap, waiting for a second press
     this.flickArmed = true;
     this.lock = null; // a Set of codes: while set (developer menu open), only these keys are tracked, and no handlers run
 
     addEventListener('keydown', (e) => {
       if (this.lock) { if (this.lock.has(e.code)) this.keys.add(e.code); return; }
       if (GAME_KEYS.has(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) { this.handlers[e.code]?.(); if (KEY_DIR[e.code]) this.tap(KEY_DIR[e.code]); }
+      if (!this.keys.has(e.code)) { this.handlers[e.code]?.(); if (KEY_DIR[e.code]) this.keyDown(KEY_DIR[e.code]); }
       this.keys.add(e.code);
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.mouseFire = false; });
+    addEventListener('keyup', (e) => {
+      if (!this.lock && this.keys.has(e.code) && KEY_DIR[e.code]) this.keyUp(KEY_DIR[e.code]);
+      this.keys.delete(e.code);
+    });
+    addEventListener('blur', () => { this.keys.clear(); this.mouseFire = false; this.clearKeyTaps(); });
     canvas.addEventListener('mousedown', (e) => { if (e.button === 0) this.mouseFire = true; });
     addEventListener('mouseup', () => { this.mouseFire = false; });
 
@@ -59,7 +69,24 @@ export class Input {
 
   on(code, fn) { this.handlers[code] = fn; }
 
-  // Two taps of the same direction within DOUBLE_TAP_MS make a gesture.
+  // Keyboard: a second press soon after a short tap of the same direction is a gesture; anything else resets.
+  keyDown(dir) {
+    const now = performance.now(), t = this.keyTap;
+    this.keyTap = null;
+    // The press that fires a gesture can't also start the next one (a triple tap is one stunt).
+    if (t && t.dir === dir && now - t.t < KEY_DOUBLE_TAP_MS) { this.gestures.push(dir); delete this.keyDownAt[dir]; }
+    else this.keyDownAt[dir] = now;
+  }
+
+  keyUp(dir) {
+    const now = performance.now(), down = this.keyDownAt[dir];
+    delete this.keyDownAt[dir];
+    if (down !== undefined && now - down < KEY_TAP_HOLD_MS) this.keyTap = { dir, t: now };
+  }
+
+  clearKeyTaps() { this.keyDownAt = {}; this.keyTap = null; }
+
+  // Touch: two flicks of the same direction within DOUBLE_TAP_MS make a gesture.
   tap(dir) {
     const now = performance.now();
     if (now - (this.lastTap[dir] ?? -1e9) < DOUBLE_TAP_MS) { this.gestures.push(dir); this.lastTap[dir] = -1e9; }
