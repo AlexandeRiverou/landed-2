@@ -83,6 +83,7 @@ try {
     // Stay in the first zone: space zones don't offer the ground objectives.
     const { OBJECTIVE_TYPES: types, BOSS_GAP } = window.OBJ_FOR_TEST;
     out.objectiveTypes = types.length;
+    out.noHerd = !types.includes('herd') && types.includes('treasure');
     for (const t of types) {
       step(60);
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
@@ -108,6 +109,11 @@ try {
         if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
         G.objectives.cooldown = 1e9; // nothing new starts after it's done
         G.zones.sinceZone = 0;
+        // A win just before reshapes the world (celebrate → rebuildAll), but surfaceHeight reads the old chunks
+        // until each is rebuilt, a couple a frame. Play has a 4 s cooldown before the next objective; here wait for
+        // the rebuild, or a quest placed now sits on the old ground and the risen mountains swallow its targets.
+        for (let i = 0; i < 600 && G.terrain.stale; i++) step(1);
+        if (G.terrain.stale) throw new Error('terrain still rebuilding after 20 s');
         G.objectives.startType(type);
         return G.objectives.current;
       };
@@ -191,6 +197,59 @@ try {
         step(1);
       }
       out.quests.photo = G.objectives.current !== photo && G.objectives.completed === done0 + 1;
+      // X marks the spot: real bullets fired from a hover above the X dig it out; the chest pops up and it's done.
+      // The X sits on dry land, and digging shows as progress on the way. (The world doesn't reshape itself after
+      // these wins, as in the landing check below: that's not what's checked, and it would only add noise.)
+      const cheer = G.mutations.celebrate;
+      G.mutations.celebrate = () => [];
+      {
+        const tr = fresh('treasure');
+        done0 = G.objectives.completed;
+        const t = tr.target().clone(), V = p.pos.constructor;
+        const X = new V(t.x, G.terrain.surfaceHeight(t.x, t.z), t.z);
+        const W = window.WORLD_FOR_TEST;
+        out.quests.treasureDry = W.heightAt(X.x, X.z) > W.waterLine(); // the world itself: a mutation may still be rebuilding the chunks
+        // Almost straight over it, and clear of the land under the plane (a hover inside a hill would shoot the hill).
+        const hover = X.clone().add(new V(0, 0, 25));
+        hover.y = Math.max(X.y + 120, G.terrain.surfaceHeight(hover.x, hover.z) + 60);
+        let dugSeen = 0;
+        for (let i = 0; i < 30 * 40 && G.objectives.current === tr; i++) {
+          p.pos.copy(hover); p.prevPos.copy(hover); p.speed = 44;
+          X.y = G.terrain.surfaceHeight(X.x, X.z);
+          p.nudgeToward(X, 1e9, 1);
+          p.updateAxes();
+          if (p.shootCd <= 0) p.fire();
+          step(1);
+          dugSeen = Math.max(dugSeen, +(tr.progress.match(/Dug ([\d.]+)/) || [0, 0])[1]);
+        }
+        out.quests.treasure = G.objectives.current !== tr && G.objectives.completed === done0 + 1 && dugSeen > 3;
+        out.quests.treasureLog = `${tr.progress} · max seen ${dugSeen} m`;
+      }
+      // Searchlights: two lamps; hanging about at the hoop gets you spotted twice (mission over), but waiting out of
+      // reach for a beam to pass the hoop, then boosting straight in, makes it.
+      {
+        const sl = fresh('searchlight');
+        const hoop = sl.target().clone(), V = p.pos.constructor;
+        const back = p.pos.clone().sub(hoop).setY(0).normalize();
+        const done1 = G.objectives.completed;
+        const loiter = hoop.clone().addScaledVector(back, 30);
+        for (let i = 0; i < 30 * 25 && G.objectives.current === sl; i++) { p.pos.copy(loiter); p.prevPos.copy(loiter); step(1); }
+        out.quests.searchlightCaught = sl.lamps.length === 2 && G.objectives.current !== sl && G.objectives.completed === done1;
+        const sl2 = fresh('searchlight');
+        const h2 = sl2.target().clone(), b2 = p.pos.clone().sub(h2).setY(0).normalize();
+        const park = () => { p.pos.copy(h2).addScaledVector(b2, 900); p.pos.y += 150; p.prevPos.copy(p.pos); p.boost = 1; };
+        let was = false;
+        for (let i = 0; i < 30 * 12; i++) { park(); step(1); const s = sl2.lamps.some((l) => l.userData.sees(h2, 0.24)); if (was && !s) break; was = s; }
+        const done2 = G.objectives.completed;
+        p.pos.copy(h2).addScaledVector(b2, 420); p.prevPos.copy(p.pos); p.maneuver = null;
+        p.nudgeToward(h2, 1e9, 1); p.updateAxes(); p.speed = 75;
+        G.input.keys.add('ShiftLeft');
+        for (let i = 0; i < 30 * 15 && G.objectives.current === sl2; i++) { p.nudgeToward(h2, 4, 1 / 30); p.updateAxes(); step(1); }
+        G.input.keys.delete('ShiftLeft');
+        out.quests.searchlightDash = G.objectives.current !== sl2 && G.objectives.completed === done2 + 1;
+        out.quests.searchlightLog = sl2.progress;
+      }
+      G.mutations.celebrate = cheer;
       // Landing, on the runway objective's strip (its ground is flattened, so this never depends on the terrain roll):
       // a gentle, level descent lands and rolling along the strip completes it; pulling up takes off; hopping straight
       // back down scores nothing; a steep dive onto the same flat ground still crashes, settling onto water too, and
@@ -505,6 +564,23 @@ try {
     G.enemies.fireOrb(orbSpot.clone().setY(orbGround0 + 3), new G.player.pos.constructor(0, -1, 0), 50, 10);
     step(30);
     out.orbCrater = deepestDrop(orbSpot, orbBefore);
+    // A burst of 20 bullets into one spot digs a big pit, and the mesh shows it right away (not a chunk per 0.15 s).
+    const pitSpot = spot.clone().addScaledVector(G.player.right, -60);
+    const pitBefore = snapshot(pitSpot);
+    for (let s = 0; s < 10; s++) {
+      G.player.shootCd = 0;
+      const n0 = G.player.bullets.length;
+      G.player.fire();
+      for (const b of G.player.bullets.slice(n0)) { b.pos.set(pitSpot.x, G.terrain.surfaceHeight(pitSpot.x, pitSpot.z) - 1, pitSpot.z); b.vel.set(0, 0, 0); }
+      step(2);
+    }
+    step(6); // 0.2 s after the last hit
+    out.pit = { mesh: deepestDrop(pitSpot, pitBefore), depth: +window.WORLD_FOR_TEST.craterDepthAt(pitSpot.x, pitSpot.z).toFixed(1) };
+    // A minute's worth of hits scattered over one 160 m crater cell (far away, so nothing rebuilds) keeps the cell's
+    // crater list short: hits merge into the craters already there.
+    const far = G.player.pos.clone().addScaledVector(G.player.forward, 6000);
+    for (let k = 0; k < 3000; k++) G.terrain.deform(far.x + Math.random() * 160, far.z + Math.random() * 160, 13, 4);
+    out.pit.cellMax = window.WORLD_FOR_TEST.craterCellMax();
 
     // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
     const zone0 = G.zones.index;
@@ -1036,6 +1112,10 @@ try {
     [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
     [report.quests.starClear, 'a falling star never starts inside the ground (born over a hill, it would fizzle uncatchably)'],
     [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
+    [report.quests.treasure && report.quests.treasureDry, 'X marks the spot: on dry land, and shooting the X digs out the treasure'],
+    [report.quests.searchlightCaught, 'searchlights: two lamps, and loitering by the hoop gets you spotted out of the mission'],
+    [report.quests.searchlightDash, 'searchlights: waiting for a beam to pass, then boosting straight in, makes the hoop'],
+    [report.noHerd, 'balloon herding is gone and X marks the spot took its place in the objective list'],
     [report.landing.landed && !report.landing.dead && report.landing.grade && report.landing.sink < 7 && report.landing.points > 0, 'landing: a gentle, level descent onto flat ground lands, graded, with a bonus'],
     [report.landing.done, 'landing objective: touch down on the runway and roll along it to complete it'],
     [report.takeoff.airborne && report.takeoff.lifted > 0 && report.takeoff.climb > 5, 'landing: pulling up on the ground takes off and climbs away'],
@@ -1057,6 +1137,7 @@ try {
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
+    [report.pit.depth >= 30 && report.pit.mesh >= 25 && report.pit.cellMax <= 100, 'a 20-bullet burst digs a 30 m+ pit that shows on the mesh within 0.2 s, and crater lists stay short'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
     [report.zones.length >= 28, 'every zone loads (28+)'],
     [(({ city: c }) => c && c.meshes > 10 && c.tallest >= 100 && c.buildings > 200 && c.roof - c.street >= 40 && c.sheer && c.deterministic)(report), 'Metropolis: a street grid of buildings (towers 100 m+), roofs are ground with sheer walls, same seed same city'],

@@ -13,7 +13,7 @@ export const ZONE_EVERY = 3; // completed objectives per zone
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
 const SHAPE_LOCK = ['amp', 'shape', 'spikes', 'mesa', 'canyon'];
 const SPACE_LOCK = [...LOCK, 'sea', 'clouds', 'weather', 'amp', 'shape', 'islands', 'fog', 'canyon', 'mesa', 'spikes'];
-const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors', 'landing']); // meteors: stars fall to the ground
+const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye', 'meteors', 'landing', 'treasure']); // meteors: stars fall to the ground; treasure: dug out of it
 
 export const ZONES = [
   {
@@ -71,7 +71,7 @@ export const ZONES = [
   {
     name: 'Sunken Reef', blurb: 'The sea won. You fly underwater now. The surface is the ceiling; the fish are unimpressed.',
     world: { palette: 'reef', underwater: 1, seaLevel: 250, amp: 0.35, roughness: 1.2, terrace: 0, mesa: 0.6, canyon: 0, spikes: 0.7, snowLine: 9999, floatingIslands: 0, propTheme: 'reef', propDensity: 1.3, tempBias: -0.1 },
-    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors', 'landing'], // shooting stars don't do underwater; nor do runways
+    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors', 'landing', 'treasure'], // shooting stars don't do underwater; nor do runways or dry dig spots
     lock: [...LOCK, ...SHAPE_LOCK, 'weather', 'clouds', 'islands', 'fog', 'sea', 'decor'],
   },
   {

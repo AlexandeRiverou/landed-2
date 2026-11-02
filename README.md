@@ -97,6 +97,12 @@ islands, and beaches, deserts, forests and snow caps. In Hollow Peaks, big tunne
 mountains. In Metropolis, the land is cut into a street grid of skyscrapers (`src/city.js` draws them). Chunks build
 nearest-first and stream in as you fly.
 
+**Shoot the ground, dig a hole** (`src/world.js`, `src/terrain.js`): every bullet that hits the ground blasts a crater
+13 m wide and 4 m deep, with a fountain of dirt and a thump. Keep firing at the same spot and the pit grows fast (about
+20 hits for a 38 m deep hole, up to 45 m deep and 45 m wide). Strafe across the ground and you plough a trench. Pits
+are scorched brown, trees and props in them get blown away, and a pit dug below sea level fills with water. In Crystal
+Caverns the roof stays where it is, however deep you dig.
+
 **Assets** (`src/models.js`): 80+ low-poly props built from primitives and drawn with one `InstancedMesh` per type per chunk.
 They include pines, round trees, birches, palms, dead trees, cacti, bushes, rocks, houses, windmills, lighthouses, castle
 towers, moai heads, pyramids, boats, buoys, floating islands, hot-air balloons, plus the themed ones: mushrooms,
@@ -211,12 +217,15 @@ other win.
     there first, you lose.
   - **Constellation:** 6 to 8 numbered stars make a heart, the Big Dipper, a lightning bolt or a snake. Fly through
     them in order and the guide lines light up. Out-of-order stars don't count.
-  - **Sneak Past The Searchlight:** fly through the green hoop while a beam sweeps around it (a lamp on a tower, or a
-    floating eye where there's no ground). About 1.5 s in the beam and you're spotted; the third time, you fail.
+  - **Sneak Past The Searchlights:** fly through the green hoop while two lamps, one each side of it, sweep their
+    beams opposite ways (on towers, or floating eyes where there's no ground). The beams cross the hoop in turn and
+    tilt toward your height, so flying low won't save you. 0.6 s in a beam and you're spotted; the second time, you
+    fail. Tip: wait out of reach, then boost in right behind a beam.
   - **Hot Potato:** carry a birthday cake with a 12 s fuse. Each ring adds 7 s (16 s max). Six rings and it pops into
     confetti. Let the fuse run out and your windscreen gets frosted.
-  - **Balloon Herding:** push 3 balloons into the green pen. Your plane shoves the air: fly through a balloon toward
-    the pen.
+  - **X Marks The Spot:** a glowing red X with an orange light beam sits on dry ground 400–550 m ahead. You have no
+    shovel. You have guns. Shoot the X until the hole is 10 m deep and a treasure chest pops out. Not offered in the
+    zones without ground or in the Sunken Reef.
   - **Sky Melody:** fly through numbered notes in order to play Twinkle Twinkle Little Star, Ode To Joy, Mary Had A
     Little Lamb or Frère Jacques. A wrong note starts the tune over. It never fails, it just judges you.
   - **Catch The Falling Stars:** catch 5 shooting stars before they hit the ground. Not offered in zones without

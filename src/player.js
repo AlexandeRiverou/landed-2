@@ -9,6 +9,7 @@ const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matr
 
 // Shooting: about 4 volleys a second; slower bullets live longer, so the reach stays ~680 m.
 const FIRE_INTERVAL = 0.26, BULLET_SPEED = 300, BULLET_LIFE = 2;
+const BULLET_CRATER = { r: 13, depth: 4 }; // per ground hit; repeat hits dig +depth/2 and widen +depth/4 (world.js addCrater)
 const PITCH_RATE = 1.1, ROLL_RATE = 2.0, YAW_RATE = 0.45, TURN = 0.95, MAX_BANK = 0.9, BANK_RESPONSE = 4;
 
 // Double-tap stunts. Each is a short script of steps: level the wings, then turn about a local axis
@@ -452,9 +453,10 @@ export class Player {
       b.mesh.position.copy(b.pos);
       if (b.life <= 0) { this.removeBullet(i); continue; }
       if (b.pos.y < this.G.terrain.surfaceHeight(b.pos.x, b.pos.z, b.pos.y)) {
-        // Bullets chew small holes in the ground.
-        this.G.terrain.deform(b.pos.x, b.pos.z, 8, 1.6);
-        this.G.fx.emit(b.pos, 6, { colors: ['#8a6a4a', '#b89a70', '#6a5a4a'], speed: 18, life: 0.7, size: 4, gravity: -30, up: 12 });
+        // Bullets blast real holes in the ground: a fresh hit digs a pit, more hits on it dig it out fast.
+        this.G.terrain.deform(b.pos.x, b.pos.z, BULLET_CRATER.r, BULLET_CRATER.depth);
+        this.G.fx.dirt(b.pos);
+        this.G.audio.thump();
         this.removeBullet(i);
       }
     }

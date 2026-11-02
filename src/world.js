@@ -178,6 +178,7 @@ function landHeight(x, z) {
 export const CAVE_MIN_GAP = 55;
 export function ceilingAt(x, z, floor = heightAt(x, z)) {
   if (!world.cave) return Infinity;
+  floor += craterDepthAt(x, z); // the roof follows the natural floor: blasting a pit doesn't bring it down
   let c = 185 + fbm(N.c, x * 0.0016 + 91, z * 0.0016 - 37, 3) * 70;
   c = Math.max(c, floor + 95);
   const s = N.f(x * 0.011 - 41, z * 0.011 + 90);
@@ -430,7 +431,14 @@ function moonCraters(x, z) {
 const CRATER_CELL = 160;
 const craters = new Map();   // cell key → craters overlapping that cell
 const cellKey = (cx, cz) => cx * 100003 + cz;
-export const MAX_CRATER_DEPTH = 18;
+export const MAX_CRATER_DEPTH = 45, MAX_CRATER_RADIUS = 45;
+// A crater is never deeper than this times its radius, so even a well-dug pit stays a bowl, not a shaft.
+const CRATER_STEEPNESS = 1.2;
+// Hits this close to a crater's centre (times its radius) dig that crater instead of starting a new one.
+const CRATER_MERGE = 0.7;
+// No cell holds more craters than this: once full, a new hit digs the nearest crater, so craterDepthAt() stays
+// cheap however long you strafe one spot.
+const CRATERS_PER_CELL = 32;
 
 export function craterDepthAt(x, z) {
   if (!craters.size) return 0;
@@ -446,30 +454,63 @@ export function craterDepthAt(x, z) {
   return depth;
 }
 
-// Adds (or deepens) a crater and returns the bounding box it touches, so the caller can rebuild.
-export function addCrater(x, z, r, depth) {
-  const near = craters.get(cellKey(Math.floor(x / CRATER_CELL), Math.floor(z / CRATER_CELL))) || [];
-  let c = near.find((k) => (k.x - x) ** 2 + (k.z - z) ** 2 < (k.r * 0.5) ** 2);
-  if (c) {
-    // Repeated hits dig the same hole deeper and a little wider instead of piling up tiny craters.
-    c.d = Math.min(MAX_CRATER_DEPTH, c.d + depth * 0.5);
-    c.r = Math.min(26, Math.max(c.r, r) + 0.4);
-  } else {
-    c = { x, z, r, d: Math.min(depth, MAX_CRATER_DEPTH) };
-  }
+// The cells a crater's bowl and rim reach into.
+function craterCells(c, fn) {
   const reach = c.r * 1.3;
   for (let cx = Math.floor((c.x - reach) / CRATER_CELL); cx <= Math.floor((c.x + reach) / CRATER_CELL); cx++) {
-    for (let cz = Math.floor((c.z - reach) / CRATER_CELL); cz <= Math.floor((c.z + reach) / CRATER_CELL); cz++) {
-      const k = cellKey(cx, cz);
-      const list = craters.get(k) || [];
-      if (!list.includes(c)) list.push(c);
-      craters.set(k, list);
+    for (let cz = Math.floor((c.z - reach) / CRATER_CELL); cz <= Math.floor((c.z + reach) / CRATER_CELL); cz++) fn(cellKey(cx, cz));
+  }
+}
+const craterBox = (c) => { const reach = c.r * 1.3; return { minX: c.x - reach, maxX: c.x + reach, minZ: c.z - reach, maxZ: c.z + reach }; };
+
+// Adds (or deepens) a crater and returns the bounding box it touches, so the caller can rebuild.
+export function addCrater(x, z, r, depth) {
+  // The craters in every cell a new one would reach: if any of those cells is full, the hit digs the nearest.
+  const lists = [];
+  craterCells({ x, z, r }, (k) => { const l = craters.get(k); if (l) lists.push(l); });
+  const full = lists.some((l) => l.length >= CRATERS_PER_CELL);
+  let c = null, best = Infinity;
+  for (const l of lists) {
+    for (const k of l) {
+      const d2 = (k.x - x) ** 2 + (k.z - z) ** 2;
+      if (d2 < best && (full || d2 < (k.r * CRATER_MERGE) ** 2)) { best = d2; c = k; }
     }
   }
-  return { minX: c.x - reach, maxX: c.x + reach, minZ: c.z - reach, maxZ: c.z + reach };
+  let box = null;
+  if (c) {
+    // Repeated hits dig the same hole deeper and wider, and drag it a little toward where they land, so a
+    // strafing run ploughs a trench instead of piling up tiny craters.
+    box = craterBox(c);
+    const was = [];
+    craterCells(c, (k) => was.push(k));
+    if (!full) { c.x += (x - c.x) * 0.25; c.z += (z - c.z) * 0.25; } // (in a full cell craters stay put, so none drift into the next)
+    c.r = Math.min(MAX_CRATER_RADIUS, Math.max(c.r, r) + depth * 0.25);
+    c.d = Math.min(MAX_CRATER_DEPTH, c.r * CRATER_STEEPNESS, c.d + depth * 0.5);
+    // A moved crater leaves the cells it no longer reaches.
+    const now = new Set();
+    craterCells(c, (k) => now.add(k));
+    for (const k of was) {
+      const list = craters.get(k);
+      const i = list && !now.has(k) ? list.indexOf(c) : -1;
+      if (i < 0) continue;
+      list.splice(i, 1);
+      if (!list.length) craters.delete(k);
+    }
+  } else {
+    c = { x, z, r: Math.min(r, MAX_CRATER_RADIUS), d: Math.min(depth, MAX_CRATER_DEPTH, r * CRATER_STEEPNESS) };
+  }
+  craterCells(c, (k) => {
+    const list = craters.get(k) || [];
+    if (!list.includes(c)) list.push(c);
+    craters.set(k, list);
+  });
+  const b = craterBox(c);
+  return box ? { minX: Math.min(box.minX, b.minX), maxX: Math.max(box.maxX, b.maxX), minZ: Math.min(box.minZ, b.minZ), maxZ: Math.max(box.maxZ, b.maxZ) } : b;
 }
 
 export function clearCraters() { craters.clear(); }
+// The longest crater list any cell holds (what craterDepthAt() may have to walk), for the smoke test.
+export const craterCellMax = () => { let n = 0; for (const l of craters.values()) n = Math.max(n, l.length); return n; };
 
 // Flattened ground (the runway objective's strip): a rectangle turned by yaw where the land sits at exactly y,
 // blending back to its natural height over `blend` metres around it. Read by landHeight, so like a crater it shows

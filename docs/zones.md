@@ -91,6 +91,24 @@ ground under a runway is cleaned up later. `landing` is a ground objective (`GRO
 skip it. If a new zone has tunnels or buildings, or no dry land worth landing on, list `'landing'` in its
 `noObjectives` like Hollow Peaks, Metropolis and Sunken Reef do.
 
+### Craters (shooting the ground)
+
+A bullet that hits the ground calls `Terrain.deform(x, z, r, depth)` with `BULLET_CRATER` (`src/player.js`, 13 m
+radius, 4 m deep). That calls `addCrater()` in `src/world.js`, and `craterDepthAt(x, z)` feeds `heightAt()`, so
+collisions and props see the hole at once; the mesh catches up over the next frames. The tuning knobs:
+
+- **`src/world.js`:** `MAX_CRATER_DEPTH` and `MAX_CRATER_RADIUS` (45 m each) cap one crater. `CRATER_STEEPNESS` (1.2)
+  keeps depth under 1.2 × radius, so a pit stays a bowl. A hit within `CRATER_MERGE` (0.7) × radius of a crater
+  digs that one instead (+depth/2 deeper, +depth/4 wider) and drags its centre 25% toward the hit, which is how
+  strafing ploughs a trench. Craters are stored in 160 m cells; once a cell holds `CRATERS_PER_CELL` (32), new hits
+  dig the nearest crater, so `craterDepthAt()` stays cheap. It's a soft cap: a cell can end up a little over it.
+- **`src/terrain.js`:** cratered chunks rebuild every `DIRTY_EVERY` (0.05 s), nearest the player first, up to
+  `DIRTY_MAX` (4) chunks a pass, stopping once `DIRTY_MS` (8 ms) is spent (it can overshoot by one chunk, ~3 ms).
+
+Overlapping craters add up. They're vertical columns, so digging above a tunnel lowers the tunnel floor too. In a
+cave the roof follows the undug floor, so it never drops. Zone changes call `clearCraters()`. `craterCellMax()`
+returns the longest list in any cell, for the smoke test.
+
 ### Asking at an altitude (tunnels)
 
 Over a tunnel, one spot has two grounds: the tunnel floor and the mountain top. `Terrain.surfaceHeight(x, z, y)`,
