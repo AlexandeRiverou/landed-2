@@ -80,8 +80,9 @@ steamOverlaySwitches();
 //      against a known list) and add matching functions to preload.js. Never expose `client` itself.
 //   4. steam_appid.txt is for local testing only; see the notes in electron/steam/app_build.vdf.
 
-// Headless boot test: software WebGL, since CI machines have no GPU.
-if (SMOKE) {
+// Headless boot test: software WebGL, since CI machines have no GPU. Not on macOS: SwiftShader
+// runs on Vulkan there and fails to start on CI VMs, while the default Metal backend works.
+if (SMOKE && process.platform !== 'darwin') {
   app.commandLine.appendSwitch('use-gl', 'angle');
   app.commandLine.appendSwitch('use-angle', 'swiftshader');
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -93,7 +94,9 @@ if (SMOKE) {
 // desktop build is fully offline (the Google Fonts link is stripped at build time; the game has a
 // font fallback). Inline styles stay allowed because the UI sets style attributes from JS.
 async function buildCsp() {
-  const html = await fs.readFile(path.join(GAME_ROOT, 'index.html'), 'utf8');
+  // The HTML parser turns CRLF into LF before hashing an inline script, so do the same: a Windows
+  // checkout (core.autocrlf) ships index.html with CRLF line endings.
+  const html = (await fs.readFile(path.join(GAME_ROOT, 'index.html'), 'utf8')).replace(/\r\n?/g, '\n');
   const hashes = [];
   for (const m of html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)) {
     hashes.push(`'sha256-${crypto.createHash('sha256').update(m[1], 'utf8').digest('base64')}'`);
