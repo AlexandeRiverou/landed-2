@@ -43,9 +43,11 @@ npm test          # boots dist/ in headless Chromium and plays through objective
 The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs the same steps:
 
 - **On every pull request into `main`:** check, build and smoke test, with the zipped build attached to the run.
-  Nothing is published.
+  Then the **desktop** job packages the same `dist/` with Electron on Windows, Linux and macOS, boot-tests each
+  package, and attaches `landed-<version>-{windows-x64,linux-x64,macos-universal}.zip` too. Nothing is published.
 - **On every merge into `main`:** the same, then a new **GitHub Release** is published with
-  `landed-vX.Y.Z.zip` attached. Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
+  `landed-vX.Y.Z.zip` (the web build) and the three desktop zips attached. The release waits for all three desktop
+  builds, so a desktop failure blocks it (GitHub Pages still deploys). Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
   major release, raise `"version"` in `package.json` (e.g. to `1.1.0`) in your PR, and the merge releases exactly that
   (logic in `scripts/next-version.mjs`). Re-running the workflow on an already released commit doesn't publish twice.
 - **Pushing a `v*` tag by hand** releases that tag.
@@ -54,11 +56,30 @@ The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs th
   Hand-pushed tags and pull requests never deploy.
 
 To play the latest release, just open the GitHub Pages link above. To install one locally, download the zip from the
-Releases page, unzip it, and serve the folder with any static server.
+Releases page, unzip it, and serve the folder with any static server. Or grab the desktop zip for your OS, unzip it
+and run `Landed.exe`, `landed` or `Landed.app` (see [Desktop / Steam build](#desktop--steam-build)).
 
 **One-time setup for GitHub Pages** (repo admin): Settings → Pages → Build and deployment → Source: **GitHub
 Actions**. Until then the Pages deploy job fails, but the release still publishes. Then check Settings →
 Environments → `github-pages` allows deployments from `main` only.
+
+## Desktop / Steam build
+
+Landed also comes as a desktop app (Electron), ready to package for Steam. The web build stays exactly as it is: the
+desktop build wraps the same `dist/` in a small shell that lives in `electron/`, a separate npm package, so the root
+`npm ci` never downloads Electron.
+
+```bash
+npm run desktop:install   # once: Electron + electron-builder (npm ci --prefix electron)
+npm run desktop:build     # web build, then package for the OS you're on -> export/desktop/
+npm run desktop:start     # run it unpackaged in a window
+npm run desktop:smoke     # boot-test the packaged app
+```
+
+It starts fullscreen (`F11` toggles it; `--windowed` starts in a window), runs fully offline, and adds FULLSCREEN and
+QUIT buttons to the title and pause cards (`src/desktop.js`; browsers never see them). Building, testing, Steamworks
+setup, the SteamPipe templates in `electron/steam/` and the release checklist are all in
+[`docs/steam.md`](docs/steam.md).
 
 ## Controls
 
