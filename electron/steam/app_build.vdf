@@ -1,0 +1,31 @@
+// SteamPipe app build script for Landed (TEMPLATE: not used by CI).
+//
+// 1. `npm run desktop:build` on each OS (or download the landed-<version>-<os>.zip files from the
+//    GitHub Release and unzip them) so export/desktop/ holds:
+//      win-unpacked/      Windows x64  (launch: Landed.exe)
+//      linux-unpacked/    Linux x64    (launch: landed)
+//      mac-universal/     macOS        (launch: Landed.app; must be signed + notarized for players)
+// 2. Replace every REPLACE_WITH_... value below and in the depot_build_*.vdf files with the IDs from
+//    the Steamworks partner site (App Admin -> SteamPipe -> Depots). They are placeholders on purpose:
+//    steamcmd rejects them, so nothing can be uploaded by accident.
+// 3. Upload:  steamcmd +login <builder-account> +run_app_build "<absolute path>/electron/steam/app_build.vdf" +quit
+//    Paths below are relative to this file. Never commit Steam credentials or config.vdf.
+//
+// steam_appid.txt: a text file containing only the numeric app id, placed next to the executable,
+// lets Steamworks initialise when the game is started outside the Steam client (local testing).
+// Don't ship it: the depot scripts exclude it, and Steam provides the app id at launch.
+"AppBuild"
+{
+	"AppID" "REPLACE_WITH_APP_ID"
+	"Desc" "Landed vX.Y.Z" // build description shown on the partner site
+	"ContentRoot" "../../export/desktop/"
+	"BuildOutput" "../../export/steam-output/" // steamcmd logs and cache; gitignored via export/
+	"Preview" "0" // "1" = dry run: computes the manifest, uploads nothing
+	"SetLive" "" // e.g. "beta" to set the build live on a branch; never "default" from a script
+	"Depots"
+	{
+		"REPLACE_WITH_WINDOWS_DEPOT_ID" "depot_build_windows.vdf"
+		"REPLACE_WITH_LINUX_DEPOT_ID" "depot_build_linux.vdf"
+		"REPLACE_WITH_MACOS_DEPOT_ID" "depot_build_macos.vdf"
+	}
+}

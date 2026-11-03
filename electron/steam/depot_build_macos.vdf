@@ -1,0 +1,17 @@
+// SteamPipe depot for Landed on macos (TEMPLATE). Referenced from app_build.vdf.
+// Content: export/desktop/mac-universal/ (built by `npm run desktop:build` on macos).
+// Set this depot's OS to macos in Steamworks, and the launch option to: Landed.app
+// macOS note: players need a Developer ID signed and notarized app; the CI build is only ad-hoc
+// signed. Sign/notarize mac-universal/Landed.app before uploading.
+"DepotBuild"
+{
+	"DepotID" "REPLACE_WITH_MACOS_DEPOT_ID"
+	"FileMapping"
+	{
+		"LocalPath" "mac-universal/*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+	"FileExclusion" "steam_appid.txt" // local testing only, never shipped
+	"FileExclusion" "*.pdb"
+}

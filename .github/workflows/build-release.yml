@@ -7,6 +7,11 @@
 #  - Every merge into main (and "Run workflow" on main) also deploys dist/ to GitHub Pages, so the
 #    game is playable at https://<owner>.github.io/<repo>/. Tags and pull requests never deploy.
 #    One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+#  - Desktop (Electron, for Steam): after the web build passes, the same dist/ is packaged into
+#    unpacked app folders on Windows (x64), Linux (x64) and macOS (universal), each zipped as
+#    landed-<version>-<platform>.zip, boot-tested (the packaged app must reach window.G), and
+#    attached to the run. Releases wait for all three and attach them too, so a release is always
+#    complete: a desktop failure blocks the release (GitHub Pages still deploys the web build).
 name: Build & Release
 
 on:
@@ -101,9 +106,98 @@ jobs:
         with:
           path: dist
 
+  desktop:
+    name: Desktop build (${{ matrix.platform }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false # see every platform's result, not just the first failure
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            out: linux-unpacked
+            exe: landed
+          - os: windows-latest
+            platform: windows-x64
+            out: win-unpacked
+            exe: Landed.exe
+          - os: macos-latest
+            platform: macos-universal
+            out: mac-universal
+            exe: Landed.app/Contents/MacOS/Landed
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            electron/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run desktop:install
+
+      - name: Build desktop app
+        run: npm run desktop:build
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+
+      - name: Package desktop zip
+        id: package
+        env:
+          OUT: ${{ matrix.out }}
+          EXE: ${{ matrix.exe }}
+        run: |
+          name="landed-$VERSION-$PLATFORM"
+          mkdir -p release
+          mv "export/desktop/$OUT" "release/$name"
+          cd release
+          case "$RUNNER_OS" in
+            macOS) ditto -c -k --sequesterRsrc --keepParent "$name" "$name.zip" ;; # keeps the .app's symlinks
+            Windows) 7z a -tzip -bso0 "$name.zip" "$name" ;;
+            *) zip -qry "$name.zip" "$name" ;;
+          esac
+          ls -l
+          echo "exe=release/$name/$EXE" >> "$GITHUB_OUTPUT"
+          echo "dir=release/$name" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test (packaged app boots)
+        env:
+          EXE: ${{ steps.package.outputs.exe }}
+          APP_DIR: ${{ steps.package.outputs.dir }}
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            command -v xvfb-run >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends xvfb; }
+            # Ubuntu blocks unprivileged user namespaces, so Chromium's sandbox needs its setuid helper.
+            # Done after zipping, on the test copy only: the zip keeps the plain file.
+            sudo chown root:root "$APP_DIR/chrome-sandbox"
+            sudo chmod 4755 "$APP_DIR/chrome-sandbox"
+          fi
+          npm run desktop:smoke -- "$EXE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: landed-${{ needs.build.outputs.version }}-${{ matrix.platform }}
+          path: release/*.zip
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, desktop]
     if: needs.build.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -111,7 +205,9 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: landed-${{ needs.build.outputs.version }}
+          # The web zip (landed-<version>) and the three desktop zips (landed-<version>-<platform>).
+          pattern: landed-${{ needs.build.outputs.version }}*
+          merge-multiple: true
           path: release
 
       - name: Create GitHub Release

@@ -28,19 +28,26 @@ const browser = await chromium.launch({
 const errors = [];
 let failed = false;
 try {
-  const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() !== 'error') return;
-    // External requests are blocked on purpose (see below); only local failures count.
-    if (m.text().startsWith('Failed to load resource') && !(m.location().url || '').startsWith(origin)) return;
-    errors.push(`console: ${m.text()}`);
-  });
-  // The release must not depend on the network (the web font is optional and has a fallback).
-  await page.route('**/*', (route) => (route.request().url().startsWith(origin) ? route.continue() : route.abort()));
+  // Every page records page and console errors, and gets no network beyond the local server.
+  const guard = async (page) => {
+    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      // External requests are blocked on purpose (see below); only local failures count.
+      if (m.text().startsWith('Failed to load resource') && !(m.location().url || '').startsWith(origin)) return;
+      errors.push(`console: ${m.text()}`);
+    });
+    // The release must not depend on the network (the web font is optional and has a fallback).
+    await page.route('**/*', (route) => (route.request().url().startsWith(origin) ? route.continue() : route.abort()));
+    return page;
+  };
+  const page = await guard(await browser.newPage({ viewport: { width: 1024, height: 640 } }));
 
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+  // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
+  const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
+  const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
   // Secrets, part 1 (the rest is at the end): click the title 7 times before take-off. Six isn't enough.
   const secretsReport = {};
   await page.evaluate(() => window.G.secrets.reset()); // a clean slate, whatever today's date found at boot
@@ -1094,6 +1101,31 @@ try {
     rank: window.G.progress.rank, count: document.getElementById('secrets-count').textContent,
   }));
 
+  // Desktop (Electron) build: a fake window.landedDesktop bridge, injected before the game boots, shows Quit and
+  // Fullscreen on the title and pause cards, and they call the bridge. A second, short-lived context.
+  const desk = {};
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    await ctx.addInitScript(() => {
+      window.desktopCalls = [];
+      window.landedDesktop = { isDesktop: true, platform: 'linux', quit: () => window.desktopCalls.push('quit'), toggleFullscreen: () => window.desktopCalls.push('fs') };
+    });
+    const dp = await guard(await ctx.newPage());
+    await dp.goto(origin + '/');
+    await dp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    desk.titleShown = await dp.isVisible('#title-quit') && await dp.isVisible('#title-fullscreen');
+    await dp.click('#title-fullscreen');
+    await dp.click('#title-quit');
+    desk.titleCalls = await dp.evaluate(() => window.desktopCalls.join());
+    desk.blurred = await dp.evaluate(() => !document.activeElement?.matches('button'));
+    await dp.click('#start');
+    await dp.keyboard.press('KeyP');
+    desk.pauseShown = await dp.isVisible('#pause-quit');
+    await dp.click('#pause-quit');
+    desk.pauseCalls = await dp.evaluate(() => window.desktopCalls.join());
+    await ctx.close();
+  }
+
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
@@ -1183,6 +1215,9 @@ try {
     [S.feats.list === 10 && S.feats.all && S.feats.stored === 10, 'secrets: all 10 found and saved in localStorage'],
     [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
+    [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
+    [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
+    [desk.pauseShown && desk.pauseCalls === 'fs,quit,quit', 'desktop: with the bridge, the pause card has Quit too'],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {

@@ -22,8 +22,8 @@ You can also call a specialist directly for a one-off job, e.g. "use the securit
 | Role | Defined in | Does | Can edit |
 |---|---|---|---|
 | **Orchestrator** | `.claude/skills/orchestrate/SKILL.md` | Understands the request, writes the execution plan, briefs the others, verifies their work, runs the checks, commits, opens the PR, updates the preview, watches the PR | Git, GitHub (the only one) |
-| **Developer** (senior) | `.claude/agents/developer.md` | Implements game changes and the smoke-test checks that prove them | `src/`, `index.html`, `style.css`, game checks in `scripts/smoke-test.mjs` |
-| **DevOps** | `.claude/agents/devops.md` | Owns build, test harness, CI/CD and releases; diagnoses red CI | `.github/workflows/`, `scripts/`, `package.json` |
+| **Developer** (senior) | `.claude/agents/developer.md` | Implements game changes and the smoke-test checks that prove them | `src/` (including `src/desktop.js`, the desktop bridge), `index.html`, `style.css`, game checks in `scripts/smoke-test.mjs` |
+| **DevOps** | `.claude/agents/devops.md` | Owns build, test harness, CI/CD and releases; diagnoses red CI | `.github/workflows/`, `scripts/`, `package.json`, `electron/` (desktop / Steam build) |
 | **Security** (senior) | `.claude/agents/security.md` | Reviews every diff before the PR opens; returns findings and a PASS / PASS WITH NOTES / BLOCK verdict | Nothing (read-only) |
 | **Documenter** | `.claude/agents/documenter.md` | Keeps README, CLAUDE.md, docs and the title card's controls in sync; drafts the PR description | Markdown, title card controls, comments |
 

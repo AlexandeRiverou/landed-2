@@ -101,3 +101,7 @@ Security and Documenter agents (`.claude/agents/`). The rules above bind every a
   **Every merge into `main` publishes a new versioned GitHub Release** (patch bump; raise `version` in `package.json` for
   minor/major), so a merged PR ships, and deploys the game to GitHub Pages
   (https://alexanderiverou.github.io/landed-2/). Pushing a `v*` tag also publishes a release.
+- Desktop / Steam build (Electron, separate package in `electron/`, see `docs/steam.md`): `npm run desktop:install &&
+  npm run desktop:build` packages `dist/` for the current OS into `export/desktop/`; CI builds all three OSes and
+  attaches the zips to releases. Its CSP forbids remote loads and new inline scripts: adding either fails the
+  desktop boot test (`npm run desktop:smoke`).
