@@ -3,7 +3,8 @@
 // Set this depot's OS to linux in Steamworks, and the launch option to: landed
 // Linux note: Chromium's sandbox needs unprivileged user namespaces (or a setuid-root
 // chrome-sandbox, which a depot can't carry). Test under the Steam Linux Runtime / Steam Deck before
-// release; if it refuses to start there, the usual fix is the launch argument --no-sandbox.
+// release. --no-sandbox turns off Chromium's OS sandbox for every player: use it only as a last
+// resort, tested and documented, never as the default launch option.
 "DepotBuild"
 {
 	"DepotID" "REPLACE_WITH_LINUX_DEPOT_ID"

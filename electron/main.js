@@ -179,7 +179,8 @@ function hardenSession(ses) {
 
   // Offline only: cancel every request that isn't app://, data: or blob: (DevTools aside).
   ses.webRequest.onBeforeRequest((details, callback) => {
-    const { protocol: proto } = new URL(details.url);
+    let proto = '';
+    try { proto = new URL(details.url).protocol; } catch { /* unparsable URL: cancel below */ }
     const ok = proto === `${SCHEME}:` || proto === 'data:' || proto === 'blob:' || proto === 'devtools:';
     if (!ok && SMOKE) console.log(`[smoke] blocked request: ${details.url}`);
     callback({ cancel: !ok });
