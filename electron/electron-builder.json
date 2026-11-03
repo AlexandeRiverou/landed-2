@@ -1,0 +1,63 @@
+{
+  "appId": "io.github.alexanderiverou.landed",
+  "productName": "Landed",
+  "copyright": "Landed",
+  "directories": {
+    "output": "../export/desktop",
+    "buildResources": "build-resources"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "package.json",
+    "app/**/*"
+  ],
+  "asar": true,
+  "npmRebuild": false,
+  "publish": null,
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "onlyLoadAppFromAsar": true,
+    "grantFileProtocolExtraPrivileges": false,
+    "enableCookieEncryption": false
+  },
+  "win": {
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "signAndEditExecutable": true
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "executableName": "landed",
+    "category": "Game"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "universal"
+        ]
+      }
+    ],
+    "category": "public.app-category.games",
+    "identity": "-",
+    "hardenedRuntime": false,
+    "notarize": false
+  }
+}

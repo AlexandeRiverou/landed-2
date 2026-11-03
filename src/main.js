@@ -19,6 +19,7 @@ import { DevMenu } from './devmenu.js';
 import { Secrets } from './secrets.js';
 import { pick, T } from './texts.js';
 import { installCurvature } from './curve.js';
+import { installDesktop } from './desktop.js';
 
 installCurvature(); // before anything compiles a shader
 
@@ -145,6 +146,7 @@ function setPaused(v) {
 $('start').addEventListener('click', start);
 $('resume').addEventListener('click', () => setPaused(false));
 $('relax-btn').addEventListener('click', (e) => { setRelax(!G.relax); e.currentTarget.blur(); }); // blur: Space must keep shooting, not re-click
+installDesktop(); // desktop (Electron) build only: Quit and Fullscreen buttons on the title and pause cards
 G.input.on('KeyR', () => setRelax(!G.relax));
 G.input.on('Enter', () => { if (!G.started) start(); });
 G.input.on('KeyP', () => setPaused(!G.paused));

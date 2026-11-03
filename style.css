@@ -289,6 +289,10 @@ button {
   cursor: pointer;
 }
 button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
+/* Desktop (Electron) build only: smaller Fullscreen / Quit buttons under the main one. Hidden in browsers. */
+.desktop-row { display: flex; justify-content: center; gap: 10px; }
+.desktop-row button { margin-top: 12px; font-size: 15px; padding: 6px 18px; border-radius: 12px; background: #f4f0ff; box-shadow: 0 4px 0 var(--ink); }
+.desktop-row button:hover { background: #e9dbff; }
 
 /* Developer menu (hold 1 + 0 for 3 s): a scrollable card of small buttons, above every other overlay. */
 #dev-hint {

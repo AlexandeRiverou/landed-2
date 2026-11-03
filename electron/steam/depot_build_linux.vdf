@@ -1,0 +1,18 @@
+// SteamPipe depot for Landed on linux (TEMPLATE). Referenced from app_build.vdf.
+// Content: export/desktop/linux-unpacked/ (built by `npm run desktop:build` on linux).
+// Set this depot's OS to linux in Steamworks, and the launch option to: landed
+// Linux note: Chromium's sandbox needs unprivileged user namespaces (or a setuid-root
+// chrome-sandbox, which a depot can't carry). Test under the Steam Linux Runtime / Steam Deck before
+// release; if it refuses to start there, the usual fix is the launch argument --no-sandbox.
+"DepotBuild"
+{
+	"DepotID" "REPLACE_WITH_LINUX_DEPOT_ID"
+	"FileMapping"
+	{
+		"LocalPath" "linux-unpacked/*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+	"FileExclusion" "steam_appid.txt" // local testing only, never shipped
+	"FileExclusion" "*.pdb"
+}
