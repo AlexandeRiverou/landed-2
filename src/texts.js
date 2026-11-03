@@ -150,6 +150,29 @@ export const T = {
     "Respawned. The plane factory is getting suspicious.",
     "Back in the air! Nobody saw that. Probably.",
   ],
+  // A crash cost a life (player.js crash): "2 lives left. <this>" / "Last life! <lastLife>".
+  lifeLost: [
+    "The plane factory has been notified.",
+    "Spare planes are not a renewable resource.",
+    "Insurance is starting to ask questions.",
+    "Mechanics are crying into their spanners.",
+  ],
+  lastLife: [
+    "This is the good plane. Please return it.",
+    "No more spares. Fly like you mean it.",
+    "The factory is closed. This one's all you've got.",
+  ],
+  gameOver: [
+    "Out of planes. The factory has stopped answering our calls.",
+    "Three planes, zero planes. That's math.",
+    "The ground wins this round. It's very smug about it.",
+    "Flight school would like a word. Several words.",
+  ],
+  flyAgain: [
+    "Fresh run, three fresh planes. They're very shiny.",
+    "New day, new planes. The factory forgives you. Mostly.",
+    "Back to Level 1. The sky remembers nothing.",
+  ],
   kill: [
     "Bonk!",
     "Enemy converted to confetti.",

@@ -109,6 +109,14 @@ export class PowerUps {
     this.active.set(id, Math.max(this.active.get(id) || 0, dur));
   }
 
+  // A fresh run after a Game Over: nothing active, nothing waiting to be picked up.
+  resetRun() {
+    this.active.clear();
+    for (let i = this.pickups.length - 1; i >= 0; i--) this.removePickup(i);
+    this.timer = FIRST_SPAWN;
+    this.renderTray();
+  }
+
   shieldHit() {
     this.G.fx.sparkle(this.G.player.pos, '#4dd6ff');
     this.G.audio.tone(900, 0.12, { type: 'triangle', vol: 0.08 });

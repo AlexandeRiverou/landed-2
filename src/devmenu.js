@@ -145,7 +145,8 @@ export class DevMenu {
     this.godBtn = button(cheats, '', () => this.toggleGod(), 'No damage, no crashing');
     this.relaxBtn = button(cheats, '', () => { G.setRelax(!G.relax); this.refresh(); });
     button(cheats, 'Complete objective', () => this.completeObjective());
-    button(cheats, 'Level up', () => this.levelUp());
+    button(cheats, 'Level up', () => this.levelUp(), 'Same as a real promotion: a perk and a full hull');
+    button(cheats, 'Lose a life', () => this.loseLife(), 'Crash on the spot (costs a life even in god mode)');
     button(cheats, 'Clear enemies', () => this.clearEnemies());
 
     // Each secret's effect, recorded as found like the real trigger would.
@@ -203,7 +204,7 @@ export class DevMenu {
     G.input.lock = null;
     document.activeElement?.blur(); // Space must shoot, not click the last menu button again
     // Back to whatever the pause card says: if the menu was opened over the Pause card, stay paused.
-    G.paused = !document.getElementById('pause').classList.contains('hidden');
+    G.paused = G.gameOver || !document.getElementById('pause').classList.contains('hidden'); // the Game Over card too
     if (!G.paused) G.audio.music?.duck(false);
   }
 
@@ -258,6 +259,17 @@ export class DevMenu {
     const G = this.G;
     G.score = Math.max(G.score, xpForLevel(G.progress.level + 1));
     G.progress.update(0);
+  }
+
+  // A crash right here, as if for real: costs a life (the last one ends the run), even with god mode on.
+  loseLife() {
+    const p = this.G.player;
+    this.close();
+    if (p.dead) return;
+    const god = p.god;
+    p.god = false;
+    p.crash('ground');
+    p.god = god;
   }
 
   // Everything hostile goes, except what an objective needs (bosses, hunt targets...).
