@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { curveDrop } from './curve.js';
 import { waterLine } from './world.js';
+import { LIVES } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_NOTES = 2;   // on screen at once
@@ -14,11 +15,12 @@ export class UI {
     this.el = {
       score: $('score'), stats: $('stats'), obj: $('objective'), objTitle: $('obj-title'), objDesc: $('obj-desc'),
       objProgress: $('obj-progress'), objDist: $('obj-dist'), hp: $('hp-fill'), boost: $('boost-fill'), speed: $('speed'),
-      notes: $('notifications'), banner: $('banner'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
+      lives: $('lives'), notes: $('notifications'), banner: $('banner'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
     };
     this.edgeArrow = 0;      // 0 off, 1 normal, 2 big & pulsing (persuasion unlocks)
     this.showDistance = false;
     this.shownScore = 0;
+    this.shownLives = null;
     this.bannerTimer = 0;
     this.flashA = 0;
     this.tintTimer = 0;
@@ -106,6 +108,31 @@ export class UI {
     document.getElementById('boss-fill').style.width = `${Math.max(0, (b.hp / b.maxHp) * 100)}%`;
   }
 
+  // Hearts left: ❤️ per life, 🖤 per life lost. More than the usual (a test, a future perk) shows as a count.
+  renderLives() {
+    const n = this.G.player.lives;
+    if (n === this.shownLives) return;
+    this.shownLives = n;
+    this.el.lives.textContent = n > LIVES ? `❤️ ×${n}` : '❤️'.repeat(n) + '🖤'.repeat(LIVES - n);
+    this.el.lives.title = `${n} ${n === 1 ? 'life' : 'lives'} left`;
+  }
+
+  // A life was just lost: the hearts update now (not next frame) and shake.
+  livesLost() {
+    this.renderLives();
+    const e = this.el.lives;
+    e.classList.remove('lost');
+    void e.offsetWidth;
+    e.classList.add('lost');
+  }
+
+  // A fresh run after a Game Over: the score counter starts from 0 instead of counting down.
+  resetRun() {
+    this.shownScore = 0;
+    this.el.score.textContent = '0';
+    this.renderLives();
+  }
+
   flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }
   // Soft edge vignette in `color`; the centre half of the screen is left untouched.
   tint(color, seconds) { this.el.tint.style.background = `radial-gradient(ellipse at center, transparent 50%, ${color}88 80%, ${color}dd 100%)`; this.el.tint.style.opacity = 1; this.tintTimer = seconds; }
@@ -120,6 +147,7 @@ export class UI {
       if (Math.round(this.shownScore) !== before) e.score.textContent = Math.round(this.shownScore);
     }
     e.stats.textContent = `✔ ${G.objectives.completed}  💥 ${G.stats.crashes}  🎯 ${G.stats.kills}`;
+    this.renderLives();
     e.hp.style.width = `${Math.max(0, (p.health / p.maxHealth) * 100)}%`;
     const hpPct = p.health / p.maxHealth;
     e.hp.style.background = hpPct > 0.5 ? 'var(--good)' : hpPct > 0.25 ? 'var(--warn)' : 'var(--bad)';

@@ -40,12 +40,18 @@ const LANDING_GRADES = [
 ];
 const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
 
+// Lives and hull. Every crash costs a life (not in Relax Mode or god mode); the last one ends the run (main.js
+// endRun). The hull mends itself only after REGEN_DELAY s without a hit, at stats.regen hp/s; levelling up mends it fully.
+export const LIVES = 3;
+const REGEN_DELAY = 10;
+// Permanent upgrades from levelling up (see progression.js) start from these every run.
+const BASE_STATS = { fireRate: 1, boostRegen: 1, boostDrain: 1, regen: 1, damage: 1 };
+const BASE_HEALTH = 100, BASE_SPEED = 44;
+
 export class Player {
   constructor(G) {
     this.G = G;
     this.model = makePlane();
-    this.skin = PLANE_SKINS[0];
-    this.model.setSkin(this.skin);
     G.scene.add(this.model.group);
     this.pos = new THREE.Vector3();
     this.prevPos = new THREE.Vector3();
@@ -54,23 +60,15 @@ export class Player {
     this.up = new THREE.Vector3(0, 1, 0);
     this.right = new THREE.Vector3(1, 0, 0);
     this.wind = new THREE.Vector3();
-    this.baseSpeed = 44;
-    this.speed = 44;
-    this.boost = 1;
-    this.freeBoost = 0;
-    this.health = 100;
-    this.maxHealth = 100;
-    // Permanent upgrades from levelling up (see progression.js).
-    this.stats = { fireRate: 1, boostRegen: 1, boostDrain: 1, regen: 5, damage: 1 };
+    this.resetRun();
+    this.speed = this.baseSpeed;
     this.sizeScale = 1;    // Mega / Tiny Plane power-ups
-    this.sinceHit = 99;
     this.invuln = 0;
     this.grace = 0;        // after the world mutates: terrain pushes you up instead of killing you
     this.dead = false;
     this.deadTimer = 0;
     this.loopAccum = 0;
     this.loopIdle = 0;
-    this.loopRequirement = 1;
     this.events = [];
     this.maneuver = null;    // double-tap stunt in progress (see MANEUVERS)
     this.maneuverCd = 0;
@@ -91,6 +89,19 @@ export class Player {
   }
 
   setSkin(s) { this.skin = s; this.model.setSkin(s); }
+
+  // A fresh run (boot, and "Fly again" after a Game Over): full lives, base stats, the first skin and speed.
+  resetRun() {
+    this.lives = LIVES;
+    this.stats = { ...BASE_STATS };
+    this.maxHealth = this.health = BASE_HEALTH;
+    this.baseSpeed = BASE_SPEED; // the speed mutation raises it
+    this.boost = 1;
+    this.freeBoost = 0;
+    this.sinceHit = 99;
+    this.loopRequirement = 1;
+    this.setSkin(PLANE_SKINS[0]);
+  }
 
   spawn(x, z, yaw = 0) {
     const G = this.G;
@@ -124,6 +135,7 @@ export class Player {
     if (this.dead) {
       this.deadTimer -= dt;
       if (this.deadTimer <= 0) {
+        if (this.lives <= 0) { if (!G.gameOver) G.endRun(); return; } // out of planes: Game Over (main.js)
         const f = this.forward;
         this.spawn(this.pos.x, this.pos.z, Math.atan2(-f.x, -f.z));
         G.ui.notify(pick(T.respawn), 'info', 3, 0);
@@ -134,7 +146,7 @@ export class Player {
     this.grace = Math.max(0, this.grace - dt);
     if (this.grace <= 0) this.graceNotified = false;
     this.sinceHit += dt;
-    if (this.sinceHit > 4 && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen);
+    if (this.sinceHit > REGEN_DELAY && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen);
 
     this.maneuverCd = Math.max(0, this.maneuverCd - dt);
     if (this.landed ? !this.taxi(dt, input) : !this.fly(dt, input)) return; // false: crashed
@@ -502,6 +514,8 @@ export class Player {
     this.model.group.visible = false;
     this.wind.set(0, 0, 0);
     G.stats.crashes++;
+    const free = G.relax || this.god; // Relax Mode is no-pressure, and god mode is for testing: no life lost
+    if (!free) this.lives = Math.max(0, this.lives - 1);
     if (reason === 'water') G.fx.splash(this.pos);
     else {
       G.fx.explosion(this.pos);
@@ -510,6 +524,10 @@ export class Player {
     G.audio.explode();
     G.ui.flash('#ffffff', 0.7);
     G.ui.notify(pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
+    if (free) return;
+    G.ui.livesLost();
+    if (this.lives === 1) G.ui.notify(`Last life! ${pick(T.lastLife)}`, 'warn', 4, 2);
+    else if (this.lives > 1) G.ui.notify(`${this.lives} lives left. ${pick(T.lifeLost)}`, 'warn', 4, 2);
   }
 
   // Gently steer the nose toward a point (used by the "tailwind" persuasion).

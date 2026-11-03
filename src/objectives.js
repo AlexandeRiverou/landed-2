@@ -566,6 +566,8 @@ function mkHunt(G) {
 
 // A boss shows up after a random 4–7 completed objectives, re-rolled after each one.
 export const BOSS_GAP = [4, 7];
+// The order bosses come in: an opener first, then the rest, shuffled.
+const bossDeck = () => [...shuffle([...OPENERS]), ...shuffle(Object.keys(BOSSES).filter((k) => !OPENERS.includes(k)))];
 const bossGap = () => BOSS_GAP[0] + Math.floor(Math.random() * (BOSS_GAP[1] - BOSS_GAP[0] + 1));
 // The first two bosses are the gentler classics; after that, anything goes.
 const OPENERS = ['kingDrone', 'gooseQueen'];
@@ -658,7 +660,7 @@ export class Objectives {
     this.cooldown = 4;
     this.bossLevel = 0;
     this.nextBossAt = bossGap(); // completed-objective count that brings the next boss
-    this.bossDeck = [...shuffle([...OPENERS]), ...shuffle(Object.keys(BOSSES).filter((k) => !OPENERS.includes(k)))];
+    this.bossDeck = bossDeck();
     this.pendingBoss = false; // a boss interrupted by relax mode comes back first
   }
 
@@ -709,6 +711,18 @@ export class Objectives {
     G.ui.setObjective(obj);
     if (type !== 'boss') G.ui.notify(`${pick(T.newObjective)} ${obj.title}`, 'good', 4);
     G.audio.ding(0.8);
+  }
+
+  // A fresh run after a Game Over: the objective leaves, and the count (and the first-hoop, boss pacing) starts over.
+  resetRun() {
+    this.suspend();
+    this.pendingBoss = false;
+    this.completed = 0;
+    this.bossLevel = 0;
+    this.nextBossAt = bossGap();
+    this.bossDeck = bossDeck();
+    this.recent = [];
+    this.cooldown = 4;
   }
 
   // Relax mode: the objective quietly leaves (no penalty). An interrupted boss returns first afterwards.

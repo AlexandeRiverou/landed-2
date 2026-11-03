@@ -36,7 +36,8 @@ npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN neede
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
                   # world mutations, every objective, every boss, landing, taxiing
-                  # and take-off, relax mode, the developer menu and the secrets;
+                  # and take-off, relax mode, lives and Game Over, the developer
+                  # menu and the secrets;
                   # fails on any error
 ```
 
@@ -95,6 +96,7 @@ setup, the SteamPipe templates in `electron/steam/` and the release checklist ar
 | Shoot | `Space`, `J` or left click |
 | Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
 | Relax Mode | `R` or the ☁️ Relax Mode button at the top |
+| Fly again | on the Game Over card: the FLY AGAIN button, or `Enter` / `Space` (after 1 s, so a stray shot can't skip the card) |
 | Stunts | quick double-tap (two short taps, not a hold) `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll. Holding a key to steer and pressing it again won't trigger a stunt |
 | Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts; on the ground the stick steers, and pushing it up takes off |
 
@@ -190,7 +192,18 @@ Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
 → Sky Intern → … → Supreme Commander Of Up) and grants a permanent perk for the flight: more hull, faster boost
 recharge, higher fire rate, longer and more frequent power-ups, harder-hitting bullets... The XP bar is under your
-score, and your best run is remembered on the title screen.
+score, and your best run is remembered on the title screen. Every promotion also fully repairs your hull ("Hull
+repaired!").
+
+**Lives and Game Over** (`src/player.js`, `src/main.js`): you get three planes per run, shown as hearts (❤️❤️🖤)
+above HULL and BOOST in the bottom-left. Every crash costs one, whether it's an enemy, the ground or the water, and
+you respawn with a full hull and a note telling you how many are left ("2 lives left…", "Last life!"). Crashes in
+Relax Mode are free. The hull doesn't patch itself quickly: it only starts mending after 10 s without a hit, at 1 hp
+a second (the "Hull repairs twice as fast" perk doubles that). The real fixes are levelling up and the Repair Kit.
+Lose the last plane and, once the explosion clears, the **Game Over** card shows your score, level and rank,
+objectives and kills, and your best run (or "New best run!"). The game is paused behind it. Hit FLY AGAIN (or `Enter`
+/ `Space`) for a fresh run right away, no reload: score 0, Level 1 with no perks, three lives, no power-ups, back to
+the first zone on a new landscape. Found secrets stay found.
 
 **Bosses** (`src/enemies.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
 (a fresh random gap each time). There are 15, drawn from a shuffled deck so you meet them all before any repeats:
@@ -265,8 +278,8 @@ loop pick it up on their own. If it needs ground, add it to `GROUND_OBJECTIVES` 
 one zone, list it in that zone's `noObjectives`.
 
 **Relax Mode** (`src/main.js`): press `R` or the ☁️ Relax Mode button to take a break. Objectives and enemies leave,
-no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, so
-if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
+no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, and
+crashing doesn't cost a life, so if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
 back first.
 
 **Persuasion engine** (`src/persuasion.js`): a "neglect" meter fills while you're not making progress. It fills faster
@@ -324,8 +337,11 @@ card.
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.
-- **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode), Relax Mode
-  on/off, Complete objective, Level up, Clear enemies (bosses and objective targets stay).
+- **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode;
+  any crash that still happens costs no life), Relax Mode on/off, Complete objective, Level up (a real promotion: a
+  perk and a full hull), Lose a life (crashes on the spot and costs a life even in god mode, so you can reach the Game
+  Over card fast; in Relax Mode it crashes you for free), Clear enemies (bosses and objective
+  targets stay).
 - **Secrets:** trigger any of the 10 (it plays the effect and counts as found; hover a button for its hint), and
   **Forget found secrets** to start the hunt over.
 
@@ -338,5 +354,8 @@ whether the zone allows it, and it doesn't clear the current objective, the menu
 `G.secrets.list()`, `G.secrets.trigger('konami')` and `G.secrets.reset()` work on the secrets, and
 `G.secrets.checkDate(new Date(2026, 9, 31))` pretends it's Halloween. `G.player.landed` is set while you're on the
 ground, `G.player.lastLanding` holds the latest touchdown (`{ grade, title, sink, bank, points, x, z }`), and the
-player pushes a `'landed'` event on each one. The whole `G.secrets` API, and how to add a
+player pushes a `'landed'` event on each one. `G.player.lives` is the lives left (set it high, e.g. `1e6`, for a
+script that crashes on purpose; the HUD then shows `❤️ ×N`), `G.gameOver` is true while the Game Over card is up,
+`G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it. `LIVES` and `REGEN_DELAY` sit
+at the top of `src/player.js`. The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).

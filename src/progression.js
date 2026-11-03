@@ -28,14 +28,9 @@ export const xpForLevel = (level) => 125 * (level - 1) * level;
 export class Progress {
   constructor(G) {
     this.G = G;
-    this.level = 1;
-    this.durationMul = 1;
-    this.spawnMul = 1;
-    this.pickupMul = 1;
-    this.perks = [];
     this.ranks = RANKS; // April 1 (secrets.js) swaps in sillier ones
     this.best = load();
-    this.saveTimer = 0;
+    this.resetRun();
     this.el = {
       level: document.getElementById('level'),
       rank: document.getElementById('rank'),
@@ -46,6 +41,17 @@ export class Progress {
     if (this.best.score > 0) {
       this.el.best.textContent = `Your best: ${this.best.score} points · Level ${this.best.level} (${rankFor(this.best.level)})`;
     }
+  }
+
+  // A fresh run (boot, and "Fly again" after a Game Over): level 1, no perks. The best run stays.
+  resetRun() {
+    this.level = 1;
+    this.durationMul = 1;
+    this.spawnMul = 1;
+    this.pickupMul = 1;
+    this.perks = [];
+    this.saveTimer = 0;
+    this.bestBefore = this.best.score; // the record this run is trying to beat (the Game Over card says if it did)
   }
 
   get rank() { return rankFor(this.level, this.ranks); }
@@ -68,7 +74,8 @@ export class Progress {
     const perk = PERKS[this.level - 2] || LATER_PERK;
     perk.apply(G);
     this.perks.push(perk.text);
-    G.ui.notify(`⭐ Promoted to Level ${this.level}: ${this.rank}! Perk: ${perk.text}.`, 'good', 5, 2);
+    if (!G.player.dead) G.player.health = G.player.maxHealth; // a promotion comes with a free repair (after Hull+ perks)
+    G.ui.notify(`⭐ Promoted to Level ${this.level}: ${this.rank}! Perk: ${perk.text}. Hull repaired!`, 'good', 5, 2);
     G.audio.success();
     G.fx.firework(G.player.pos.clone().addScaledVector(G.player.up, 40).addScaledVector(G.player.right, 60));
     const panel = document.getElementById('topleft');
@@ -91,7 +98,7 @@ function rankFor(level, ranks = RANKS) { return ranks[Math.min(level, ranks.leng
 function load() {
   try {
     const b = JSON.parse(localStorage.getItem(STORE_KEY) || localStorage.getItem(OLD_STORE_KEY) || 'null');
-    if (b && Number.isFinite(b.score) && Number.isFinite(b.level)) return b;
+    if (b && Number.isFinite(b.score) && Number.isFinite(b.level)) return { score: Math.max(0, Math.floor(b.score)), level: Math.max(1, Math.floor(b.level)) };
   } catch { /* storage unavailable */ }
   return { score: 0, level: 1 };
 }

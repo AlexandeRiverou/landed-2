@@ -71,10 +71,15 @@ try {
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
 
+  // A run starts with three lives, shown as hearts on the HUD.
+  const livesAtStart = await page.evaluate(() => { window.G.step(1 / 30); return { lives: window.G.player.lives, hearts: document.getElementById('lives').textContent, over: window.G.gameOver }; });
+
   const report = await page.evaluate(async () => {
     const G = window.G;
     const step = (n) => { for (let i = 0; i < n; i++) { G.player.invuln = 99; G.step(1 / 30); } };
     const out = {};
+    // Lives aren't what these checks are about (several crash on purpose): spare planes until the lives checks near the end.
+    G.player.lives = 1e6;
     step(150);
     out.firstObjective = G.objectives.current?.type;
     out.musicPlaying = !!G.audio.music && G.audio.music.chordIndex > 0;
@@ -724,7 +729,7 @@ try {
         const crash = p.crash.bind(p);
         p.crash = (r) => { reason ||= r; crash(r); };
         const fly = (x, y, z, yaw, frames, each) => {
-          p.pos.set(x, y, z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true;
+          p.pos.set(x, y, z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true; p.health = 1e6; // a crash zeroed it
           for (let k = 0; k < frames && !p.dead; k++) {
             p.invuln = 0; p.grace = 0;
             p.quat.setFromAxisAngle(new V(0, 1, 0), yaw); p.updateAxes(); // level, holding the heading
@@ -894,7 +899,7 @@ try {
         const crash = p.crash.bind(p);
         p.crash = (r) => { reason ||= r; crash(r); };
         const along = () => (p.pos.x - T.ax) * T.dx + (p.pos.z - T.az) * T.dz;
-        const placeAt = (t, lift) => { const c = W.tunnelPoint(T, t); p.pos.set(c.x, c.floor + T.H * lift, c.z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true; };
+        const placeAt = (t, lift) => { const c = W.tunnelPoint(T, t); p.pos.set(c.x, c.floor + T.H * lift, c.z); p.prevPos.copy(p.pos); p.dead = false; p.model.group.visible = true; p.health = 1e6; }; // a crash zeroed it
         const aim = (t) => { const c = W.tunnelPoint(T, Math.min(T.len + 100, t + 25)); p.nudgeToward(new V(c.x, c.floor + T.H * 0.42, c.z), 1e9, 1); p.updateAxes(); };
         placeAt(2, 0.42);
         let under = 0, t = 2;
@@ -1152,6 +1157,87 @@ try {
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
     return out;
   });
+  // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
+  // mends slowly (nothing in the first 10 s after a hit), a promotion repairs it, and losing the last life shows the
+  // Game Over card and freezes the game. "Fly again" (a real click, then Enter) starts a fresh run in place.
+  const L = {};
+  L.run = await page.evaluate(() => {
+    const G = window.G, p = G.player, out = {};
+    const hearts = () => document.getElementById('lives').textContent;
+    const step = (n) => { for (let i = 0; i < n; i++) { p.invuln = 99; G.step(1 / 30); } };
+    const settle = () => { for (let i = 0; i < 90 && p.dead; i++) G.step(1 / 30); }; // 3 s: the explosion, then respawn or Game Over
+    const crash = () => { p.invuln = 0; p.crash('ground'); };
+    G.enemies.spawnTimer = 1e9;
+    G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e));
+    G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.persuasion.reset(null);
+    G.objectives.cooldown = 1e9; // no points (so no promotion) and no repair kit mid-check
+    G.powerups.resetRun();
+    G.powerups.timer = 1e9;
+    out.was = { relax: G.relax, god: p.god };
+    if (G.relax) G.setRelax(false);
+    p.god = false;
+    p.lives = 3;
+    step(1);
+    out.hearts3 = hearts();
+    p.health = 10;
+    G.devmenu.levelUp();
+    out.levelUp = { health: p.health, max: p.maxHealth, note: [...G.ui.notes, ...G.ui.queue].some((n) => /Hull repaired/.test(n.text)) };
+    p.health = 50; p.sinceHit = 0;
+    step(30 * 9);
+    out.regen = { at9s: p.health, rate: p.stats.regen };
+    step(30 * 3);
+    out.regen.at12s = p.health;
+    crash();
+    out.crash1 = { lives: p.lives, hearts: hearts(), dead: p.dead };
+    settle();
+    out.respawn1 = { dead: p.dead, full: p.health === p.maxHealth, lives: p.lives };
+    G.setRelax(true);
+    crash();
+    settle();
+    out.relax = { lives: p.lives, dead: p.dead };
+    G.setRelax(false);
+    crash();
+    settle();
+    G.score = G.progress.best.score + 777; // a new best, saved before the card shows it
+    G.step(1 / 30);
+    crash();
+    out.last = { lives: p.lives, hearts: hearts(), overAtOnce: G.gameOver };
+    settle();
+    const card = document.getElementById('gameover');
+    let saved = 0;
+    try { saved = JSON.parse(localStorage.getItem('landed-best')).score; } catch { /* none */ }
+    out.over = {
+      gameOver: G.gameOver, paused: G.paused, shown: !card.classList.contains('hidden'), score: G.score, level: G.progress.level,
+      cardScore: document.getElementById('go-score').textContent, cardText: card.textContent, saved,
+    };
+    return out;
+  });
+  L.time0 = await page.evaluate(() => window.G.time);
+  await page.waitForTimeout(400);
+  L.frozen = (await page.evaluate(() => window.G.time)) === L.time0;
+  await page.click('#again');
+  const fresh = () => page.evaluate(() => {
+    const G = window.G, p = G.player;
+    G.step(1 / 30);
+    return {
+      lives: p.lives, hearts: document.getElementById('lives').textContent, score: G.score, level: G.progress.level, perks: G.progress.perks.length,
+      maxHealth: p.maxHealth, health: p.health, regen: p.stats.regen, over: G.gameOver, paused: G.paused, dead: p.dead,
+      hidden: document.getElementById('gameover').classList.contains('hidden'), completed: G.objectives.completed, zone: G.zones.index,
+    };
+  });
+  L.again = await fresh();
+  await page.evaluate(() => { const p = window.G.player; p.lives = 1; p.invuln = 0; p.crash('water'); for (let i = 0; i < 90 && !window.G.gameOver; i++) window.G.step(1 / 30); });
+  L.overByKey = await page.evaluate(() => window.G.gameOver);
+  await page.keyboard.press('Space'); // a shot just as the card appears doesn't skip it...
+  await page.keyboard.press('Enter');
+  L.keyLocked = await page.evaluate(() => window.G.gameOver && !document.getElementById('gameover').classList.contains('hidden'));
+  await page.waitForTimeout(1100); // ...but after a second, Enter flies again
+  await page.keyboard.press('Enter');
+  L.againByKey = await fresh();
+  report.lives = L;
+
   // Found secrets survive a reload. The reload pretends it's April 1, so the boot-time date check runs too.
   await page.clock.setFixedTime(new Date('2026-04-01T10:00:00'));
   await page.reload();
@@ -1256,6 +1342,15 @@ try {
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
+    [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
+    [(({ levelUp: u }) => u.health === u.max && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) repairs the hull, and says so'],
+    [(({ regen: r }) => r.at9s === 50 && r.at12s > 50 && r.at12s <= 50 + r.rate * 2.2)(L.run), 'hull: no repairs for 10 s after a hit, then slowly (stats.regen hp/s)'],
+    [(({ crash1: c, respawn1: r }) => c.lives === 2 && c.dead && c.hearts === '❤️❤️🖤' && !r.dead && r.full && r.lives === 2)(L.run), 'lives: a crash costs a life, and you respawn with a full hull'],
+    [L.run.relax.lives === 2 && !L.run.relax.dead, 'lives: a crash in Relax Mode costs no life'],
+    [(({ last: l, over: o }) => l.lives === 0 && l.hearts === '🖤🖤🖤' && !l.overAtOnce && o.gameOver && o.paused && o.shown && o.cardScore === String(o.score) && o.cardText.includes(`Level ${o.level}`) && /New best/.test(o.cardText) && o.saved === o.score)(L.run), 'lives: the third crash shows the Game Over card (after the explosion) with score, level and a saved best'],
+    [L.frozen, 'lives: the game is paused behind the Game Over card'],
+    [L.keyLocked, 'lives: Space / Enter in the first second of the Game Over card do not skip it'],
+    [[L.again, L.againByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && a.health === 100 && a.regen === 1 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 0) && L.overByKey, 'lives: Fly again (click, or Enter) starts a fresh run: 3 lives, score 0, level 1, base hull'],
     [(({ up: s }) => s.name === 'Immelmann' && s.back < -0.9 && s.upright > 0.9 && s.climb > 15)(report.stunts), 'double-tap up: Immelmann turns you back and up'],
     [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],

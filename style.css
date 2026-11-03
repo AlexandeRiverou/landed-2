@@ -81,6 +81,10 @@ html, body {
 #secret-toast.show { opacity: 1; transform: translate(-50%, 0); }
 #secret-toast b { display: block; font-size: 17px; }
 #secret-toast span { display: block; font-size: 13px; font-weight: 600; margin-top: 2px; }
+/* Game Over card: the final score big, the run's level and tally under it. */
+#go-score { font-size: 44px; font-weight: 700; line-height: 1; color: #7a4cff; }
+#gameover .go-label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; margin-bottom: 4px; }
+#go-best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
 #build-info { font-family: ui-monospace, Menlo, monospace; }
 
 /* Active power-ups, stacked above the hull/boost bars. */
@@ -108,6 +112,9 @@ html, body {
 #hp-fill { height: 100%; background: var(--good); width: 100%; transition: width 0.15s; }
 #boost-fill { height: 100%; background: #3aa8ff; width: 100%; }
 #speed { font-size: 12px; margin-top: 4px; opacity: 0.8; }
+#lives { font-size: 15px; letter-spacing: 2px; line-height: 1.2; margin-bottom: 2px; }
+#lives.lost { animation: livelost 0.6s ease-out; }
+@keyframes livelost { 0%, 40% { transform: translateX(-4px) scale(1.2); } 20%, 60% { transform: translateX(4px) scale(1.2); } 100% { transform: none; } }
 
 /* Messages live in a narrow column on the left, under the score: never over the objective
    panel (top-right) or the plane (center). */
