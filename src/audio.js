@@ -85,6 +85,11 @@ export class Sfx {
   quack() { this.tone(640, 0.09, { type: 'sawtooth', vol: 0.09, slide: -280 }); this.tone(600, 0.14, { type: 'sawtooth', vol: 0.09, slide: -300, delay: 0.13 }); }
   sparkle() { [1568, 2093, 2637, 3136].forEach((f, i) => this.tone(f, 0.2, { type: 'sine', vol: 0.07, delay: i * 0.07 })); }
   nag() { this.tone(520, 0.12, { type: 'triangle', vol: 0.1 }); this.tone(390, 0.18, { type: 'triangle', vol: 0.1, delay: 0.12 }); }
+  // A tiny crowd: a patter of noise claps and a rising "wooo".
+  cheer() {
+    for (let i = 0; i < 16; i++) this.noise(0.05, { vol: 0.1, freq: 2000 + Math.random() * 2500, delay: i * 0.045 + Math.random() * 0.03 });
+    this.tone(500, 0.6, { type: 'triangle', vol: 0.06, slide: 300 });
+  }
   sad() { [392, 370, 349, 330].forEach((f, i) => this.tone(f, i === 3 ? 0.7 : 0.3, { type: 'sawtooth', vol: 0.07, delay: i * 0.3, slide: i === 3 ? -40 : 0 })); }
 
   toggleMute() {

@@ -4,9 +4,17 @@
 import * as THREE from 'three';
 import { makeArrow3D, makeSign, makeTextSprite, makeRing, disposeTree } from './models.js';
 import { pick, rand, fmt, T, weightedPick } from './texts.js';
-import { crossRing, flatForward, groundAt } from './objectives.js';
+import { crossRing, flatForward, groundAt, underRoof } from './objectives.js';
+import { curveDrop } from './curve.js';
 
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+const Y = new THREE.Vector3(0, 1, 0);
+
+// Pacing. The first tactic comes after FIRST_NEGLECT s of neglect, each later one NEGLECT_STEP s of neglect after
+// that; whatever the neglect rate (flying away fills it 1.5x), two tactics are at least MIN_GAP real seconds apart.
+const FIRST_NEGLECT = 20, NEGLECT_STEP = 14, MIN_GAP = 15;
+const WRONG_WAY_GAP = 25;  // real seconds between two "wrong way" nags
+const TROPHY_STAGE = 13;   // this many escalations and we just hand over the participation trophy
 
 // Each tactic: tier (1 mild → 3 desperate), repeat (max uses per objective), can(), apply() → effect | text.
 export const TACTICS = [
@@ -48,6 +56,23 @@ export const TACTICS = [
     can: () => true,
     apply: (G, o) => beam(G, o),
     texts: ['We installed a 900 m laser pointer on {noun}. Very subtle.', 'Behold: a giant beam of light. If you miss this, we need to talk.', 'Light pillar activated. Visible from space. And from your plane, hopefully.'],
+  },
+  {
+    id: 'reverse', tier: 1, repeat: 2, weight: 0.8,
+    can: () => true,
+    // Reverse psychology. The second time, it stops being subtle.
+    apply: (G, o, P) => ({ text: pick(P.used.get('reverse') > 1 ? T.reverseAgain : T.reverse) }),
+  },
+  {
+    id: 'petition', tier: 1,
+    can: () => true,
+    apply: (G, o) => petition(G, o),
+  },
+  {
+    id: 'hotCold', tier: 1, need: 'place',
+    can: () => true,
+    apply: (G, o) => hotCold(G, o),
+    texts: ['Let\'s play hot & cold! Check the objective card. Hint: you\'re cold.', 'Temperature sensor attached to {noun}. Fly toward the warm.'],
   },
   {
     id: 'giantText', tier: 2, need: 'place',
@@ -122,6 +147,37 @@ export const TACTICS = [
     texts: ['Your plane is now magnetic. {Noun} will come to you if you get close-ish.', 'Magnet mode! Get within 450 m and {noun} will start drifting over.'],
   },
   {
+    id: 'cheerSquad', tier: 2, need: 'place',
+    can: () => true,
+    apply: (G, o) => cheerSquad(G, o),
+    texts: ['We hired a cheer squad. They cheer every time you turn toward {noun}. Only then.', 'A live studio audience has been added. They LOVE it when you face {noun}.'],
+  },
+  {
+    id: 'redCarpet', tier: 2, need: 'place',
+    can: () => true,
+    apply: (G, o) => redCarpet(G, o),
+    texts: ['We rolled out the red carpet. All the way to {noun}. Dress code: plane.', 'Red carpet installed. Paparazzi not included. VIP access to {noun}.'],
+  },
+  {
+    id: 'limitedOffer', tier: 2,
+    can: () => true,
+    apply: (G, o, P) => limitedOffer(G, o, P),
+    texts: ['LIMITED-TIME OFFER! Finish {noun} in 60 seconds for +100 bonus points! Terms and conditions: none.', 'Act now! {Noun}, today only, comes with +100 FREE points. 60 seconds left!'],
+  },
+  {
+    id: 'skywriting', tier: 2, need: 'place',
+    can: () => true,
+    apply: (G, o) => skywriting(G, o),
+    texts: ['We hired a skywriter. It cost a fortune. Please read it.', 'Message in the clouds, just for you. Cloud font, size: enormous.'],
+  },
+  {
+    id: 'cinematic', tier: 2, need: 'place',
+    // Only with sky to spare: for two seconds you're watching {noun}, not the ground.
+    can: (o, P) => !P.G.player.dead && P.G.player.pos.y - groundAt(P.G, P.G.player.pos.x, P.G.player.pos.z) > 80,
+    apply: (G, o) => cinematic(G, o),
+    texts: ['Mission control has borrowed your camera for a short presentation about {noun}.', 'And now, a brief cinematic of {noun}. Please hold your applause.'],
+  },
+  {
     id: 'approach', tier: 3, repeat: 3, cap: 'approach',
     can: () => true,
     apply: (G, o) => { o.approach(G, 0.45); },
@@ -144,6 +200,24 @@ export const TACTICS = [
     can: (o) => o.type !== 'gate',
     apply: (G, o) => ringParade(G, o),
     texts: ['Practice rings installed along the way. Like training wheels, but rings. +15 each!', 'A tunnel of rings now leads to {noun}. It\'s basically a waterslide.'],
+  },
+  {
+    id: 'escort', tier: 3, need: 'place',
+    can: () => true,
+    apply: (G, o) => escort(G, o),
+    texts: ['A squadron of paper planes will now escort you to {noun}. They\'re very patient. And very folded.', 'Follow the paper planes! They know the way. They read the brief.'],
+  },
+  {
+    id: 'coinTrail', tier: 3, need: 'place',
+    can: () => true,
+    apply: (G, o) => coinTrail(G, o),
+    texts: ['We paved the way to {noun} with gold coins. 10 points each. Yes, this is bribery.', 'Coins! Real(ish) money! Lying in the sky on the way to {noun}. Just saying.'],
+  },
+  {
+    id: 'ultimatum', tier: 3,
+    can: () => true,
+    apply: (G, o) => ultimatum(G, o),
+    texts: ['Final warning: reach {noun} in 30 seconds or we send it a "we need to talk" text.'],
   },
   {
     id: 'flatten', tier: 3,
@@ -188,6 +262,7 @@ export class Persuasion {
     this.prevDist = null;
     this.awayTime = 0;
     this.lastWrongWay = -99;
+    this.lastEscalate = -99;
     this.closeShown = false;
     this.time = 0;
   }
@@ -201,6 +276,7 @@ export class Persuasion {
     G.sky.sunOverride = null;
     G.sky.fogBoost = 1;
     G.player.wind.set(0, 0, 0);
+    G.camPeek = null;
     if (this.flattened) {
       if (G.world.amp === this.flattened.now) { G.world.amp = this.flattened.prev; G.terrain.rebuildAll(); G.player.grace = 5; }
       this.flattened = null;
@@ -227,7 +303,7 @@ export class Persuasion {
       this.prevDist = d;
       if (this.awayTime > 0.5) rate = 1.5;
       if (d < this.bestDist - 25) { this.bestDist = d; rate = 0.15; }
-      if (this.awayTime > 5 && this.time - this.lastWrongWay > 14) {
+      if (this.awayTime > 5 && this.time - this.lastWrongWay > WRONG_WAY_GAP) {
         this.lastWrongWay = this.time;
         G.ui.notify(fmt(pick(T.wrongWay), obj.noun), 'warn', 4);
         G.audio.nag();
@@ -239,7 +315,7 @@ export class Persuasion {
     }
     if (obj.progressed) { obj.progressed = false; rate = 0; this.neglect = Math.max(0, this.neglect - 4); }
     this.neglect += dt * rate;
-    if (this.neglect >= 11 + this.stage * 8) this.escalate();
+    if (this.neglect >= FIRST_NEGLECT + this.stage * NEGLECT_STEP && this.time - this.lastEscalate >= MIN_GAP) this.escalate();
   }
 
   available(obj) {
@@ -258,7 +334,8 @@ export class Persuasion {
   escalate() {
     const G = this.G, obj = this.obj;
     this.stage++;
-    if (this.stage >= 13) {
+    this.lastEscalate = this.time;
+    if (this.stage >= TROPHY_STAGE) {
       G.ui.notify(pick(T.trophy), 'good', 6);
       G.objectives.complete(true);
       return;
@@ -498,5 +575,296 @@ function ringParade(G, o) {
       }
     },
     dispose() { for (const r of rings) { G.scene.remove(r); disposeTree(r); } },
+  };
+}
+
+// A line of text under the objective card (hot & cold, countdowns). The caller removes it in dispose().
+function hudLine(color) {
+  const el = document.createElement('div');
+  Object.assign(el.style, { fontSize: '14px', fontWeight: '700', marginTop: '4px', color });
+  document.getElementById('objective').append(el);
+  return el;
+}
+
+// Notifications on a timer: [[seconds, text], ...], then the effect ends.
+function chain(G, o, steps, kind = 'persuade') {
+  let t = 0, i = 0;
+  return {
+    update(dt) {
+      t += dt;
+      while (i < steps.length && t >= steps[i][0]) G.ui.notify(fmt(steps[i++][1], o.noun), kind, 5);
+      if (i >= steps.length) return false;
+    },
+  };
+}
+
+function petition(G, o) {
+  let n = Math.round(rand(900, 1600));
+  const sig = () => (n = Math.round(n * rand(3, 5))).toLocaleString('en-US');
+  const line = (k) => T.petition[k].replace('{n}', k ? sig() : n.toLocaleString('en-US'));
+  return { text: line(0), ...chain(G, o, [[8, line(1)], [16, line(2)]]) };
+}
+
+function ultimatum(G, o) {
+  const c = chain(G, o, [[15, T.ultimatum[0]], [30, T.ultimatum[1]]], 'warn');
+  let t = 0;
+  return { update(dt) { t += dt; if (t >= 30 && t - dt < 30) G.audio.sad(); return c.update(dt); } };
+}
+
+// How much the nose points at the target: 1 dead ahead, -1 straight behind.
+function facing(G, tg) { return _v.subVectors(tg, G.player.pos).normalize().dot(G.player.forward); }
+
+const HEAT = [ // [min facing, label, colour], hottest first
+  [0.95, '🔥 ON FIRE!!!', '#ff3a2a'], [0.75, '♨️ Hot', '#ff7a2a'], [0.35, '🌤️ Warmer', '#e0a000'],
+  [-0.2, '🌥️ Colder', '#4a9ad8'], [-2, '❄️ FREEZING', '#2a6ad8'],
+];
+
+function hotCold(G, o) {
+  const el = hudLine('');
+  let t = 35, last = null, tintCd = 0;
+  return {
+    update(dt) {
+      const tg = o.target();
+      t -= dt; tintCd -= dt;
+      if (!tg || t <= 0) return false;
+      const h = HEAT.find((x) => facing(G, tg) >= x[0]);
+      if (h === last) return;
+      if (last && tintCd <= 0 && (h === HEAT[0] || h === HEAT[4])) { G.ui.tint(h[2], 1.5); tintCd = 4; } // a warm or icy flush at the extremes
+      last = h;
+      el.textContent = 'Hot & cold: ' + h[1];
+      el.style.color = h[2];
+    },
+    dispose() { el.remove(); },
+  };
+}
+
+// Confetti and applause whenever the player turns to face the target. Not before.
+function cheerSquad(G, o) {
+  let t = 40, away = true, cd = 0;
+  return {
+    update(dt) {
+      const tg = o.target(), p = G.player;
+      t -= dt; cd -= dt;
+      if (!tg || t <= 0) return false;
+      if (p.dead) return;
+      const f = facing(G, tg);
+      if (f < 0.5) away = true;
+      else if (f > 0.9 && away && cd <= 0) {
+        away = false; cd = 3;
+        G.fx.confetti(_w.copy(p.pos).addScaledVector(p.forward, 45));
+        G.audio.cheer();
+        G.ui.notify(pick(['The crowd goes WILD!', 'YES! THAT WAY! *applause*', 'Standing ovation for your heading!', 'The cheer squad is losing its voice. Worth it.']), 'good', 2, 0);
+      }
+    },
+  };
+}
+
+// Points from just ahead of the player to the target, kept above ground and under any cave roof.
+function route(G, o, n, ahead) {
+  const p = G.player;
+  const pts = pathPoints(G, p.pos.clone().addScaledVector(p.forward, ahead), o.target().clone(), n);
+  for (const pt of pts) pt.y = underRoof(G, pt.x, pt.z, pt.y, 10);
+  return pts;
+}
+
+function redCarpet(G, o) {
+  const pts = route(G, o, 18, 60);
+  pts.push(o.target().clone());
+  const box = new THREE.BoxGeometry(1, 1, 1), post = new THREE.CylinderGeometry(0.35, 0.45, 6, 6), knob = new THREE.SphereGeometry(0.9, 8, 6), flame = new THREE.ConeGeometry(1.2, 3.5, 7);
+  const red = new THREE.MeshLambertMaterial({ color: '#c8102e' }), gold = new THREE.MeshLambertMaterial({ color: '#ffcc33', emissive: '#6a4a00' });
+  const fire = new THREE.MeshBasicMaterial({ color: '#ffa020', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+  const group = new THREE.Group(), segs = [], flames = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1], len = a.distanceTo(b);
+    const seg = new THREE.Group();
+    seg.position.lerpVectors(a, b, 0.5);
+    seg.lookAt(b);
+    const rug = new THREE.Mesh(box, red);
+    rug.scale.set(9, 0.4, len + 0.5);
+    const trim = new THREE.Mesh(box, gold);
+    trim.scale.set(10.5, 0.3, len + 0.5);
+    trim.position.y = -0.15;
+    seg.add(rug, trim);
+    for (const x of [-6, 6]) { // stanchions, and a little torch on every other one
+      const s = new THREE.Mesh(post, gold);
+      s.position.set(x, 3, -len / 2);
+      const k = new THREE.Mesh(knob, gold);
+      k.position.y = 3.3;
+      s.add(k);
+      if (i % 2 === 0) { const f = new THREE.Mesh(flame, fire); f.position.y = 5.5; s.add(f); flames.push(f); }
+      seg.add(s);
+    }
+    seg.visible = false;
+    group.add(seg);
+    segs.push(seg);
+  }
+  G.scene.add(group);
+  let t = 0;
+  return {
+    update(dt) {
+      t += dt;
+      segs.forEach((s, i) => { s.visible = t * 9 > i; }); // rolls out over two seconds
+      for (const f of flames) f.scale.set(1, 0.8 + Math.random() * 0.5, 1);
+    },
+    dispose() { G.scene.remove(group); for (const x of [box, post, knob, flame, red, gold, fire]) x.dispose(); },
+  };
+}
+
+// +100 if the objective is done within 60 s. Paid out when the objective completes (not by the trophy).
+function limitedOffer(G, o, P) {
+  const BONUS = 100;
+  const el = hudLine('#ff4dc4'), done0 = G.objectives.completed;
+  let left = 60, shown = -1;
+  return {
+    update(dt) {
+      left -= dt;
+      if (left <= 0) { G.ui.notify(fmt('Offer expired. {Noun} is still available at full price.', o.noun), 'info', 4); return false; }
+      const s = Math.ceil(left);
+      if (s !== shown) { shown = s; el.textContent = `⏰ LIMITED OFFER: +${BONUS} · 0:${String(s).padStart(2, '0')}`; }
+    },
+    dispose() {
+      el.remove();
+      // Objectives.complete() counts the win, then resets persuasion while the objective is still current.
+      if (left > 0 && G.objectives.current === o && G.objectives.completed > done0 && P.stage < TROPHY_STAGE) {
+        G.score += BONUS;
+        G.ui.notify(`Limited-time offer redeemed! +${BONUS} bonus points. What a bargain.`, 'good', 4);
+      }
+    },
+  };
+}
+
+// Pixels of `text` drawn small on a canvas, as [x, y] cells centred on 0.
+function textCells(text, W = 96, H = 20) {
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  let fs = H - 2;
+  c.font = `700 ${fs}px Fredoka, 'Trebuchet MS', sans-serif`;
+  const w = c.measureText(text).width;
+  if (w > W - 4) { fs = Math.floor((fs * (W - 4)) / w); c.font = `700 ${fs}px Fredoka, 'Trebuchet MS', sans-serif`; }
+  c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(text, W / 2, H / 2 + 1);
+  const d = c.getImageData(0, 0, W, H).data, cells = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 120) cells.push([x - W / 2, H / 2 - y]);
+  return cells;
+}
+
+// Cloud-puff letters in front of the player, saying which way to turn (as seen when it was written).
+function skywriting(G, o) {
+  const p = G.player, tg = o.target();
+  const f = flatForward(G);
+  _v.subVectors(tg, p.pos).setY(0).normalize();
+  const side = _v.dot(_w.crossVectors(f, Y)); // > 0: target is to the right
+  const text = _v.dot(f) > 0.8 ? 'STRAIGHT ON!' : _v.dot(f) < -0.6 ? 'U-TURN!!' : side > 0 ? 'TURN RIGHT →' : '← TURN LEFT';
+  const cells = textCells(text);
+  const CELL = 3.2;
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#9a9aa8', transparent: true, opacity: 0.95, flatShading: true });
+  const puffs = new THREE.InstancedMesh(geo, mat, cells.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  cells.forEach(([x, y], i) => {
+    sc.setScalar(CELL * rand(0.75, 1.15));
+    m.compose(_w.set(x * CELL + rand(-0.6, 0.6), y * CELL + rand(-0.6, 0.6), rand(-1.5, 1.5)), q, sc);
+    puffs.setMatrixAt(i, m);
+  });
+  const pos = p.pos.clone().addScaledVector(f, 330);
+  _w.crossVectors(f, Y);
+  let ground = -Infinity; // the highest ground under the whole ~300 m line of letters
+  for (let k = -2; k <= 2; k++) ground = Math.max(ground, groundAt(G, pos.x + _w.x * k * 80, pos.z + _w.z * k * 80));
+  pos.y = underRoof(G, pos.x, pos.z, Math.max(p.pos.y + 45, ground + 70), 40);
+  puffs.position.copy(pos);
+  puffs.lookAt(p.pos.x, pos.y, p.pos.z); // readable from where the player is now
+  G.scene.add(puffs);
+  let t = 0;
+  const LIFE = 30;
+  return {
+    update(dt) {
+      t += dt;
+      if (t >= LIFE) return false;
+      puffs.scale.setScalar(1 + t * 0.008);  // the letters slowly spread out...
+      mat.opacity = 0.95 * Math.min(1, (LIFE - t) / 6); // ...and blow away
+    },
+    dispose() { G.scene.remove(puffs); puffs.dispose(); geo.dispose(); mat.dispose(); },
+  };
+}
+
+// The camera swings over to look at the target for a moment, then back. Flying stays in the player's hands.
+function cinematic(G, o) {
+  const DUR = 2.6, peek = { at: new THREE.Vector3(), w: 0 };
+  G.camPeek = peek;
+  let t = 0;
+  return {
+    update(dt) {
+      const tg = o.target();
+      t += dt;
+      if (!tg || G.player.dead || t >= DUR || G.camPeek !== peek) return false;
+      peek.at.copy(tg);
+      peek.at.y -= curveDrop(tg.x, tg.z, G.camera.position); // on a tiny planet, look where it's drawn
+      const k = Math.min(1, t / 0.6, (DUR - t) / 0.6);
+      peek.w = k * k * (3 - 2 * k);
+    },
+    dispose() { if (G.camPeek === peek) G.camPeek = null; },
+  };
+}
+
+// A V of paper planes that flies to the target, slowing down to wait when the player falls behind.
+function escort(G, o) {
+  const p = G.player;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 3, -2.2, 0.4, -2, 0, -0.7, -1.6, 0, 0, 3, 0, -0.7, -1.6, 2.2, 0.4, -2], 3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#404040', side: THREE.DoubleSide, flatShading: true });
+  const SLOTS = [[0, 0], [-9, -9], [9, -9], [-18, -18], [18, -18]]; // [side, back] in metres
+  const planes = SLOTS.map(() => { const m = new THREE.Mesh(geo, mat); m.scale.setScalar(2.2); G.scene.add(m); return m; });
+  const lead = p.pos.clone().addScaledVector(p.forward, 70).addScaledVector(Y, 8);
+  const dir = p.forward.clone();
+  const goal = new THREE.Vector3(), right = new THREE.Vector3();
+  let t = 0, ang = 0;
+  return {
+    update(dt) {
+      const tg = o.target();
+      t += dt;
+      if (!tg || t > 30) return false;
+      const near = lead.distanceTo(tg) < 90;
+      if (near) { ang += dt * 0.7; goal.set(tg.x + Math.cos(ang) * 70, tg.y + 25, tg.z + Math.sin(ang) * 70); } // there: circle it
+      else goal.copy(tg);
+      const gap = lead.distanceTo(p.pos);
+      const speed = gap > 240 ? 10 : Math.max(45, p.speed * (gap < 100 ? 1.15 : 0.9));
+      dir.lerp(_v.subVectors(goal, lead).normalize(), 1 - Math.exp(-dt * 1.5)).normalize();
+      lead.addScaledVector(dir, speed * dt);
+      lead.y = underRoof(G, lead.x, lead.z, Math.max(lead.y, groundAt(G, lead.x, lead.z) + 25), 15);
+      right.crossVectors(dir, Y);
+      if (right.lengthSq() < 1e-4) right.set(1, 0, 0);
+      right.normalize();
+      planes.forEach((m, i) => {
+        const [s, b] = SLOTS[i];
+        m.position.copy(lead).addScaledVector(right, s).addScaledVector(dir, b).addScaledVector(Y, Math.sin(t * 2 + i) * 1.5);
+        m.lookAt(_w.copy(m.position).add(dir));
+      });
+    },
+    dispose() { for (const m of planes) G.scene.remove(m); geo.dispose(); mat.dispose(); },
+  };
+}
+
+function coinTrail(G, o) {
+  const pts = route(G, o, 16, 70);
+  const geo = new THREE.CylinderGeometry(3.2, 3.2, 0.7, 16);
+  geo.rotateX(Math.PI / 2); // face the player, spin around Y
+  const mat = new THREE.MeshLambertMaterial({ color: '#ffcc33', emissive: '#8a5a00' });
+  const coins = pts.map((pt) => { const m = new THREE.Mesh(geo, mat); m.position.copy(pt); G.scene.add(m); return m; });
+  return {
+    update(dt) {
+      for (const m of coins) {
+        if (!m.visible) continue;
+        m.rotation.y += dt * 3;
+        if (m.position.distanceTo(G.player.pos) < 15) {
+          m.visible = false;
+          G.score += 10;
+          G.audio.ding(1.8);
+          G.fx.sparkle(m.position, '#ffcc33');
+        }
+      }
+    },
+    dispose() { for (const m of coins) G.scene.remove(m); geo.dispose(); mat.dispose(); },
   };
 }

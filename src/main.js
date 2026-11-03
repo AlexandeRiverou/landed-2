@@ -62,6 +62,7 @@ G.sky.clouds.setStyle('#ffffff', 40);
 const camUp = new THREE.Vector3(0, 1, 0);
 const Y = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _l = new THREE.Vector3(), _u = new THREE.Vector3();
+const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
 function updateCamera(dt, snap = false) {
   const p = G.player;
@@ -76,6 +77,14 @@ function updateCamera(dt, snap = false) {
   camUp.lerp(_u, 1 - Math.exp(-dt * 4)).normalize();
   camera.up.copy(camUp);
   camera.lookAt(_l.copy(p.pos).addScaledVector(p.forward, 30));
+  // Persuasion's "cinematic look" (G.camPeek = { at, w }): turn the view toward `at`, by w (0..1).
+  const peek = G.camPeek;
+  if (peek && peek.w > 0) {
+    _q.copy(camera.quaternion);
+    camera.lookAt(peek.at);
+    camera.quaternion.slerpQuaternions(_q, _q2.copy(camera.quaternion), Math.min(1, peek.w));
+    camera.updateMatrixWorld(); // the HUD marker projects through it before the next render
+  }
   const fov = 70 + Math.max(0, (p.speed - p.baseSpeed) / p.baseSpeed) * 16;
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
 }

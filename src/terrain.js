@@ -11,7 +11,7 @@ export const SEG = 40;
 const STEP = CHUNK / SEG;
 const GW = SEG + 3; // height grid width incl. one-vertex border for normals
 export const RADIUS = 4;
-const AIRBORNE = new Set(['floatingIsland', 'hotAirBalloon', 'fishSchool']);
+const AIRBORNE = new Set(['floatingIsland', 'cloudIsland', 'hotAirBalloon', 'fishSchool', 'skyLantern', 'cloudWhale']);
 const SCORCH = (() => { const c = new THREE.Color('#4a3424'); return [c.r, c.g, c.b]; })();
 const rgb = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
 const CEIL_ROCK = [rgb('#6a6080'), rgb('#5a5470'), rgb('#7a7090')];
@@ -42,6 +42,21 @@ const LANDMARKS = {
   [CAT.MESA]: ['moai', 'ruins'],
   [CAT.BEACH]: ['lighthouse', 'ferrisWheel'],
   [CAT.SNOW]: ['castleTower', 'radioTower', 'igloo'],
+};
+
+// Every prop the tables and landmarks can pick, for themes that replace (nearly) all of them.
+const ALL_PICKS = [...new Set([...Object.values(TABLES).flat().map((e) => e[0]), ...Object.values(LANDMARKS).flat()])].filter(Boolean);
+
+// Islands with things standing on them, by island prop. The island is a fixed size, so its flat top sits
+// `top` × scale above where it's placed and is `radius` × scale wide. One centrepiece in the middle, a few
+// small things around the rim, lanterns floating beside it, and now and then a whale drifting past.
+const ISLAND_DECKS = {
+  cloudIsland: {
+    top: 2, radius: 21, scale: [1.2, 1.9], centreScale: 1.5,
+    centre: [['cloudCastle', 3], ['marbleTemple', 2], ['goldenGate', 1.6], ['skyLighthouse', 1.4], ['giantHarp', 1.2], ['balloonDock', 1.2], ['rainbowArch', 1.2], ['wingedStatue', 0.8]],
+    rim: [['cloudPuff', 4], ['wingedStatue', 0.8], ['giantHarp', 0.25], [null, 1]],
+    lanterns: [1, 4], whale: 0.12,
+  },
 };
 
 export const THEMES = {
@@ -96,6 +111,14 @@ export const THEMES = {
     appleTree: 'roundTree', bush: 'parkTree', flowers: 'bench', haybale: 'bench', rock: null, rockB: null, house: null, sheep: null, cow: null, scarecrow: 'streetLamp',
     well: 'fountain', tractor: null, picnicTable: 'bench', gnome: 'statue', log: 'bench', tent: null, iceberg: null,
     windmill: 'statue', castleTower: 'statue', barn: 'fountain', stoneCircle: 'fountain', radioTower: 'statue', ruins: 'fountain',
+  },
+  // The Cloud Kingdom: a soft cloud sea below with cloud banks and the odd golden gate; the islands carry the
+  // castles (ISLAND_DECKS).
+  cloudKingdom: {
+    ...Object.fromEntries(ALL_PICKS.map((k) => [k, null])),
+    roundTree: 'cloudPuff', pine: 'cloudPuff', birch: 'cloudPuff', bush: 'cloudPuff', appleTree: 'cloudPuff', snowPine: 'cloudPuff', palm: 'cloudPuff', cactus: 'cloudPuff',
+    rock: 'cloudPuff', rockB: 'cloudPuff', windmill: 'goldenGate', castleTower: 'goldenGate', stoneCircle: 'marbleTemple', ruins: 'marbleTemple', lighthouse: 'skyLighthouse',
+    floatingIsland: 'cloudIsland',
   },
   duck: { cow: 'duck', sheep: 'duck', sailboat: 'duck', whale: 'duck', boat: 'duck', buoy: 'duck', house: 'duck', rockB: 'duck', bush: 'duck' },
 };
@@ -411,10 +434,11 @@ export class Terrain {
     const theme = THEMES[world.propTheme] || {};
     const buckets = {};
     const V = SEG + 1;
-    const place = (type, x, y, z, scaleMul = 1, yaw = null) => { // yaw: a fixed heading (cars follow their lane)
+    // yaw: a fixed heading (cars follow their lane); aloft: up on an island, out of reach of craters and runways
+    const place = (type, x, y, z, scaleMul = 1, yaw = null, aloft = false) => {
       const meta = PROPS[type];
       if (!meta) return;
-      (buckets[type] ||= []).push({ x, y, z, meta, s: scaleMul, yaw });
+      (buckets[type] ||= []).push({ x, y, z, meta, s: scaleMul, yaw, aloft });
     };
 
     const attempts = Math.round(64 * world.propDensity);
@@ -450,9 +474,16 @@ export class Terrain {
         if (type) place(type, ox + rng() * CHUNK, world.seaLevel, oz + rng() * CHUNK);
       }
     }
-    if (rng() < world.floatingIslands && !world.cave) {
+    // floatingIslands is the chance of an island per chunk; above 1, each whole number is one more island.
+    for (let k = 0, n = Math.max(1, Math.ceil(world.floatingIslands)); k < n; k++) {
+      if (!(rng() < world.floatingIslands - k) || world.cave) continue;
       const u = rng() * SEG, v = rng() * SEG;
-      place('floatingIsland', ox + u * STEP, Math.max(top(u, v), world.seaLevel) + 140 + rng() * 240, oz + v * STEP);
+      const type = theme.floatingIsland || 'floatingIsland', x = ox + u * STEP, y = Math.max(top(u, v), world.seaLevel) + 140 + rng() * 240, z = oz + v * STEP;
+      const deck = ISLAND_DECKS[type];
+      if (!deck) { place(type, x, y, z); continue; }
+      const s = deck.scale[0] + rng() * (deck.scale[1] - deck.scale[0]), w = s * world.propScale;
+      place(type, x, y, z, s);
+      decorateIsland(deck, x, y + deck.top * w, z, deck.radius * w, rng, place);
     }
     if (world.underwater) { // where the sky would have balloons, the sea has fish
       for (let k = 0; k < 2; k++) {
@@ -478,7 +509,7 @@ export class Terrain {
         _p.set(it.x, it.y - m.sink * s, it.z);
         // Anything standing in a crater was blown away (sky and sea props are out of reach).
         // Nor does anything stand on flattened ground (a runway).
-        if (!m.sea && !AIRBORNE.has(type) && (craterDepthAt(it.x, it.z) > 1 || padAt(it.x, it.z) > 0.3)) _s.setScalar(0);
+        if (!m.sea && !it.aloft && !AIRBORNE.has(type) && (craterDepthAt(it.x, it.z) > 1 || padAt(it.x, it.z) > 0.3)) _s.setScalar(0);
         im.setMatrixAt(i, _m.compose(_p, _q, _s));
         if (m.tints) _c.copy(m.tints[Math.floor(rng() * m.tints.length)]);
         else { const b = 0.85 + rng() * 0.3; _c.setRGB(b, b, b); }
@@ -488,6 +519,25 @@ export class Terrain {
       group.add(im);
     }
     return group;
+  }
+}
+
+// Stand things on an island's flat top (y) of radius r, and hang lanterns (and maybe a whale) in the air beside it.
+function decorateIsland(deck, x, y, z, r, rng, place) {
+  place(pickWeighted(rng, deck.centre), x, y, z, deck.centreScale, null, true);
+  const n = 2 + Math.floor(rng() * 3), a0 = rng() * Math.PI * 2;
+  for (let k = 0; k < n; k++) {
+    const a = a0 + (k / n) * Math.PI * 2, d = r * (0.68 + rng() * 0.14);
+    place(pickWeighted(rng, deck.rim), x + Math.cos(a) * d, y, z + Math.sin(a) * d, 0.8, null, true);
+  }
+  const lanterns = deck.lanterns[0] + Math.floor(rng() * (deck.lanterns[1] - deck.lanterns[0] + 1));
+  for (let k = 0; k < lanterns; k++) {
+    const a = rng() * Math.PI * 2, d = r * (1.05 + rng() * 0.5);
+    place('skyLantern', x + Math.cos(a) * d, y + 6 + rng() * 34, z + Math.sin(a) * d, 1, null, true);
+  }
+  if (rng() < deck.whale) {
+    const a = rng() * Math.PI * 2, d = r * 2.5 + 40 + rng() * 60;
+    place('cloudWhale', x + Math.cos(a) * d, y + 30 + rng() * 60, z + Math.sin(a) * d, 1, null, true);
   }
 }
 

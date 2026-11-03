@@ -39,6 +39,7 @@ export const ZONE_PALETTES = {
   jovian: palette('Jovian', { grass: '#f0c890', grass2: '#f6e2c0', forest: '#e8a060', sand: '#fff0d8', desert: '#d08850', desert2: '#c8743a', rock: '#e8b07a', rock2: '#d89a6a', snow: '#fff4e0', seabed: '#a85a2a', water: '#c0703a', bands: ['#e8b07a', '#f6e2c0', '#c8743a', '#f0c890'] }),
   peaks: palette('Peaks', { grass: '#6f9a4a', grass2: '#8fb25a', forest: '#3f6a3a', sand: '#d8c89a', desert: '#c8a070', desert2: '#b08058', rock: '#8a8278', rock2: '#6a6460', snow: '#f4f6fa', seabed: '#6a7a6a', water: '#3a8ab8', bands: ['#a86a4a', '#c8946a', '#8a5a40', '#d8b088'] }),
   metro: palette('Metro', { grass: '#5a9a48', grass2: '#74b052', forest: '#3a7a3a', sand: '#d0c4a8', desert: '#b8ac90', desert2: '#a89c80', rock: '#6a6a70', rock2: '#5a5a60', snow: '#f0f0f0', seabed: '#3a4a52', water: '#2a6a9a', bands: ['#8a8a90', '#9a9aa0', '#7a7a80', '#aaaab0'] }),
+  heaven: palette('Heaven', { grass: '#eef3ff', grass2: '#ffffff', forest: '#e4ecff', sand: '#fff6dc', desert: '#fff0cc', desert2: '#ffe8b8', rock: '#d8e2f6', rock2: '#c6d4f0', snow: '#ffffff', seabed: '#dfe8f8', water: '#cfe4ff', bands: ['#fff4d8', '#e4ecff', '#fffaf0', '#f0e8ff'] }), // the Cloud Kingdom's cloud sea
   lunar: palette('Lunar', { grass: '#9a9a9e', grass2: '#b4b4b8', forest: '#86868c', sand: '#c4c4c8', desert: '#a8a8ac', desert2: '#909094', rock: '#6e6e74', rock2: '#5a5a60', snow: '#e4e4e8', seabed: '#7a7a80', water: '#2a2a30', bands: ['#8a8a90', '#a0a0a6', '#74747a', '#b8b8be'] }),
 };
 
