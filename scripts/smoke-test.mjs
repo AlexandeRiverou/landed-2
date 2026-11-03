@@ -80,11 +80,58 @@ try {
     out.musicPlaying = !!G.audio.music && G.audio.music.chordIndex > 0;
     out.engineGain = G.audio.engGain ? G.audio.engGain.gain.value : 0;
 
-    // Ignore the objective until persuasion gives up and awards the participation trophy.
+    // Persuasion pacing: however much neglect piles up, tactics come at least 15 s of real time apart.
+    {
+      const s0 = G.persuasion.stage;
+      for (let k = 0; k < 150; k++) { G.persuasion.neglect = 1e4; step(1); } // 5 s
+      out.persuasionPaced = G.persuasion.stage - s0;
+    }
+
+    // Ignore the objective until persuasion gives up and awards the participation trophy (skipping the cooldown).
     let stages = 0;
-    for (let k = 0; k < 40 && G.objectives.completed === 0; k++) { G.persuasion.neglect = 1e4; step(2); stages = Math.max(stages, G.persuasion.stage); }
+    for (let k = 0; k < 40 && G.objectives.completed === 0; k++) { G.persuasion.neglect = 1e4; G.persuasion.lastEscalate = -1e4; step(2); stages = Math.max(stages, G.persuasion.stage); }
     out.persuasionStages = stages;
     out.completedAfterTrophy = G.objectives.completed;
+
+    // Persuasion, every tactic: applied to a live hoop, run for a bit, then cleaned up by reset(). Nothing it put in
+    // the scene or on the objective card may stay behind, and the camera, wind and edge arrow go back to normal.
+    {
+      const { TACTICS } = await import('./src/persuasion.js');
+      const P = G.persuasion, p = G.player, card = document.getElementById('objective');
+      const hoop = () => {
+        if (G.objectives.current) G.objectives.current.dispose(G);
+        G.objectives.current = null;
+        G.objectives.startType('hoop');
+        return G.objectives.current;
+      };
+      let obj = hoop();
+      const cardKids = card.childElementCount, added = [], add = G.scene.add;
+      const res = (out.tactics = { total: TACTICS.length, applied: 0, skipped: [], errors: [], peeked: false, hudLine: false });
+      for (const t of TACTICS) {
+        if (G.objectives.current !== obj) obj = hoop(); // a teleported hoop may have been flown through
+        P.reset(obj);
+        if (!t.can(obj, P)) { res.skipped.push(t.id); continue; } // e.g. hints: the hoop has none
+        p.pos.y = p.prevPos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 200;
+        try {
+          G.scene.add = function (...o) { added.push(...o); return add.apply(this, o); };
+          const r = t.apply(G, obj, P) || null;
+          delete G.scene.add;
+          if (r && (r.update || r.dispose)) P.effects.push(r);
+          for (let i = 0; i < 20; i++) {
+            step(1);
+            if (G.camPeek?.w > 0) res.peeked = true;
+            if (card.childElementCount > cardKids) res.hudLine = true;
+          }
+          P.reset(obj);
+          res.applied++;
+        } catch (e) { delete G.scene.add; res.errors.push(`${t.id}: ${e.message}`); }
+      }
+      res.leftovers = added.filter((o) => o.parent).map((o) => o.type);
+      res.clean = card.childElementCount === cardKids && G.camPeek == null && G.ui.edgeArrow === 0 && p.wind.lengthSq() === 0;
+      P.reset(null);
+      G.objectives.current?.dispose(G);
+      G.objectives.current = null;
+    }
 
     // Every objective type once, run for a bit, then completed normally (each triggers world mutations).
     // Stay in the first zone: space zones don't offer the ground objectives.
@@ -623,6 +670,19 @@ try {
         axisCurve: +(AXIS_CURVE.value * 1e4).toFixed(2), axis: [CURVE_AXIS.value.x, CURVE_AXIS.value.y], sea: G.world.seaLevel,
       });
       for (const t of COUNTRY) instances(t, () => { out.countrySeen[t] = (out.countrySeen[t] || 0) + 1; });
+      // ---- Cloud Kingdom: cloud islands float near the player, every island has a centrepiece standing on its top
+      // (not on the cloud sea far below), and the new props turn up.
+      if (z.name === 'Cloud Kingdom') {
+        const isles = [], seen = {}, CENTRE = ['cloudCastle', 'marbleTemple', 'goldenGate', 'skyLighthouse', 'giantHarp', 'balloonDock', 'rainbowArch', 'wingedStatue'];
+        instances('cloudIsland', (v) => isles.push(v.clone()));
+        for (const t of [...CENTRE, 'cloudPuff', 'skyLantern', 'cloudWhale']) instances(t, () => { seen[t] = (seen[t] || 0) + 1; });
+        let onTop = 0;
+        for (const t of CENTRE) instances(t, (v) => { if (isles.some((s) => Math.hypot(s.x - v.x, s.z - v.z) < 1 && v.y - s.y > 0 && v.y - s.y < 10)) onTop++; });
+        out.cloudKingdom = {
+          islands: isles.length, near: isles.filter((s) => Math.hypot(s.x - pp.x, s.z - pp.z) < 800).length, onTop,
+          kinds: Object.keys(seen).length, seen, aboveGround: isles.every((s) => s.y > G.terrain.surfaceHeight(s.x, s.z) + 100),
+        };
+      }
       if (z.world.city) {
         // Metropolis: buildings are ground with sheer walls. Flying into one crashes (Ghost Mode skims onto the roof),
         // an avenue is clear to fly down low (the crop-dusting objective completes there), and the props sit where they belong.
@@ -1132,6 +1192,10 @@ try {
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
     [report.musicPlaying && report.engineGain < 0.01, 'calm music plays and the engine stays quiet'],
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
+    [report.persuasionPaced === 1, 'persuasion waits 15 s between tactics, however big the neglect'],
+    [report.tactics.errors.length === 0 && report.tactics.applied + report.tactics.skipped.length === report.tactics.total && report.tactics.skipped.length <= 3 && report.tactics.total >= 35, 'every persuasion tactic applies and disposes without errors'],
+    [report.tactics.leftovers.length === 0 && report.tactics.clean, 'persuasion reset() removes every tactic\'s meshes, HUD lines, camera peek and wind'],
+    [report.tactics.peeked && report.tactics.hudLine, 'the cinematic look turns the camera and hot & cold / offers show on the objective card'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [report.bossDefeated, 'boss can be defeated'],
     [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
@@ -1171,7 +1235,10 @@ try {
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.pit.depth >= 30 && report.pit.mesh >= 25 && report.pit.cellMax <= 100, 'a 20-bullet burst digs a 30 m+ pit that shows on the mesh within 0.2 s, and crater lists stay short'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
-    [report.zones.length >= 28, 'every zone loads (28+)'],
+    [report.zones.length >= 29, 'every zone loads (29+)'],
+    // ---- Cloud Kingdom (see the zones loop)
+    [(({ cloudKingdom: k }) => k && k.near >= 3 && k.aboveGround && k.islands > 0 && k.onTop >= k.islands)(report), 'Cloud Kingdom: cloud islands float near the player, each with a centrepiece standing on its top'],
+    [(({ cloudKingdom: k }) => k && k.kinds >= 8 && k.seen.cloudPuff > 0 && k.seen.skyLantern > 0)(report), 'Cloud Kingdom: the new props (castles, temples, gates, harps, lanterns, cloud puffs...) spawn'],
     [(({ city: c }) => c && c.meshes > 10 && c.tallest >= 100 && c.buildings > 200 && c.roof - c.street >= 40 && c.sheer && c.deterministic)(report), 'Metropolis: a street grid of buildings (towers 100 m+), roofs are ground with sheer walls, same seed same city'],
     [(({ city: c }) => c && c.wallCrash === 'ground' && c.ghostOnRoof)(report), 'Metropolis: flying into a tower wall crashes (Ghost Mode skims onto the roof)'],
     [(({ city: c }) => c && c.avenue.lowflyDone && !c.avenue.dead && c.avenue.maxAlt < 30 && c.lowflyStarted && c.buried.length === 0)(report), 'Metropolis: crop-dusting down an avenue works, and air objectives stay out of the buildings'],

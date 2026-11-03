@@ -20,6 +20,7 @@ const TOD_TEXT = {
   candy: 'The sky is pink now. Nobody voted for this, but here we are.',
   eclipse: 'Surprise eclipse! Do not look at it. Look at the objectives instead.',
   storm: 'Overcast. The sky is in a mood.',
+  heaven: 'The sky went soft and golden. Somewhere, a harp. Do not tip the harpist.',
 };
 const WEATHER_TEXT = {
   clear: 'Weather cleared. Blue skies, no excuses.',
@@ -40,6 +41,7 @@ const THEME_TEXT = {
   tropical: 'Palm trees everywhere. Even on the snowy mountains. Especially there.',
   construction: 'Traffic cones have replaced the rocks. The sky is under construction.',
   duck: 'The Duckening has begun. Houses are ducks now. Boats are ducks now.',
+  cloudKingdom: 'The Cloud Kingdom annexed the place. Trees are clouds now, and every floating island got a castle.',
 };
 
 const MUTATIONS = [

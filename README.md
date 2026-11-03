@@ -141,7 +141,7 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. There are 28, in order:
+colours, props, sky, weather and music mood. There are 29, in order:
 
 - Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
 - **Hollow Peaks:** huge mountains and deep canyons, with tunnels clean through the rock. They're 56–90 m wide,
@@ -163,8 +163,13 @@ colours, props, sky, weather and music mood. There are 28, in order:
 - **Princess Kingdom:** pink fairy-tale castles, heart-shaped trees, unicorns, pumpkin carriages and falling petals.
 - Candy Kingdom → **Blockland** (the ground is made of 24 m blocks, the trees are cubes) → **Salt Mirror** (a nearly
   flat salt plain under a sheet of shallow water, pastel sky)
-- Sky Islands → Stratosphere (above a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt
-  (asteroids you can shoot apart)
+- Sky Islands
+- **Cloud Kingdom:** a soft white cloud sea below, and floating islands with cloud skirts, more of them than in Sky
+  Islands. Each island carries a centrepiece: a castle, a gold-domed temple, a golden gate, a giant harp, a rainbow arch,
+  a sky lighthouse, a winged statue or a balloon dock. Floating lanterns and sleepy cloud whales drift past, and it
+  snows feathers. Every objective type works here.
+- Stratosphere (above a sea of clouds) → Low Orbit (Earth below, black sky) → Meteor Belt (asteroids you can shoot
+  apart)
 - **Gas Giant:** no ground at all. Stripy cloud decks scroll far below, and a huge ringed planet hangs in a hazy
   orange sky.
 - The Moon (craters, Earthrise) → **Mars** (red canyons, dust, two tiny moons)
@@ -265,23 +270,36 @@ if you like where you are, stay a while. Press it again ("Back to the action") t
 back first.
 
 **Persuasion engine** (`src/persuasion.js`): a "neglect" meter fills while you're not making progress. It fills faster
-when you fly away and barely moves while you close in. Each time it fills, the game escalates through 27 tactics
-in three tiers:
+when you fly away and barely moves while you close in. The first tactic comes after 20 s of neglect, then one every
+14 s of neglect, and never two within 15 real seconds of each other, so even flying the wrong way gets you some peace.
+The "wrong way" nag comes at most every 25 s. The game escalates through 37 tactics in three tiers:
 
 - *Mild:* nagging, guilt trips, pro tips, GPS distance, an on-screen edge arrow, sonar beeps panned toward the target,
-  and a 900 m light beam.
+  a 900 m light beam, reverse psychology ("Whatever you do, do NOT go to..."), a petition begging you to go (the
+  signatures pile up over the next few seconds), and **hot & cold**: for 35 s the objective card tells you how warm
+  you are, from ❄️ FREEZING to 🔥 ON FIRE.
 - *Pushy:* the hoop gets **bigger**, giant "HERE!!!" text, a 3D arrow on your nose, breadcrumb orbs, a balloon-held sky
-  billboard, fireworks at the target, the **sun moved behind the objective**, fog cleared,
-  enemies bribed into a coffee break, sad rain, lowered requirements, and magnet mode.
+  billboard, fireworks at the target, the **sun moved behind the objective**, fog cleared, enemies bribed into a coffee
+  break, sad rain, lowered requirements, magnet mode, a **cheer squad** (confetti and applause every time you turn to
+  face the target), a floating **red carpet** lined with torches, a **limited-time offer** (+100 if you finish within
+  60 s, with a countdown on the card), **skywriting** ahead of you (TURN LEFT, TURN RIGHT, STRAIGHT ON or U-TURN, in
+  cloud letters), and a **cinematic look**: the camera swings to the target for 2.6 s and back. It never touches your
+  controls.
 - *Desperate:* the objective **walks over to you**, a steering tailwind, a **rainbow road**, a tunnel of practice rings,
-  the mountains are told to sit down (the terrain flattens), free unlimited boost, the objective teleported right in front
-  of you... and finally a **participation trophy**.
+  a **paper-plane escort** (a V of 5 that leads the way and waits for you), a **trail of gold coins** (+10 each), an
+  **ultimatum** (30 s, counted down in notifications), the mountains are told to sit down (the terrain flattens), free
+  unlimited boost, the objective teleported right in front of you... and finally, after about 3 minutes of ignoring
+  it, a **participation trophy**.
+
+The pacing knobs (`FIRST_NEGLECT`, `NEGLECT_STEP`, `MIN_GAP`, `WRONG_WAY_GAP`, `TROPHY_STAGE`) sit at the top of
+`src/persuasion.js`. A tactic that needs to turn the camera sets `G.camPeek = { at: Vector3, w: 0..1 }` (`w` is how far
+the view turns toward `at`); `Persuasion.clear()` resets it.
 
 **World mutations** (`src/mutations.js`): every success applies 3–6 random changes from 24 kinds, and the count grows the
 better you do. They include time of day (night, sunset, alien lime sky, eclipse...), weather (rain, snow, confetti,
 bubbles, leaves, glitter), terrain palette (11 palettes), mountain height, sea level, cliffs and terraces, canyons, spikes,
-mesas, prop theme ("The Duckening", gnome invasion, candy forest...), prop size and density, floating islands, continental
-drift (a whole new map), your plane's paint job, an engine upgrade, cloud styles, planets and moons, fog, and party hats
+mesas, prop theme ("The Duckening", gnome invasion, candy forest, the Cloud Kingdom annexing the place...), prop size
+and density, floating islands, continental drift (a whole new map), your plane's paint job, an engine upgrade, cloud styles, planets and moons, fog, and party hats
 for every enemy. The terrain morphs chunk by chunk around you, and if a mountain grows under you, you get relocated
 upward for free.
 
@@ -301,7 +319,7 @@ finger out of its corner, and nothing happens. The menu pauses the game, silence
 Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, so it's deliberately left off the title
 card.
 
-- **Zones:** jump straight to any of the 28 zones (the next zone change is a full zone's worth of objectives away).
+- **Zones:** jump straight to any of the 29 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
   where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.

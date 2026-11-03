@@ -46,6 +46,26 @@ export const T = {
     "{Noun}'s mom called. She's disappointed.",
     "{Noun} just changed its relationship status to 'complicated'.",
   ],
+  // Persuasion's reverse psychology: first politely, then not.
+  reverse: [
+    "Whatever you do, do NOT go to {noun}. Seriously. Stay away.",
+    "{Noun} is off-limits. Strictly forbidden. Nobody is allowed near it. Especially you.",
+    "We bet you can't reach {noun}. Nobody can. It's impossible. Probably.",
+  ],
+  reverseAgain: [
+    "We said do NOT go to {noun}. Why aren't you rebelling?? This is reverse psychology. Work with us.",
+    "Okay, new rule: {noun} is BANNED. Totally illegal. Wink. WINK.",
+  ],
+  // A petition that keeps growing, one update at a time ({n} = signatures).
+  petition: [
+    "{n} people signed a petition asking you to go to {noun}.",
+    "Petition update: {n} signatures. Your flight instructor signed twice.",
+    "The petition hit {n}. It's trending. A celebrity cried. Please go to {noun}.",
+  ],
+  ultimatum: [
+    "15 seconds left. The text is typed. Thumb is hovering.",
+    "Sent. {Noun} replied \"k\". We hope you're happy.",
+  ],
   wrongWay: [
     "WRONG WAY! Unless you're planning a really big loop around the planet.",
     "Bold strategy, flying AWAY from the objective. Let's see if it pays off.",

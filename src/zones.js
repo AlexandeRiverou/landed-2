@@ -115,6 +115,11 @@ export const ZONES = [
     sky: 'morning', weather: 'clear', clouds: ['#ffffff', 60, 60], mood: 'dream', lock: [...LOCK, 'sea', 'islands'],
   },
   {
+    name: 'Cloud Kingdom', blurb: 'Castles on clouds, golden gates and a harp nobody tunes. Please wipe your wheels.',
+    world: { palette: 'heaven', floor: -260, seaLevel: -700, amp: 0.2, hillBase: 0.4, roughness: 1.3, terrace: 0, mesa: 0, canyon: 0, spikes: 0, snowLine: 9999, floatingIslands: 1.7, propTheme: 'cloudKingdom', propDensity: 0.25, balloons: 0.6, tempBias: -0.6 },
+    sky: 'heaven', weather: 'feathers', clouds: ['#fffaf0', 70, -60], fog: 1.1, mood: 'dream', lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands', 'weather'], // the cloud sea stays soft and the islands stay put
+  },
+  {
     name: 'Stratosphere', blurb: 'Above the clouds. The sky is getting dark. That is space up there.',
     world: { palette: 'Pastel Dream', floor: -650, seaLevel: -700, floatingIslands: 0.5 },
     sky: 'stratosphere', weather: 'clear', clouds: ['#ffffff', 70, -120], mood: 'space', noGround: true, lock: SPACE_LOCK,

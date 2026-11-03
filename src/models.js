@@ -153,6 +153,7 @@ export function buildProps() {
   buildNewWorldProps();
   buildCityProps();
   buildCountryProps();
+  buildCloudKingdomProps();
 }
 
 // ---------- the countryside, the beach, the snow, and some questionable landmarks ----------
@@ -407,6 +408,94 @@ function buildCountryProps() {
     lift.push(P(Box(0.1, 2.4, 0.1), '#3a3a3a', { x, y: 14.2, z }), P(Box(1.6, 0.2, 0.8), '#d8433a', { x, y: 13, z }), P(Box(1.6, 0.8, 0.12), '#d8433a', { x, y: 13.4, z: z - 0.4 }));
   }
   def('skiLift', lift, { scale: [1, 1.2], sink: 0.4 });
+}
+
+// ---------- the Cloud Kingdom ----------
+// Marble, gold and cloud. The island is a fixed size (scale [1, 1]) with its flat top at y = 2, so the
+// terrain can stand things on it (see ISLAND_DECKS in terrain.js).
+const K = { marble: '#f6f2ea', marble2: '#e4ddd0', gold: '#f2c23a', gold2: '#ffe08a', sky: '#9ac8ff', cloud: '#ffffff', cloud2: '#eef4ff' };
+// A ring of cloud puffs (dodecahedra: round enough to read as cloud, cheap enough to repeat).
+const puffRing = (n, r, y, s, a0 = 0) => Array.from({ length: n }, (_, k) => {
+  const a = a0 + (k / n) * PI * 2;
+  return P(Dod(s * (0.8 + (k % 3) * 0.2)), k % 2 ? K.cloud : K.cloud2, { x: Math.cos(a) * r, y: y + (k % 2) * s * 0.2, z: Math.sin(a) * r, sy: 0.65 });
+});
+function buildCloudKingdomProps() {
+  def('cloudIsland', [
+    P(Cyl(24, 21, 4, 10), '#cfeeb4', { y: 0 }), P(Cyl(21.5, 21.5, 0.3, 10), '#e2f6c8', { y: 2.05 }),
+    P(Cone(21, 26, 9), K.marble2, { y: -15, rx: PI }), P(Cone(11, 16, 7), '#d8c8a8', { x: 5, y: -26, z: -2, rx: PI }),
+    ...puffRing(9, 21, -3.5, 7, 0.3), ...puffRing(5, 10, -12, 7.5, 1.1), // the cloud skirt
+  ], { scale: [1, 1], sink: 0 });
+
+  // A white castle with gold and sky-blue spires, pennants up top and a cloud bank at its feet.
+  const cc = [P(Box(14, 12, 14), K.marble, { y: 6 }), P(Cyl(3.4, 3.8, 26, 10), K.marble, { y: 13 }), P(Cone(4.4, 10, 10), K.gold, { y: 31 }), P(Box(0.15, 2.2, 3), K.sky, { y: 37, z: 1.5 })];
+  for (const [x, z] of [[7, 7], [-7, 7], [7, -7], [-7, -7]]) {
+    cc.push(P(Cyl(2.4, 2.6, 17, 8), K.marble, { x, y: 8.5, z }), P(Cone(3.2, 7, 8), K.sky, { x, y: 20.5, z }), P(Box(0.12, 1.6, 2.2), K.gold, { x, y: 25, z: z + 1.1 }));
+  }
+  cc.push(P(Box(4, 6, 0.3), K.gold, { y: 3, z: 7.05 }), P(new THREE.CylinderGeometry(2, 2, 0.31, 12, 1, false, 0, PI), K.gold, { y: 6, z: 7.05, rx: PI / 2, rz: PI / 2 }));
+  for (let k = 0; k < 6; k++) cc.push(P(Box(1.4, 1.2, 1.4), K.marble, { x: -6 + k * 2.4, y: 12.6, z: 7 }));
+  cc.push(...puffRing(7, 9, 0.5, 4, 0.4));
+  def('cloudCastle', cc, { scale: [1, 1.3], sink: 0.2 });
+
+  // The golden gate: two marble pillars, a gold arch and gold bars, standing on a cloud.
+  const gate = [];
+  for (const x of [-7, 7]) gate.push(P(Box(2.6, 15, 2.6), K.marble, { x, y: 7.5 }), P(Box(3.4, 1, 3.4), K.gold, { x, y: 15.3 }), P(Sph(1.1, 8, 6), K.gold2, { x, y: 16.6 }));
+  gate.push(P(Tor(7, 1.1, 5, 14, PI), K.gold, { y: 15 }));
+  for (let k = -2; k <= 2; k++) gate.push(P(Box(0.35, 13 + (2 - Math.abs(k)) * 2.2, 0.35), K.gold2, { x: k * 2.2, y: (13 + (2 - Math.abs(k)) * 2.2) / 2 }));
+  gate.push(P(Box(12, 0.5, 0.4), K.gold2, { y: 6 }), ...puffRing(6, 7, 0, 4.2, 0.2));
+  def('goldenGate', gate, { scale: [1, 1.4], sink: 0.3 });
+
+  // A round marble temple: steps, a ring of columns, and a gold dome.
+  const tmp = [P(Cyl(11, 12, 1.4, 14), K.marble2, { y: 0.7 }), P(Cyl(9.5, 10.5, 1.2, 14), K.marble, { y: 2 })];
+  for (let k = 0; k < 8; k++) { const a = (k / 8) * PI * 2; tmp.push(P(Cyl(0.8, 0.95, 10, 7), K.marble, { x: Math.cos(a) * 8, y: 7.6, z: Math.sin(a) * 8 })); }
+  tmp.push(P(Cyl(10, 10, 1.4, 14), K.marble2, { y: 13.3 }), P(new THREE.SphereGeometry(7.5, 12, 6, 0, PI * 2, 0, PI / 2), K.gold, { y: 14 }), P(Cone(0.8, 3, 6), K.gold2, { y: 23 }));
+  def('marbleTemple', tmp, { scale: [1, 1.3], sink: 0.2 });
+
+  // A giant golden harp. Nobody has tuned it in a thousand years.
+  const harp = [P(Box(12, 1.6, 3), K.gold, { y: 0.8 }), P(Cyl(0.9, 1.2, 20, 7), K.gold, { x: -5.5, y: 11 }), P(Sph(1.6, 8, 6), K.gold2, { x: -5.5, y: 21.5 })];
+  harp.push(P(Box(1.2, 18.4, 1.4), K.gold, { x: 0.25, y: 14, rz: Math.atan2(11.5, 14) })); // the neck, from the pillar top down to the far end
+  harp.push(P(Tor(1.4, 0.45, 4, 10), K.gold2, { x: 6, y: 7, rx: PI / 2 }));
+  for (let k = 0; k < 8; k++) { const x = -4.3 + k * 1.3, top = 21 - (x + 5.5) * (14 / 11.5); harp.push(P(Box(0.14, top - 1.6, 0.14), '#fffbe8', { x, y: 1.6 + (top - 1.6) / 2 })); }
+  def('giantHarp', harp, { scale: [0.9, 1.3], sink: 0.2 });
+
+  // A rainbow arching from one cloud to another.
+  const rb = [];
+  ['#ff5a5a', '#ffa03a', '#ffe04a', '#6ad86a', '#5ab0ff', '#a07aff'].forEach((c, k) => rb.push(P(Tor(15 - k * 1.1, 0.6, 3, 14, PI), c, { y: 1 })));
+  rb.push(...[-12.3, 12.3].flatMap((x) => [P(Dod(4), K.cloud, { x, y: 1.5, sy: 0.7 }), P(Dod(3), K.cloud2, { x: x + 3, y: 1, z: 2, sy: 0.7 }), P(Dod(3), K.cloud2, { x: x - 3, y: 1, z: -1.5, sy: 0.7 })]));
+  def('rainbowArch', rb, { scale: [0.9, 1.3], sink: 0.3 });
+
+  // A sky lighthouse: white and blue bands, a gold lamp, and little wings to keep it up here.
+  const sl = [];
+  for (let k = 0; k < 4; k++) sl.push(P(Cyl(2.8 - k * 0.35, 3.2 - k * 0.35, 5, 10), k % 2 ? K.sky : K.marble, { y: 2.5 + k * 5 }));
+  sl.push(P(Cyl(1.7, 1.7, 2.6, 8), '#fff2a0', { y: 21.3 }), P(Tor(2.2, 0.25, 4, 12), K.gold, { y: 20, rx: PI / 2 }), P(Cone(2.3, 3, 8), K.gold, { y: 24.1 }), P(Sph(0.5, 6, 4), K.gold2, { y: 25.9 }));
+  for (const s of [-1, 1]) sl.push(P(Box(5, 0.4, 2.2), K.cloud, { x: s * 4.4, y: 14, rz: s * 0.35 }), P(Box(3.6, 0.4, 1.6), K.cloud2, { x: s * 4, y: 12.8, rz: s * 0.5 }));
+  def('skyLighthouse', sl, { scale: [1, 1.4], sink: 0.2 });
+
+  // Cloud puffs: bushes on the islands, cloud banks on the cloud sea below.
+  def('cloudPuff', [P(Ico(3.2, 1), K.cloud, { y: 2, sy: 0.75 }), P(Ico(2.4, 1), K.cloud2, { x: 2.6, y: 1.6, z: 0.8, sy: 0.75 }), P(Ico(2, 1), K.cloud, { x: -2.3, y: 1.4, z: -0.6, sy: 0.75 })], { scale: [0.8, 1.8], sink: 0.2, tints: ['#ffffff', '#fff6e0', '#f0f4ff', '#fff0f8'] });
+
+  // A paper lantern, floating (it's airborne: the terrain puts these beside the islands).
+  def('skyLantern', [P(Cyl(1, 0.8, 2.4, 6), '#ffd06a', { y: 1.4 }), P(Cyl(0.6, 1, 0.5, 6), '#ff8a3a', { y: 2.85 }), P(Cyl(0.5, 0.5, 0.3, 6), '#fff2a0', { y: 0.1 })], { scale: [1.4, 2.4], sink: 0, tints: ['#ffffff', '#ffe0a0', '#ffd0d0', '#fff4c0'] });
+
+  // A winged statue on a plinth, with a gold halo.
+  const ws = [P(Box(4, 4, 4), K.marble2, { y: 2 }), P(Box(4.6, 0.6, 4.6), K.marble, { y: 4.3 }), P(Cone(1.8, 6, 8), K.marble, { y: 7.6 }), P(Sph(1, 8, 6), K.marble, { y: 11.4 }), P(Tor(1.1, 0.15, 4, 12), K.gold, { y: 12.9, rx: PI / 2 })];
+  for (const s of [-1, 1]) ws.push(P(Box(4, 1.6, 0.4), K.cloud, { x: s * 2.2, y: 10, z: -0.6, rz: s * 0.5 }), P(Box(3, 1.2, 0.4), K.cloud2, { x: s * 2.6, y: 8.7, z: -0.6, rz: s * 0.8 }));
+  def('wingedStatue', ws, { scale: [1, 1.4], sink: 0.2 });
+
+  // A hot-air balloon dock: a little pier on posts, a mooring post, and a balloon tied up at it.
+  const dock = [P(Box(14, 0.6, 5), '#c8a070', { x: 3, y: 2.2 })];
+  for (const x of [-3, 3, 9]) for (const z of [-2, 2]) dock.push(P(Box(0.5, 2.2, 0.5), '#8a5a32', { x, y: 1.1, z }));
+  dock.push(P(Box(0.6, 4, 0.6), '#8a5a32', { x: 9.5, y: 4.4 }), P(Box(0.08, 6, 0.08), '#5a4030', { x: 9.6, y: 8.5, z: 0.4, rz: -0.6 }));
+  dock.push(P(Sph(7, 10, 8), '#ff9ad0', { x: 14, y: 20, sy: 1.15 }), P(Cyl(7.05, 7.05, 1.4, 10), K.gold, { x: 14, y: 20 }), P(Cone(4.5, 6, 10), '#ff9ad0', { x: 14, y: 12.5, rx: PI }));
+  dock.push(P(Box(2.6, 2, 2.6), '#a87a4a', { x: 14, y: 6.5 }), P(Box(0.15, 4, 0.15), C.black, { x: 15, y: 9.5, z: 1 }), P(Box(0.15, 4, 0.15), C.black, { x: 13, y: 9.5, z: -1 }));
+  def('balloonDock', dock, { scale: [1, 1.2], sink: 0.2, tints: ['#ffffff', '#d0e8ff', '#fff0c0', '#e0ffe0'] });
+
+  // A sleepy cloud whale drifting by: eyes shut, a puff of cloud for a spout.
+  def('cloudWhale', [
+    P(Sph(6, 12, 8), '#dfeaff', { sz: 2.4 }), P(Sph(5.6, 12, 6), K.cloud, { y: -1.3, z: 1, sz: 2.2 }),
+    P(Box(8, 0.6, 3), '#dfeaff', { y: 1.5, z: -15.5, rx: -0.4 }), P(Box(5, 0.5, 2.2), '#dfeaff', { x: 6.2, y: -2, z: 4, rz: -0.5 }), P(Box(5, 0.5, 2.2), '#dfeaff', { x: -6.2, y: -2, z: 4, rz: 0.5 }),
+    P(Box(1.6, 0.25, 0.3), '#4a5a7a', { x: 4.8, y: 1.4, z: 9, ry: 0.5, rz: -0.2 }), P(Box(1.6, 0.25, 0.3), '#4a5a7a', { x: -4.8, y: 1.4, z: 9, ry: -0.5, rz: 0.2 }), // closed eyes
+    P(Ico(1.6, 1), K.cloud, { y: 7.4, z: 5 }), P(Ico(1.2, 1), K.cloud2, { x: 1.4, y: 8.4, z: 5 }), P(Ico(1.2, 1), K.cloud2, { x: -1.3, y: 8.2, z: 5.3 }),
+  ], { scale: [1.4, 2], sink: 0 });
 }
 
 // ---------- player ----------

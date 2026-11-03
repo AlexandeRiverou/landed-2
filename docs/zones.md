@@ -61,6 +61,10 @@ ones, all off by default:
   (one shared window texture) and places the street, park and rooftop props. For tests and debugging:
   `cityBlock(bx, bz)` gives a block's plan, `cityRoofAt(x, z)` the rooftop (or `-Infinity` off a building),
   `cityGround(x, z)` street level.
+- **`floatingIslands`:** the chance of a floating island per chunk (`0..1`). Above 1, each whole number adds one more
+  try, so Cloud Kingdom's `1.7` gives every chunk one island and 70% of them a second. It's a multiplier on island
+  count, so keep it a small hard-coded number. The theme picks the island prop (`floatingIsland: 'cloudIsland'` in
+  the `cloudKingdom` theme).
 - **`curve`:** tiny-planet bend: everything is drawn lower by `curve · d²` (Planet Pebble).
 - **`axisCurve` / `curveAxis`:** the same bend measured along one world axis only (`'x'` or `'z'`). Negative bends
   the ground **up**, like the inside of a ring (Ringworld uses `-1 / 2000` across `x`).
@@ -121,6 +125,19 @@ Over a tunnel, one spot has two grounds: the tunnel floor and the mountain top. 
 flying enemies, power-up spawns, the low-fly objective). **Leave it out to put something on the surface** (ground
 enemies, objective targets that stand on the ground), so it lands on top of the mountain, not inside it. Outside tunnel zones `y`
 changes nothing. In tunnel zones the camera is also held 3 m under a tunnel roof.
+
+### Islands with things on them (the Cloud Kingdom)
+
+An island prop listed in `ISLAND_DECKS` (`src/terrain.js`) carries props on its deck. Each entry gives the deck
+height (`top`) and `radius` at scale 1, the island's scale range, a weighted `centre` list (one centrepiece in the
+middle, scaled by `centreScale`), a weighted `rim` list (a few small things around the edge; `null` means an empty
+spot), how many floating lanterns go beside it, and the chance of a cloud whale drifting past. Only `cloudIsland`
+has one so far. To add one, make the island prop a fixed size (`scale: [1, 1]`) with a flat top, `def()` it in
+`src/models.js`, add it to `AIRBORNE`, and map `floatingIsland` to it in a theme.
+
+Props placed on a deck pass `aloft = true` to `place()` in `Terrain.buildProps()`, so craters and runway pads on the
+ground below don't hide them. Props in `AIRBORNE` (islands, balloons, fish, lanterns, cloud whales) are skipped by
+that check too.
 
 ## Curvature (`src/curve.js`)
 
