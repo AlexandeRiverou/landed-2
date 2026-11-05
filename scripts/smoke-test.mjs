@@ -484,6 +484,34 @@ try {
       G.objectives.current = null;
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    // Breathing room: fly straight away from a boss (an orbiter and a lead boss) and it lets the gap open well past its
+    // fight distance, so there's room to turn around, then hurries back within 10 s.
+    out.breathing = {};
+    for (const kind of ['kingDrone', 'octopus']) {
+      G.powerups.active.clear();
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+      const [e] = startBoss(kind, { mod: null, duo: false });
+      const fight = e.def.lead || e.def.orbit;
+      // Engage it (a lead boss settles in front by itself; fly at an orbiter), then turn straight away from it.
+      const fly = (n, at) => { for (let i = 0; i < n; i++) { G.player.grace = 1; G.player.health = G.player.maxHealth; if (at) G.player.nudgeToward(e.pos, 2, 1 / 30); step(1); } };
+      fly(30 * 8);
+      for (let i = 0; i < 30 * 30 && !e.def.lead && e.pos.distanceTo(G.player.pos) > fight + 20; i++) fly(1, true);
+      fly(e.def.lead ? 30 * 5 : 30 * 2);
+      G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(e.pos.x - G.player.pos.x, e.pos.z - G.player.pos.z));
+      let gap = 0, caughtAt = -1, backIn = -1;
+      for (let i = 0; i < 30 * 25 && backIn < 0; i++) {
+        G.player.grace = 1; G.player.health = G.player.maxHealth; step(1);
+        const dist = e.pos.distanceTo(G.player.pos);
+        if (caughtAt < 0 && e.chase === 'catch') caughtAt = i;
+        if (caughtAt < 0) gap = Math.max(gap, dist);
+        else if (dist < fight + 25) backIn = (i - caughtAt) / 30;
+      }
+      out.breathing[kind] = { fight, gap: Math.round(gap), backIn };
+      G.objectives.current.dispose(G);
+      G.objectives.current = null;
+      G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    }
     Object.assign(G.world, { amp, seaLevel });
     G.terrain.rebuildAll();
     step(30);
@@ -1309,6 +1337,7 @@ try {
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
+    [Object.values((report.breathing || {})).length === 2 && Object.values((report.breathing || {})).every((b) => b.gap > b.fight + 120 && b.backIn >= 0 && b.backIn < 10), `bosses let you fly off past their fight distance, then catch back up within 10 s (${JSON.stringify((report.breathing || {}))})`],
     [report.twins.count === 2 && report.twins.halfDone && report.twins.done && report.twins.name.startsWith('Turbo'), 'boss twins with a modifier both have to go down'],
     [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Relax mode clears objectives, enemies and pickups'],
     [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],

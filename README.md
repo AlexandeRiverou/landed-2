@@ -227,7 +227,9 @@ the first zone on a new landscape. Found secrets stay found.
 
 From the third boss on, they can roll a modifier (Jumbo, Turbo, Furious But Fragile, Shiny for double points). From the
 fourth on, they can show up as twins that share one health bar. Most bosses circle you; lead bosses fly ahead of you,
-facing back and weaving side to side, so they're always in your sights. Bosses taunt you, and get ENRAGED below half
+facing back and weaving side to side, so they're always in your sights. Fly away from a flying boss and it lets you go
+for a bit (drifting after you at under half your speed, no dives or strafing runs), so you have room to turn around for
+another pass. Once you're about 340 m out, or after 7 s of running, it hurries back to its fight distance. Bosses taunt you, and get ENRAGED below half
 health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
 fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
 other win.
