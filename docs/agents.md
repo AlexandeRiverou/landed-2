@@ -15,13 +15,15 @@ The Orchestrator restates the request, asks if something important is unclear, p
 a pull request, a security verdict and an updated test preview. The task stays open until you merge or close the PR
 (`CLAUDE.md` §4).
 
-You can also call a specialist directly for a one-off job, e.g. "use the security agent to audit the CI workflow".
+You can also call a specialist directly for a one-off job, e.g. "use the security agent to audit the CI workflow" or
+"ask the game designer for five ideas to make bosses more fun".
 
 ## The team
 
 | Role | Defined in | Does | Can edit |
 |---|---|---|---|
 | **Orchestrator** | `.claude/skills/orchestrate/SKILL.md` | Understands the request, writes the execution plan, briefs the others, verifies their work, runs the checks, commits, opens the PR, updates the preview, watches the PR | Git, GitHub (the only one) |
+| **Game Designer** (senior) | `.claude/agents/game-designer.md` | Speaks for the player: writes design briefs before gameplay work, playtests and reviews changes for fun, feel, balance, clarity and tone (SHIP / SHIP WITH TWEAKS / REWORK), pitches ideas and audits areas on request | Nothing (read-only; playtests in headless Chromium) |
 | **Developer** (senior) | `.claude/agents/developer.md` | Implements game changes and the smoke-test checks that prove them | `src/` (including `src/desktop.js`, the desktop bridge), `index.html`, `style.css`, game checks in `scripts/smoke-test.mjs` |
 | **DevOps** | `.claude/agents/devops.md` | Owns build, test harness, CI/CD and releases; diagnoses red CI | `.github/workflows/`, `scripts/`, `package.json`, `electron/` (desktop / Steam build) |
 | **Security** (senior) | `.claude/agents/security.md` | Reviews every diff before the PR opens; returns findings and a PASS / PASS WITH NOTES / BLOCK verdict | Nothing (read-only) |
@@ -40,10 +42,15 @@ The specialists are subagents: each runs in its own context with only the tools 
     │
     ├─ plan: branch from main + task list
     │
+    ├─▶ Game Designer ── design brief (player-visible changes)
+    │
     ├─▶ Developer ──┐   (in parallel when independent)
     ├─▶ DevOps ─────┤
     │               ▼
     │          reports, verified against the working tree
+    │
+    ├─▶ Game Designer ── REWORK / Must ─▶ back to Developer ─▶ review again (max 3 rounds)   (in parallel
+    │      └─ SHIP / SHIP WITH TWEAKS                                                         with Security)
     │
     ├─▶ Security ── BLOCK / Medium+ ─▶ back to Developer or DevOps ─▶ Security again (max 3 rounds, then ask the human)
     │      │
@@ -62,6 +69,10 @@ The specialists are subagents: each runs in its own context with only the tools 
 
 Every agent returns a fixed report shape (see each definition), so the Orchestrator can check it quickly:
 
+- **Design brief:** fun goal, player story, feel and feedback, tuning numbers, player-visible acceptance criteria,
+  out of scope, risks.
+- **Design review:** verdict, a findings table (priority Must / Should / Could / Later, area, observation, evidence,
+  suggested change), what's fun already, innovations to consider next.
 - **Developer report:** what changed, tests run, visual check, notes for Documenter and DevOps, issues noticed but not
   changed.
 - **DevOps report:** what changed, the reproduced failure (for CI fixes), validation.

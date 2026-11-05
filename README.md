@@ -24,7 +24,8 @@ which build you're playing.
 ## The agent team
 
 Work on this repo can be driven by a team of Claude Code agents: run `/orchestrate <request>` and the Orchestrator
-plans it, delegates to the Developer, DevOps, Security and Documenter agents, and opens the PR. See
+plans it, delegates to the Game Designer, Developer, DevOps, Security and
+Documenter agents, and opens the PR. See
 [`docs/agents.md`](docs/agents.md).
 
 ## Building, testing and releasing
@@ -184,6 +185,14 @@ colours, props, sky, weather and music mood. There are 29, in order:
 The current zone and how many objectives until the next show under your rank. Random world changes still happen inside
 a zone, but can't break its identity. To add or change a zone, see [`docs/zones.md`](docs/zones.md).
 
+**Music** (`src/music.js`): a calm soundtrack synthesised live in WebAudio, no audio files. There are 9 moods:
+`day`, `dusk`, `dream` and `space`, plus `frost` (Frozen Peaks), `deep` (Crystal Caverns, Sunken Reef), `ember`
+(Volcano Land), `retro` (Neon Grid) and `wonder` (Mushroom Forest, Candy Kingdom, Alien World). Each mood starts on
+its signature sound, then the music moves in sections of 4 chords. Every section picks a new chord progression (each
+mood has 3–4), a new top layer (plucks, a soft arpeggio, a little call-and-answer melody, a pulsing bass, or just
+pads), a new pad colour and a slightly different brightness. Now and then it steps to a nearby key, and the next
+section usually steps back home. So it doesn't loop, but it stays the same mood. `N` toggles the music.
+
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double
 Points and Objective Radar 45 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,
@@ -280,7 +289,7 @@ loop pick it up on their own. If it needs ground, add it to `GROUND_OBJECTIVES` 
 one zone, list it in that zone's `noObjectives`.
 
 **Relax Mode** (`src/main.js`): press `R` or the ☁️ Relax Mode button to take a break. Objectives and enemies leave,
-no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy. The world stops changing, and
+no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy (spacey in space) until you leave. The world stops changing, and
 crashing doesn't cost a life, so if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
 back first.
 
@@ -326,6 +335,8 @@ found secrets are remembered between flights. The full spoiler list is in [`docs
 
 `window.G` holds the whole game state. `G.step(dt)` advances the simulation without rendering, which is handy for
 scripted tests in a headless browser.
+`G.audio.music.section` shows what the music is playing right now (mood, progression, texture, pad colour, key
+shift, section number).
 
 **Secret developer menu** (`src/devmenu.js`): during a flight, hold `1` and `0` together (top row or numpad) for 3
 seconds. On a touch screen, hold one finger in each top corner of the screen instead (each corner is a square 15% of
