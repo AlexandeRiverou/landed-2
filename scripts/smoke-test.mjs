@@ -84,6 +84,34 @@ try {
     out.firstObjective = G.objectives.current?.type;
     out.musicPlaying = !!G.audio.music && G.audio.music.chordIndex > 0;
     out.engineGain = G.audio.engGain ? G.audio.engGain.gain.value : 0;
+    out.musicSection = G.audio.music?.section && { ...G.audio.music.section, motif: undefined };
+
+    // Music variation: every zone's mood exists, each mood has 3+ four-chord progressions, and rolling 300
+    // sections never repeats a progression back to back, uses 3+ textures, and keys stay one small step from home.
+    {
+      const { MOODS, pickSection } = await import('./src/music.js');
+      const { ZONES } = await import('./src/zones.js');
+      const res = (out.music = { missing: ZONES.filter((z) => !MOODS[z.mood]).map((z) => z.name), moods: Object.keys(MOODS).length, bad: [] });
+      for (const [name, m] of Object.entries(MOODS)) {
+        if (m.progs.length < 3 || m.progs.some((p) => p.length !== 4 || p.some((c) => c.length !== 4))) res.bad.push(`${name}: progressions`);
+        let s = pickSection(name, null);
+        if (s.progression !== 0 || s.shift !== 0 || s.pad !== 'home') res.bad.push(`${name}: signature section`);
+        const textures = new Set([s.texture]);
+        let keyChanges = 0;
+        for (let i = 0; i < 300; i++) {
+          const n = pickSection(name, s);
+          if (n.progression === s.progression) res.bad.push(`${name}: progression repeated`);
+          if (![0, 2, -2, 5, -5].includes(n.shift) || (s.shift && n.shift && n.shift !== s.shift)) res.bad.push(`${name}: key wandered ${s.shift} -> ${n.shift}`);
+          if (n.root !== m.root + n.shift) res.bad.push(`${name}: root`);
+          if (n.shift !== s.shift) keyChanges++;
+          textures.add(n.texture);
+          s = n;
+        }
+        if (textures.size < 3) res.bad.push(`${name}: only ${textures.size} textures`);
+        if (!keyChanges) res.bad.push(`${name}: never changed key`);
+      }
+      res.bad = [...new Set(res.bad)];
+    }
 
     // Persuasion pacing: however much neglect piles up, tactics come at least 15 s of real time apart.
     {
@@ -1277,6 +1305,8 @@ try {
   const checks = [
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
     [report.musicPlaying && report.engineGain < 0.01, 'calm music plays and the engine stays quiet'],
+    [report.musicSection && report.musicSection.mood === 'day' && report.musicSection.texture, 'the music is in a section (music.section shows mood, progression, texture, root)'],
+    [report.music.missing.length === 0 && report.music.moods >= 8 && report.music.bad.length === 0, 'every zone\'s mood exists; sections vary progression, texture and key (small steps, back home)'],
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
     [report.persuasionPaced === 1, 'persuasion waits 15 s between tactics, however big the neglect'],
     [report.tactics.errors.length === 0 && report.tactics.applied + report.tactics.skipped.length === report.tactics.total && report.tactics.skipped.length <= 3 && report.tactics.total >= 35, 'every persuasion tactic applies and disposes without errors'],
