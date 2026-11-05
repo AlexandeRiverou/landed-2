@@ -22,6 +22,9 @@ const TYPES = {
 const SWARMS = { gull: 4, bee: 6 };
 // Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
 const PACE = 0.85;
+// Boss breathing room: fly away from a boss and it lets you go (loiters slowly) so you can turn around, until you're
+// LEASH m away or LOOSE_T s have passed, then it hurries back to its fight distance. Per boss: def.leash.
+const LEASH = 340, LOOSE_T = 7, ENGAGED_T = 4;
 
 let markerMat = null;
 function makeMarker() {
@@ -224,7 +227,7 @@ export class Enemies {
       type: 'boss', kind, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp, maxHp: hp, radius: def.radius * size,
       t: Math.random() * 10, cd: 3, state: 'idle', stateT: 0, quest: true, boss: true, anchor: pos.clone(), dead: false, attacks: 0, tauntT: 6,
       mod, short, name: mod ? `${mod.prefix} ${def.name}` : def.name, speedMul: mod?.speed || 1, cdMul: mod?.cd || 1,
-      orbitPhase: opts.phase || 0, burst: 0, burstT: 0, dash: 0, dashDir: new THREE.Vector3(), heading: new THREE.Vector3(),
+      orbitPhase: opts.phase || 0, burst: 0, burstT: 0, dash: 0, dashDir: new THREE.Vector3(), heading: new THREE.Vector3(), chase: null, looseT: 0, engagedT: 0,
     };
     this.list.push(e);
     return e;
@@ -245,6 +248,30 @@ export class Enemies {
     m.position.copy(from);
     this.G.scene.add(m);
     this.shots.push({ mesh: m, pos: m.position, vel: dir.clone().normalize().multiplyScalar(speed), life: 7, dmg, r2: (4 + size * 1.6) ** 2 });
+  }
+
+  // Engaged (e.chase null) -> 'loose' when you fly away past its fight distance -> 'catch' at the leash -> engaged once
+  // back in range. Returns the speed cap for this frame; while loose or catching up it also points _w (the steer) at the player.
+  chaseSpeed(e, toP, dist, dt, speed) {
+    const d = e.def, p = this.G.player, fight = d.lead || d.orbit, leash = d.leash || LEASH;
+    const fleeing = toP.dot(p.forward) > dist * 0.3; // the boss is behind you, more or less
+    // A lead boss belongs in front of you, so getting past it at all counts as flying off.
+    const off = d.lead ? d.lead * 0.5 : fight + 40;
+    e.engagedT += dt;
+    if (e.chase === 'catch') { if (dist < fight + 20) { e.chase = null; e.engagedT = 0; } }
+    else if (e.chase === 'loose') {
+      if (fleeing) e.looseT += dt; // only the time you spend flying away counts, not coming back for a pass
+      if (dist < fight && !fleeing) { e.chase = null; e.engagedT = 0; } // you came back for it
+      else if (dist > leash || e.looseT > LOOSE_T) e.chase = 'catch';
+    } else if (dist > leash) e.chase = 'catch';
+    // Freshly back in range it stays on you a moment (a lead boss needs that to swing round in front again).
+    else if (fleeing && dist > off && e.engagedT > ENGAGED_T) { e.chase = 'loose'; e.looseT = 0; }
+    // Own cruise speed (with rage, mods and damage), never more than half yours, so the gap opens.
+    const cruise = d.speed * e.speedMul * (e.enraged ? 1.25 : 1) * 0.7 ** (e.broken?.wing || 0) * (e.slow || 1);
+    if (e.chase === 'loose') { _w.copy(toP); return Math.min(cruise, Math.max(p.speed, p.baseSpeed * 0.5) * 0.45); } // floored: a parked plane mustn't freeze it mid-air
+    // Catching up heads straight for you: an orbit slot moves with you, so chasing it would trail behind forever.
+    if (e.chase === 'catch') { _w.copy(toP); return Math.max(speed, p.speed * 1.8 + cruise); }
+    return speed;
   }
 
   bossBehave(e, toP, dist, dt) {
@@ -272,12 +299,14 @@ export class Enemies {
       // Swinging back in front after a U-turn: go around the player, not through them.
       if (dist < e.radius + 30) _w.addScaledVector(toP, -60 / Math.max(dist, 1)).y += 30;
       const speed = p.speed * 1.8 + d.speed * e.speedMul * (e.enraged ? 1.25 : 1) * (e.slow || 1);
-      e.vel.lerp(_w.clampLength(0, speed), 1 - Math.exp(-dt * 3));
+      const cap = this.chaseSpeed(e, toP, dist, dt, speed); // may re-aim _w
+      e.vel.lerp(_w.clampLength(0, cap), 1 - Math.exp(-dt * 3));
     } else {
       const ang = e.t * (d.orbitRate || 0.28) + e.orbitPhase;
       _w.set(Math.cos(ang) * d.orbit, 25 + Math.sin(e.t * 0.7) * 15, Math.sin(ang) * d.orbit).add(p.pos).sub(e.pos);
       const speed = d.speed * e.speedMul * (e.enraged ? 1.25 : 1) * 0.7 ** (e.broken?.wing || 0) * (e.slow || 1);
-      e.vel.lerp(_w.clampLength(0, speed), 1 - Math.exp(-dt * 1.2));
+      const cap = this.chaseSpeed(e, toP, dist, dt, speed); // may re-aim _w
+      e.vel.lerp(_w.clampLength(0, cap), 1 - Math.exp(-dt * 1.2));
     }
     // Rapid-fire bursts are fired over several frames.
     if (e.burst > 0 && (e.burstT -= dt) <= 0 && !p.dead) {
@@ -358,7 +387,7 @@ export class Enemies {
       }
       case 'garyPrime':
         cd = 2.4;
-        if (n % 3 === 0) {
+        if (n % 3 === 0 && e.chase !== 'loose') { // no strafing run while letting you get away
           e.dash = 2;
           e.dashDir.copy(toP).normalize();
           G.ui.notify('Gary Prime is going for a strafing run! Get out of the way!', 'warn', 2.5, 1);
@@ -382,7 +411,7 @@ export class Enemies {
         break;
       case 'seagullSteven':
         cd = 2.6;
-        if (n % 3 === 1) {
+        if (n % 3 === 1 && e.chase !== 'loose') {
           e.dash = 2.2;
           e.dashDir.copy(toP).normalize();
           G.ui.notify('Steven is diving at you! He wants your chips!', 'warn', 2.5, 1);
