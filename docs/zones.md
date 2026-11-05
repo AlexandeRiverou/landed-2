@@ -13,7 +13,7 @@ developer menu and the smoke test pick up new entries on their own, so adding a 
 | `weather` | A weather name (`clear`, `leaves`, `dust`, `bubbles`, ...). |
 | `clouds` | `[colour, amount, height]`. Height defaults to 440; negative puts the clouds below you. |
 | `fog` | Fog distance scale (default 1; smaller is thicker). |
-| `mood` | Music mood (`day`, `dusk`, `dream`, `space`, ...). |
+| `mood` | Music mood: a key of `MOODS` in `src/music.js` (`day`, `dusk`, `dream`, `space`, `frost`, `deep`, `ember`, `retro`, `wonder`). The smoke test fails if it doesn't exist. A new mood needs `root, len, bright, beat, pluckEvery, scale, home, tex, pads, progs` (`bass` optional). |
 | `decor` | Big set pieces that follow the camera like the sky dome: `earthBelow`, `retroSun`, `gasGiant`, `ringArch`. Built in `Zones.buildDecor()`, which disposes the old decor first. |
 | `sunAzimuth` | Fixes the sky's sun direction (radians), so the lighting lines up with a sun in the decor (Neon Grid uses `Math.PI` for its retro sun). Zones without it get a fresh random sun direction. |
 | `asteroids`, `comets` | Asteroid count and comets (space zones). |

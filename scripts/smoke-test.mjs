@@ -89,11 +89,12 @@ try {
     // Music variation: every zone's mood exists, each mood has 3+ four-chord progressions, and rolling 300
     // sections never repeats a progression back to back, uses 3+ textures, and keys stay one small step from home.
     {
-      const { MOODS, pickSection } = await import('./src/music.js');
+      const { MOODS, PADS, pickSection } = await import('./src/music.js');
       const { ZONES } = await import('./src/zones.js');
       const res = (out.music = { missing: ZONES.filter((z) => !MOODS[z.mood]).map((z) => z.name), moods: Object.keys(MOODS).length, bad: [] });
       for (const [name, m] of Object.entries(MOODS)) {
         if (m.progs.length < 3 || m.progs.some((p) => p.length !== 4 || p.some((c) => c.length !== 4))) res.bad.push(`${name}: progressions`);
+        if (m.pads.length < 2 || m.pads.some((p) => !PADS[p])) res.bad.push(`${name}: pads`);
         let s = pickSection(name, null);
         if (s.progression !== 0 || s.shift !== 0 || s.pad !== 'home') res.bad.push(`${name}: signature section`);
         const textures = new Set([s.texture]);

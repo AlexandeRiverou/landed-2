@@ -108,7 +108,7 @@ export const MOODS = {
 };
 
 // Pad colours: [oscillator, detune (cents), volume, octave offset] per layer. All soft waveforms, no saws.
-const PADS = {
+export const PADS = {
   home: [['triangle', -6, 0.035, 0], ['sine', 7, 0.045, 0]], // the original pad
   airy: [['sine', -5, 0.045, 0], ['sine', 4, 0.016, 12]],    // sine with a faint octave above
   warm: [['triangle', -10, 0.03, 0], ['triangle', 9, 0.03, 0]],
