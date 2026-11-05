@@ -37,7 +37,7 @@ export const ZONES = [
   {
     name: 'Frozen Peaks', blurb: 'Jagged ice-cold mountains. The snowmen here are judgmental.',
     world: { palette: 'Winter Wonderland', amp: 1.9, terrace: 0.9, snowLine: 60, tempBias: -0.5 },
-    sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'dusk', lock: [...LOCK, 'weather'],
+    sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'frost', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Hollow Peaks', blurb: 'Huge mountains with holes clean through them. Yes, you can fly in there. The mountain is fine with it.',
@@ -49,13 +49,13 @@ export const ZONES = [
   {
     name: 'Crystal Caverns', blurb: 'You flew into a cave. There is a ceiling now. Please respect the ceiling.',
     world: { palette: 'cavern', cave: 1, amp: 0.45, terrace: 0, mesa: 0, canyon: 0.8, spikes: 1.1, seaLevel: -5, snowLine: 9999, floatingIslands: 0, propTheme: 'cave', propDensity: 1.1, tempBias: -0.2 },
-    sky: 'cave', weather: 'spores', clouds: ['#ffffff', 0], fog: 0.45, mood: 'dusk', noObjectives: ['altitude', 'stairs', 'meteors'], // no shooting stars under a rock ceiling
+    sky: 'cave', weather: 'spores', clouds: ['#ffffff', 0], fog: 0.45, mood: 'deep', noObjectives: ['altitude', 'stairs', 'meteors'], // no shooting stars under a rock ceiling
     lock: [...LOCK, 'weather', 'clouds', 'islands', 'fog', 'amp', 'sea', 'shape', 'spikes', 'mesa', 'canyon'],
   },
   {
     name: 'Volcano Land', blurb: 'Lava seas and falling ash. Do not land. Really, do not.',
     world: { palette: 'volcanic', amp: 1.4, spikes: 1.5, seaLevel: 25, propTheme: 'spooky', propDensity: 0.6 },
-    sky: 'volcano', weather: 'ash', clouds: ['#5a4a48', 50], fog: 0.75, mood: 'dusk', lock: [...LOCK, 'weather', 'sea'],
+    sky: 'volcano', weather: 'ash', clouds: ['#5a4a48', 50], fog: 0.75, mood: 'ember', lock: [...LOCK, 'weather', 'sea'],
   },
   {
     name: 'Tropical Archipelago', blurb: 'A thousand islands, palm trees, and suspiciously calm whales.',
@@ -71,7 +71,7 @@ export const ZONES = [
   {
     name: 'Sunken Reef', blurb: 'The sea won. You fly underwater now. The surface is the ceiling; the fish are unimpressed.',
     world: { palette: 'reef', underwater: 1, seaLevel: 250, amp: 0.35, roughness: 1.2, terrace: 0, mesa: 0.6, canyon: 0, spikes: 0.7, snowLine: 9999, floatingIslands: 0, propTheme: 'reef', propDensity: 1.3, tempBias: -0.1 },
-    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'dream', noObjectives: ['altitude', 'stairs', 'meteors', 'landing', 'treasure'], // shooting stars don't do underwater; nor do runways or dry dig spots
+    sky: 'reef', weather: 'bubbles', clouds: ['#ffffff', 0], fog: 0.5, mood: 'deep', noObjectives: ['altitude', 'stairs', 'meteors', 'landing', 'treasure'], // shooting stars don't do underwater; nor do runways or dry dig spots
     lock: [...LOCK, ...SHAPE_LOCK, 'weather', 'clouds', 'islands', 'fog', 'sea', 'decor'],
   },
   {
@@ -82,12 +82,12 @@ export const ZONES = [
   {
     name: 'Mushroom Forest', blurb: 'Glowing toxic jungle. The mushrooms are bigger than your plane.',
     world: { palette: 'Toxic Neon', propTheme: 'mushroom', propScale: 2, propDensity: 1.4 },
-    sky: 'alien', weather: 'bubbles', clouds: ['#c8ffd8', 30], mood: 'dream', lock: [...LOCK, 'weather'],
+    sky: 'alien', weather: 'bubbles', clouds: ['#c8ffd8', 30], mood: 'wonder', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Neon Grid', blurb: 'Synthwave country. The mountains are pointy, the sun is striped, the year is 1986.',
     world: { palette: 'neon', grid: 64, amp: 1.8, roughness: 0.7, terrace: 0, mesa: 0, canyon: 0.6, spikes: 0.9, seaLevel: 0, propTheme: 'neon', propDensity: 0.35, floatingIslands: 0, balloons: 0 },
-    sky: 'synthwave', weather: 'clear', clouds: ['#ff7ad8', 6], fog: 0.9, mood: 'dusk', decor: 'retroSun', sunAzimuth: Math.PI, lock: [...LOCK, 'weather', 'islands', 'decor'],
+    sky: 'synthwave', weather: 'clear', clouds: ['#ff7ad8', 6], fog: 0.9, mood: 'retro', decor: 'retroSun', sunAzimuth: Math.PI, lock: [...LOCK, 'weather', 'islands', 'decor'],
   },
   {
     name: 'Princess Kingdom', blurb: 'Pink castles, heart-shaped trees and unicorns. Curtsy while flying.',
@@ -97,7 +97,7 @@ export const ZONES = [
   {
     name: 'Candy Kingdom', blurb: 'Lollipop forests and donut boulders. Dentists fear this place.',
     world: { palette: 'Cotton Candy', propTheme: 'candy', propDensity: 1.3 },
-    sky: 'candy', weather: 'confetti', clouds: ['#ffd0ec', 50], mood: 'dream', lock: [...LOCK, 'weather', 'clouds'],
+    sky: 'candy', weather: 'confetti', clouds: ['#ffd0ec', 50], mood: 'wonder', lock: [...LOCK, 'weather', 'clouds'],
   },
   {
     name: 'Blockland', blurb: 'Everything is made of blocks. The cows are suspicious about it too.',
@@ -162,7 +162,7 @@ export const ZONES = [
   {
     name: 'Alien World', blurb: 'Purple grass, crystal forests, a lime sky. You are far from home.',
     world: { palette: 'Alien Planet', amp: 1.5, spikes: 1, propTheme: 'crystal', propDensity: 1.2 },
-    sky: 'alien', weather: 'glitter', clouds: ['#b0ffe8', 35], mood: 'dream', decor: 'twoMoons', lock: [...LOCK, 'weather'],
+    sky: 'alien', weather: 'glitter', clouds: ['#b0ffe8', 35], mood: 'wonder', decor: 'twoMoons', lock: [...LOCK, 'weather'],
   },
 ];
 
@@ -221,7 +221,6 @@ export class Zones {
     G.sky.decor.clear();
     this.asteroids.configure(z.asteroids || 0, !!z.comets);
     this.buildDecor(z.decor);
-    G.audio.music?.setMood(z.mood);
     if (!instant) {
       G.terrain.rebuildAll();
       G.player.grace = 8; // the ground may jump up under you while the new world forms
@@ -309,7 +308,8 @@ export class Zones {
     AXIS_CURVE.value += (world.axisCurve - AXIS_CURVE.value) * ease;
     if (world.axisCurve) CURVE_AXIS.value.set(world.curveAxis === 'z' ? 0 : 1, world.curveAxis === 'z' ? 1 : 0);
     const music = G.audio.music;
-    if (music && music.mood !== undefined) music.setMood(z.mood); // music starts after the first click
+    const mood = G.relax ? (z.mood === 'space' ? 'space' : 'dream') : z.mood; // Relax Mode keeps its dreamy music
+    if (music && music.mood !== undefined) music.setMood(mood); // music starts after the first click
     if (this.cardTimer > 0 && (this.cardTimer -= dt) <= 0) this.el.card.classList.remove('show');
     const left = ZONE_EVERY - this.sinceZone;
     this.el.label.textContent = `🗺 ${z.name} · next zone in ${left} objective${left > 1 ? 's' : ''}`;

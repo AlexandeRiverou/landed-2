@@ -134,11 +134,9 @@ function setRelax(on) {
     G.objectives.suspend();
     G.enemies.clearAll();
     G.ui.bossBar(null);
-    G.audio.music?.setMood(G.zones.current.mood === 'space' ? 'space' : 'dream');
     G.ui.notify(pick(T.relaxOn), 'info', 5, 2);
   } else {
     G.enemies.spawnTimer = 8;
-    G.audio.music?.setMood(G.zones.current.mood);
     G.ui.notify(pick(T.relaxOff), 'good', 4, 2);
   }
 }
