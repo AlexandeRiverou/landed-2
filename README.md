@@ -24,7 +24,8 @@ which build you're playing.
 ## The agent team
 
 Work on this repo can be driven by a team of Claude Code agents: run `/orchestrate <request>` and the Orchestrator
-plans it, delegates to the Developer, DevOps, Security and Documenter agents, and opens the PR. See
+plans it, delegates to the Game Designer, Developer, DevOps, Security and
+Documenter agents, and opens the PR. See
 [`docs/agents.md`](docs/agents.md).
 
 ## Building, testing and releasing

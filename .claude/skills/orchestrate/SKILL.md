@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Orchestrator for Landed. Use for any change request on this repo (features, fixes, tuning, docs, CI) - run as /orchestrate <request>. Plans the work, delegates to the developer, devops, security and documenter agents, verifies their results, then opens the PR, updates the test preview and watches the PR until a human decides.
+description: Orchestrator for Landed. Use for any change request on this repo (features, fixes, tuning, docs, CI) - run as /orchestrate <request>. Plans the work, delegates to the game-designer, developer, devops, security and documenter agents, verifies their results, then opens the PR, updates the test preview and watches the PR until a human decides.
 ---
 
 # Orchestrator
@@ -11,6 +11,7 @@ human merges or closes it. The specialists do the hands-on work:
 
 | Agent (`subagent_type`) | Owns | Never does |
 |---|---|---|
+| `game-designer` | the player's experience: design briefs before gameplay work, playtest reviews after (verdict SHIP / SHIP WITH TWEAKS / REWORK), idea pitches | editing files, git |
 | `developer` | game code (`src/`, `index.html`, `style.css`) and its smoke-test checks | git, CI, docs |
 | `devops` | `.github/workflows/`, `scripts/`, `package.json`, the test harness, CI failures | game code, pushes, settings |
 | `security` | read-only review of the diff; verdict PASS / PASS WITH NOTES / BLOCK | editing files |
@@ -34,11 +35,12 @@ then write the plan as a task list (TaskCreate) and keep it updated:
 ```markdown
 ## Execution plan: <request>
 Acceptance criteria: ...
-1. developer: <what, which files>                 (depends on: none)
-2. devops: <what>                                 (only if build/CI/tooling changes)
-3. security: review the diff                      (always, after code is in)
-4. documenter: docs + PR description draft        (always)
-5. orchestrator: verify, commit, push, PR, preview, watch
+1. game-designer: design brief                    (gameplay, feel, balance, content or player-facing text)
+2. developer: <what, which files>                 (depends on: 1)
+3. devops: <what>                                 (only if build/CI/tooling changes)
+4. game-designer + security: review the diff      (in parallel; design review only for player-facing changes)
+5. documenter: docs + PR description draft        (always)
+6. orchestrator: verify, commit, push, PR, preview, watch
 ```
 
 Run independent steps in parallel (e.g. developer and devops on separate files); keep dependent ones in order.
@@ -59,7 +61,27 @@ Start each agent with the Agent tool and a **self-contained brief**: the agent d
 Check every report against the actual working tree before you trust it (`git status`, `git diff`, rerun a check). A
 report that says "tests pass" without output is not evidence.
 
-## 4. Security gate
+### Design brief
+
+For anything a player would notice (new content, mechanics, tuning, difficulty, HUD, player-facing text), run
+`game-designer` first with the human's request and let it return a design brief. Pass the brief to `developer` as
+part of its brief: the fun goal, tuning numbers and player-visible acceptance criteria become the Developer's
+acceptance criteria. If the designer pushes back on the request itself, tell the human and let them choose. Skip it
+for pure tooling, CI, docs or refactors with no player-visible effect.
+
+## 4. Design review and security gate
+
+**Design review** (player-visible changes): run `game-designer` on the implemented diff, in parallel with
+`security`. It playtests the build and returns SHIP / SHIP WITH TWEAKS / REWORK.
+
+- **REWORK** or **Must** items: brief `developer` with them verbatim, then run the design review again.
+- **SHIP WITH TWEAKS:** pass the **Should** items to `developer` when they are small and in scope; carry the rest
+  into the PR's Design review section.
+- **Could / Later** items and "Innovations to consider next": list them in the PR's Design review section so the
+  human sees them; don't build them in this PR.
+- After **3 rounds** without SHIP, stop and ask the human. Design never overrides a Security finding or a test.
+
+**Security gate:**
 
 After code and tooling changes are in, run `security` on the diff (`git diff origin/main` plus untracked files).
 
@@ -70,7 +92,7 @@ After code and tooling changes are in, run `security` on the diff (`git diff ori
 
 ## 5. Docs and PR description
 
-Run `documenter` with the request, every agent report, and the security review. It updates the docs and returns a
+Run `documenter` with the request, every agent report, the design review and the security review. It updates the docs and returns a
 filled-in PR description draft. Read the draft against the diff and fix anything inaccurate.
 
 ## 6. Verify and ship (you)
@@ -89,7 +111,7 @@ filled-in PR description draft. Read the draft against the diff and fix anything
 - **CI red:** read the log; `devops` diagnoses pipeline/tooling failures, `developer` fixes failures in game code
   or its checks. Push the fix, update the preview. Never skip or weaken a test.
 - **Review comments:** route each to the owning agent (code → `developer`, CI → `devops`, docs → `documenter`,
-  security questions → `security`), push, reply on the thread, and run `security` again if code changed.
+  security questions → `security`, gameplay or feel feedback → `game-designer` then `developer`), push, reply on the thread, and run `security` again if code changed.
 - **Merge conflict:** merge `origin/main` into the branch (never rebase or force-push an open PR), re-run the checks.
 - **Merged or closed:** the task is done. Tell the human the outcome.
 
@@ -101,6 +123,7 @@ while the PR is open. Never approve or merge a PR yourself.
 ```markdown
 **<Request>**: PR #N <link>: CI <state>, waiting on your review.
 - What changed (2-4 bullets, player-visible first)
+- Design: <verdict> (<n> tweaks applied, ideas for later)
 - Security: <verdict> (<n> findings fixed, <n> notes)
 - Preview: <link> shows `<branch>@<sha>`
 ```

@@ -15,6 +15,10 @@
 - [ ] `npm test` (headless smoke test)
 - [ ] Looked at it running (describe what you checked, add screenshots for visible changes)
 
+## Design review
+
+<!-- Verdict from the game-designer agent (SHIP / SHIP WITH TWEAKS / REWORK), tweaks applied, ideas left for later. Write "n/a" for changes with no player-visible effect. -->
+
 ## Security review
 
 <!-- Verdict from the security agent (PASS / PASS WITH NOTES / BLOCK), findings fixed, notes left open. Write "n/a" for docs-only changes reviewed by hand. -->
