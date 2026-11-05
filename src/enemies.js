@@ -195,12 +195,8 @@ const BOSS_BREAK_TEXT = {
   tentacle: 'Tentacle severed! Fewer arms, fewer orbs in the spiral.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
-const SHOOK_OFF = [
-  'You shook off {short}! Patch up, turn around, come back swinging.',
-  '{short} lost sight of you. Catch your breath: the hull mends faster now.',
-  'Clean getaway! {short} is pretending it meant to let you go.',
-];
-const COMING_BACK = ['{short} remembered you exist. Here it comes!', '{short} is coming back for round two!', 'Break\'s over: {short} is on its way.'];
+const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
+const COMING_BACK = ['{short} is back for round two!', 'Break\'s over! {short} is coming back.', '{short} wants a rematch!'];
 const TOAST_GAP = 10; // s between breakaway toasts, so twins don't double up
 
 export class Enemies {
@@ -289,6 +285,7 @@ export class Enemies {
       e.looseT = 0;
       e.looseMax = Math.max(LOOSE_MIN, LOOSE_T * LOOSE_SHRINK ** e.breaks++);
       e.burst = e.dash = 0; // a half-fired burst or a charge in progress is called off too
+      if (e.puffT > 0) { e.puffT = 0; e.shield = 1; } // a puffed-up boss deflates quietly
       this.calm(3); // its minions give up too
       this.breakNews(e, SHOOK_OFF, 'shookAt', 'good', 3, 520, -200);
     }
@@ -306,7 +303,7 @@ export class Enemies {
     const G = this.G;
     if (G.time - this[at] < TOAST_GAP) return false;
     this[at] = G.time;
-    G.ui.notify(pick(lines).replace('{short}', e.short), kind, dur);
+    G.ui.notify(pick(lines).replace('{short}', () => e.short), kind, dur); // a function: no `$` patterns in the name
     G.audio.tone(freq, 0.35, { type: 'sine', vol: 0.05, slide });
     return true;
   }
@@ -367,7 +364,7 @@ export class Enemies {
       G.ui.notify('POP! Sir Puffington deflated. Shoot him now!', 'good', 2.5, 0);
     }
 
-    e.tauntT -= dt;
+    if (!e.chase) e.tauntT -= dt; // no taunts while it has lost you or is hurrying back
     if (e.tauntT <= 0) { e.tauntT = rand(12, 18); G.ui.notify(pick(d.taunts), 'warn', 3.5, 0); if (e.kind === 'gooseQueen') G.audio.honk(); }
 
     e.cd -= dt * (e.enraged ? 1.6 : 1);
