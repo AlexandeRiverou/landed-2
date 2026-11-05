@@ -44,6 +44,8 @@ const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
 // endRun). The hull mends itself only after REGEN_DELAY s without a hit, at stats.regen hp/s; levelling up mends it fully.
 export const LIVES = 3;
 const REGEN_DELAY = 10;
+// Breather (every boss alive has lost you, see enemies.js): repairs start sooner and run faster.
+const BREATHER_DELAY = 3, BREATHER_REGEN = 3;
 // Permanent upgrades from levelling up (see progression.js) start from these every run.
 const BASE_STATS = { fireRate: 1, boostRegen: 1, boostDrain: 1, regen: 1, damage: 1 };
 const BASE_HEALTH = 100, BASE_SPEED = 44;
@@ -146,7 +148,8 @@ export class Player {
     this.grace = Math.max(0, this.grace - dt);
     if (this.grace <= 0) this.graceNotified = false;
     this.sinceHit += dt;
-    if (this.sinceHit > REGEN_DELAY && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen);
+    const breather = G.enemies.breather;
+    if (this.sinceHit > (breather ? BREATHER_DELAY : REGEN_DELAY) && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen * (breather ? BREATHER_REGEN : 1));
 
     this.maneuverCd = Math.max(0, this.maneuverCd - dt);
     if (this.landed ? !this.taxi(dt, input) : !this.fly(dt, input)) return; // false: crashed

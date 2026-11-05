@@ -182,9 +182,11 @@ html, body {
   width: min(420px, 50vw);
   text-align: center;
   font-weight: 700;
+  transition: opacity 0.4s;
 }
 #boss-name { font-size: 15px; color: #c8202e; }
 #boss-bar .track { height: 14px; margin-top: 4px; }
+#boss-bar.away { opacity: 0.55; }
 #boss-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff4d5e, #ff9a3a); transition: width 0.15s; }
 
 #marker { position: absolute; transform: translate(-50%, -50%); display: none; text-align: center; }
