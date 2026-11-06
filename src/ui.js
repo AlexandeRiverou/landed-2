@@ -99,13 +99,20 @@ export class UI {
     e.objDesc.textContent = obj.desc;
   }
 
-  // b: { name, hp, maxHp, enraged } for the current boss fight (twins share one bar), or null.
+  // b: { name, hp, maxHp, enraged, away, note } for the current boss fight (twins share one bar), or null.
   bossBar(b) {
     const bar = document.getElementById('boss-bar');
     if (!b) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     bar.classList.toggle('away', !!b.away); // dimmed while it has lost you
-    document.getElementById('boss-name').textContent = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}${b.away ? ' (lost you)' : ''}`;
+    // Called every frame: only touch the DOM when the title changes. The note ("(lost you)", "(your move)") stays on one line.
+    const title = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}`, note = b.note ? `(${b.note})` : '';
+    if (title !== this.bossTitle || note !== this.bossNote) {
+      this.bossTitle = title; this.bossNote = note;
+      const name = document.getElementById('boss-name');
+      name.textContent = title;
+      if (note) { const span = document.createElement('span'); span.className = 'chase-note'; span.textContent = note; name.append(' ', span); }
+    }
     document.getElementById('boss-fill').style.width = `${Math.max(0, (b.hp / b.maxHp) * 100)}%`;
   }
 

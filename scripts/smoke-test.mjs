@@ -603,21 +603,28 @@ try {
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
     // Breathing room: fly straight away from a boss (an orbiter and a lead boss) and it lets the gap open well past its
-    // fight distance, so there's room to turn around, holding its fire and letting the hull mend faster (50 hp at the
-    // breakaway, 70+ 12 s later), then hurries back within 10 s and is attacking again within 6 s of the rematch.
-    // The breakaway is announced once (once for twins too), so is its return, and the boss bar says "(lost you)".
+    // fight distance, hovering where it lost you (within 30 m, 8 m/s once it has braked), holding its fire and letting the
+    // hull mend faster (50 hp at the breakaway, 70+ 12 s later). Then it comes back, but only to a standoff (fight + 150 m,
+    // ± 30) within 15 s (from up to the 650 m leash, closing at 30 m/s), and waits there, keeping its distance for the
+    // 10 s you keep fleeing. Turn in and it re-engages within 8 s, its first attack 2.5 to 7 s later.
+    // The breakaway is announced once (once for twins too), so are its return and its wait, and the boss bar says
+    // "(lost you)" while it's loose, nothing on the way back, "(your move)" while it waits.
     out.breathing = {};
     const toasts = [], notify = G.ui.notify.bind(G.ui), spawnTimer = G.enemies.spawnTimer, baseSpeed = G.player.baseSpeed;
     try { // always undo the stubs below, even if a step throws
       G.ui.notify = (text, ...rest) => { toasts.push(text); return notify(text, ...rest); };
-      const SHOOK = /lost you!|lost sight of you|Clean getaway/, BACK = /round two|Break's over|wants a rematch/;
+      const SHOOK = /lost you!|lost sight of you|Clean getaway/, BACK = /round two!|Break's over|wants a rematch/, WAIT = /waiting for you|polite distance|saved you a seat/;
       // Wrong-way nags: breaking away from a boss is a tactic, not ignoring the objective.
       const { T: TEXTS, fmt } = await import('./src/texts.js');
       const nags = (from) => toasts.slice(from).filter((t) => TEXTS.wrongWay.some((w) => fmt(w, G.objectives.current?.noun) === t)).length;
-      const shook = (from) => toasts.slice(from).filter((t) => SHOOK.test(t)).length, back = (from) => toasts.slice(from).filter((t) => BACK.test(t)).length;
+      const count = (re) => (from) => toasts.slice(from).filter((t) => re.test(t)).length;
+      const shook = count(SHOOK), back = count(BACK), waiting = count(WAIT);
+      const barText = () => document.getElementById('boss-name').textContent;
       // Real hits from here on (step() makes the plane invulnerable); grace still saves it from the terrain.
       const live = () => { G.player.grace = 1; G.player.invuln = 0; G.enemies.spawnTimer = 1e9; G.step(1 / 30); };
       const awayFrom = (e) => G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(e.pos.x - G.player.pos.x, e.pos.z - G.player.pos.z));
+      const towards = (e) => G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(G.player.pos.x - e.pos.x, G.player.pos.z - e.pos.z));
+      const safe = (n = 1) => { for (let i = 0; i < n; i++) { G.player.grace = 1; G.player.health = G.player.maxHealth; step(1); } };
       // Fly at it (a lead boss settles in front by itself) until it's in range and has been on you a while: only then
       // does flying off count as a breakaway (passing it on the way in may have set one off already).
       const engage = (list) => {
@@ -629,6 +636,7 @@ try {
         }
       };
       const clearSky = () => { G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x)); G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); };
+      const endBoss = () => { G.objectives.current.dispose(G); G.objectives.current = null; clearSky(); };
       for (const kind of ['kingDrone', 'octopus']) {
         G.powerups.active.clear();
         G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
@@ -643,13 +651,14 @@ try {
         engage([e]);
         // A pass on the way in may already have counted as a breakaway (and had its toast): start this one fresh.
         e.breaks = 0;
-        G.enemies.shookAt = G.enemies.backAt = -99;
+        G.enemies.shookAt = G.enemies.backAt = G.enemies.waitAt = -99;
         awayFrom(e);
-        let gap = 0, start = -1, caughtAt = -1, backAt = -1, backIn = -1, quiet = false, attacks0 = 0, attacksBack = 0, again = -1, hull = -1;
-        let lostYou = false, barBack = true, toasts0 = toasts.length, shookN = 0, backN = 0, nags0 = 0, nagsAway = -1;
-        for (let i = 0; i < 30 * 45; i++) {
-          if (start < 0) { G.player.grace = 1; G.player.health = G.player.maxHealth; step(1); } else {
-            if (backAt >= 0) G.player.nudgeToward(e.pos, 2, 1 / 30); // back in range: turn in for the rematch
+        let gap = 0, start = -1, caughtAt = -1, waitAt = -1, waitIn = -1, waitDist = -1, minWait = Infinity, stayed = true, turnAt = -1, backAt = -1, reIn = -1;
+        let quiet = false, attacks0 = 0, attacksBack = 0, again = -1, hull = -1, homeOff = 0, braking = 0, hovering = 0;
+        let lostYou = false, barBack = true, barReturn = false, barWait = false, breatherWait = false, toasts0 = toasts.length, shookN = 0, backN = 0, waitN = 0, nags0 = 0, nagsAway = -1;
+        for (let i = 0; i < 30 * 75; i++) {
+          if (start < 0) safe(); else {
+            if (turnAt >= 0) G.player.nudgeToward(e.pos, 2, 1 / 30); // 10 s into its wait: turn in for the rematch
             live();
           }
           const dist = e.pos.distanceTo(G.player.pos);
@@ -657,18 +666,36 @@ try {
             // The breakaway starts: patch-up test from 50 hp, as if just hit (orbs already in flight are cleared).
             start = i; attacks0 = e.attacks; nags0 = toasts.length; G.player.health = 50; G.player.sinceHit = 0; clearSky();
           }
-          if (caughtAt < 0 && e.chase === 'catch') { caughtAt = i; backN = back(toasts0); barBack = document.getElementById('boss-name').textContent.includes('(lost you)'); }
-          if (caughtAt < 0) gap = Math.max(gap, dist);
-          if (start >= 0 && caughtAt < 0 && document.getElementById('boss-name').textContent.includes('(lost you)')) lostYou = true;
-          if (caughtAt >= 0 && backAt < 0 && dist < fight + 25) {
-            backAt = i; backIn = (i - caughtAt) / 30; quiet = e.attacks === attacks0; attacksBack = e.attacks;
-            shookN = shook(toasts0); nagsAway = nags(nags0);
+          if (start >= 0 && e.chase === 'loose') {
+            // Hovering where it lost you (enemies run at 0.85 pace: real speed is vel × 0.85).
+            homeOff = Math.max(homeOff, e.pos.distanceTo(e.home));
+            const v = e.vel.length() * 0.85;
+            if ((i - start) / 30 < 1.55) braking = Math.max(braking, v); else hovering = Math.max(hovering, v);
           }
+          if (caughtAt < 0 && e.chase === 'catch') { caughtAt = i; backN = back(toasts0); barBack = barText().includes('(lost you)'); }
+          if (caughtAt < 0) gap = Math.max(gap, dist);
+          if (start >= 0 && caughtAt < 0 && barText().includes('(lost you)')) lostYou = true;
+          if (e.chase === 'catch' && /\((lost you|your move)\)/.test(barText())) barReturn = true;
+          if (caughtAt >= 0 && waitAt < 0 && e.chase === 'wait') { waitAt = i; waitIn = (i - caughtAt) / 30; waitDist = Math.round(dist - fight); }
+          if (waitAt >= 0 && turnAt < 0) {
+            // Keep fleeing for 10 s: it keeps its distance and keeps waiting.
+            minWait = Math.min(minWait, dist - fight);
+            stayed &&= e.chase === 'wait';
+            barWait ||= barText().includes('(your move)');
+            breatherWait ||= G.enemies.breather; // shadowing you from its standoff is no rest: normal mending
+            if (i - waitAt >= 30 * 10) { turnAt = i; shookN = shook(toasts0); waitN = waiting(toasts0); nagsAway = nags(nags0); }
+          }
+          if (turnAt >= 0 && backAt < 0 && !e.chase) { backAt = i; reIn = (i - turnAt) / 30; quiet = e.attacks === attacks0; attacksBack = e.attacks; }
           if (start >= 0 && i - start === 30 * 12) hull = Math.round(G.player.health);
           if (backAt >= 0 && again < 0 && e.attacks > attacksBack) again = (i - backAt) / 30;
-          if (hull >= 0 && backAt >= 0 && (again >= 0 || i - backAt > 30 * 6)) break;
+          if (hull >= 0 && backAt >= 0 && (again >= 0 || i - backAt > 30 * 8)) break;
+          if (turnAt >= 0 && backAt < 0 && i - turnAt > 30 * 10) break;
         }
-        out.breathing[kind] = { fight, gap: Math.round(gap), backIn, quiet, again, hull, lostYou, barBack, shook: shookN, back: backN, nags: nagsAway, hint4s };
+        out.breathing[kind] = {
+          fight, gap: Math.round(gap), waitIn, waitDist, minWait: Math.round(minWait), stayed, reIn, quiet, again, hull,
+          homeOff: Math.round(homeOff), braking: +braking.toFixed(1), hovering: +hovering.toFixed(1),
+          lostYou, barBack, barReturn, barWait, breatherWait, shook: shookN, back: backN, wait: waitN, nags: nagsAway, hint4s,
+        };
         if (kind === 'kingDrone') {
           // Breaking away again without hurting it: a shorter loose spell (8 s, then 6 s of enemy time, which runs at 0.85
           // pace; the leash may end one sooner), and it really is over within that. Shooting it resets that.
@@ -710,16 +737,140 @@ try {
         G.objectives.current = null;
         clearSky();
       }
-      // Realistic flee from a lead boss: bank round 180° on boost, then fly on. Little damage once the turn is done.
-      // At a fresh run's top speed (BASE_SPEED in player.js): the world mutations above may have raised it.
-      out.fleeLead = {};
+      // From here on at a fresh run's top speed (BASE_SPEED in player.js): the world mutations above may have raised it.
       G.player.baseSpeed = 44;
+      // A fresh boss that turns up past the leash (spawn spot plus height) just flies in and fights: no "coming back" or
+      // waiting at a standoff before you ever met it.
+      {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss('kingDrone', { mod: null, duo: false }), t0 = toasts.length;
+        e.pos.copy(G.player.pos).addScaledVector(G.player.forward.clone().setY(0).normalize(), 700).setY(G.player.pos.y + 60);
+        let onBreak = false, attackIn = -1;
+        for (let i = 0; i < 30 * 15 && attackIn < 0; i++) { G.player.nudgeToward(e.pos, 2, 1 / 30); safe(); onBreak ||= !!e.chase; if (e.attacks > 0) attackIn = +(i / 30).toFixed(1); }
+        out.breathing.farSpawn = { onBreak, attackIn, waitToasts: waiting(t0) };
+        endBoss();
+      }
+      // A boss faster than you still can't keep up with you flying off: Turbo Gary Prime, enraged (a 66 m/s cruise), is
+      // shaken off flying straight at base speed, no boost, within 6 s (turning away from his orbit, not mid strafing run).
+      {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss('garyPrime', { mod: 'turbo', duo: false });
+        e.enraged = true;
+        engage([e]);
+        for (let i = 0; i < 30 * 20 && !(e.dash <= 0 && Math.abs(e.pos.distanceTo(G.player.pos) - e.def.orbit) < 30); i++) { G.player.nudgeToward(e.pos, 2, 1 / 30); safe(); }
+        e.breaks = 0;
+        awayFrom(e);
+        let t = -1;
+        for (let i = 0; i < 30 * 12 && t < 0; i++) { safe(); if (e.chase === 'loose') t = +(i / 30).toFixed(1); }
+        out.breathing.gary = { t, speed: Math.round(G.player.speed) };
+        endBoss();
+      }
+      // Boosted U-turn from deep inside the orbit (Gary Prime, Steven), not mid-charge: it lets go within 4 s of the turn.
+      out.breathing.uturn = {};
+      for (const kind of ['garyPrime', 'seagullSteven']) {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss(kind, { mod: null, duo: false });
+        engage([e]);
+        for (let i = 0; i < 30 * 20 && !(e.dash <= 0 && e.pos.distanceTo(G.player.pos) < e.def.orbit * 0.5); i++) { G.player.nudgeToward(e.pos, 2, 1 / 30); safe(); }
+        e.breaks = 0;
+        const d0 = Math.round(e.pos.distanceTo(G.player.pos));
+        G.player.boost = 1;
+        G.input.keys.add('ShiftLeft');
+        const V = G.player.forward.constructor, f0 = G.player.forward.clone().setY(0).normalize(), turn = new V(), up = new V(0, 1, 0);
+        for (let i = 0; i < 30 * 10 && G.player.forward.dot(f0) > -0.95; i++) {
+          turn.copy(G.player.forward).setY(0).normalize().applyAxisAngle(up, -0.6);
+          G.player.nudgeToward(G.player.pos.clone().addScaledVector(turn, 100), 3, 1 / 30);
+          safe();
+        }
+        let t = e.chase === 'loose' ? 0 : -1;
+        for (let i = 0; i < 30 * 10 && t < 0; i++) { safe(); if (e.chase === 'loose') t = +((i + 1) / 30).toFixed(1); }
+        G.input.keys.delete('ShiftLeft');
+        out.breathing.uturn[kind] = { d0, t };
+        endBoss();
+      }
+      // No free sniping: shoot a boss that has lost you and it fights back at once (out of 'loose' within 0.1 s, first
+      // attack about 1.2 s of enemy time later).
+      {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss('kingDrone', { mod: null, duo: false });
+        engage([e]);
+        awayFrom(e);
+        for (let i = 0; i < 30 * 20 && e.chase !== 'loose'; i++) safe();
+        safe(30); // well into its sulk
+        const loose = e.chase === 'loose', a0 = e.attacks;
+        e.hp -= 5;
+        let left = -1, attack = -1;
+        for (let i = 0; i < 30 * 5 && attack < 0; i++) {
+          safe();
+          if (left < 0 && e.chase !== 'loose') left = +((i + 1) / 30).toFixed(2);
+          if (e.attacks > a0) attack = +((i + 1) / 30).toFixed(2);
+        }
+        out.breathing.snipe = { loose, left, attack, chase: e.chase };
+        endBoss();
+      }
+      // Turn-back rematch: flee for 14 s, then turn round. It's well clear (fight + 120 m+), comes in no faster than
+      // 33 m/s while you close, and its first attack comes at least 4 s after the turn.
+      {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss('gooseQueen', { mod: null, duo: false });
+        engage([e]);
+        e.breaks = 0;
+        awayFrom(e);
+        safe(30 * 14);
+        const atTurn = Math.round(e.pos.distanceTo(G.player.pos) - e.def.orbit), state = e.chase, a0 = e.attacks;
+        towards(e);
+        let speed = 0, reIn = -1, firstAtk = -1;
+        for (let i = 0; i < 30 * 15 && firstAtk < 0; i++) {
+          G.player.nudgeToward(e.pos, 2, 1 / 30);
+          safe();
+          if (reIn < 0) { if (e.chase) speed = Math.max(speed, e.vel.length() * 0.85); else reIn = +(i / 30).toFixed(1); }
+          if (e.attacks > a0) firstAtk = +(i / 30).toFixed(1);
+        }
+        out.breathing.rematch = { atTurn, state, speed: +speed.toFixed(1), reIn, firstAtk };
+        endBoss();
+      }
+      // Hanging about at the standoff (circling it, not fleeing) doesn't stall the fight: it attacks within ~7 s of
+      // arriving there. Persuasion's "approach" leaves a waiting boss where it is, and pulls an engaged one no closer
+      // than its standoff.
+      {
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+        const [e] = startBoss('kingDrone', { mod: null, duo: false });
+        const standoff = e.def.orbit + 150;
+        engage([e]);
+        e.breaks = 0;
+        awayFrom(e);
+        for (let i = 0; i < 30 * 40 && e.chase !== 'wait'; i++) safe();
+        const arrived = e.chase === 'wait', was = e.pos.clone();
+        G.objectives.current.approach(G, 0.45);
+        const pulledWaiting = +e.pos.distanceTo(was).toFixed(1), a0 = e.attacks, V = G.player.forward.constructor, side = new V();
+        const round = () => side.subVectors(e.pos, G.player.pos).setY(0).normalize().set(side.z, 0, -side.x); // neither towards nor away
+        round();
+        G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-side.x, -side.z)); // stop fleeing: turn to circle it
+        let attackIn = -1;
+        for (let i = 0; i < 30 * 12 && attackIn < 0; i++) {
+          round();
+          G.player.nudgeToward(G.player.pos.clone().addScaledVector(side, 100), 2, 1 / 30);
+          safe();
+          if (e.attacks > a0) attackIn = +(i / 30).toFixed(1);
+        }
+        // Engaged, 350 m off: a 0.45 approach (27% of the way) would bring it to 255 m, but it stops at the standoff.
+        const dir = new V().subVectors(e.pos, G.player.pos).normalize();
+        e.pos.copy(G.player.pos).addScaledVector(dir, 350);
+        const engaged = !e.chase;
+        G.objectives.current.approach(G, 0.45);
+        out.breathing.standoff = { arrived, pulledWaiting, attackIn, engaged, pulledTo: +(e.pos.distanceTo(G.player.pos) - standoff).toFixed(1) };
+        endBoss();
+      }
+      // Realistic flee from a lead boss: bank round 180° on boost, then fly on. Little damage once the turn is done, and
+      // once it has fallen back past fight + 120 m (within 4 s of the turn) it never comes closer while behind you: it
+      // lets you go, then waits at its standoff for as long as you keep going (25 s here).
+      out.fleeLead = {};
       for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
         if (!def.lead) continue;
         G.powerups.active.clear();
         G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
         G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
-        startBoss(kind, { mod: null, duo: false });
+        const [e] = startBoss(kind, { mod: null, duo: false });
         step(30 * 12); // it flies in and settles in front
         G.player.health = G.player.maxHealth;
         G.player.boost = 1;
@@ -733,9 +884,15 @@ try {
           live();
         }
         const hp0 = G.player.health;
-        for (let i = 0; i < 30 * 15; i++) live();
-        G.input.keys.delete('ShiftLeft');
-        out.fleeLead[kind] = { turn: +(turned / 30).toFixed(1), lost: Math.round(hp0 - G.player.health) };
+        let lost = 0, clear = -1, closest = Infinity;
+        for (let i = 0; i < 30 * 25; i++) {
+          live();
+          if (i === 30 * 15 - 1) { lost = Math.round(hp0 - G.player.health); G.input.keys.delete('ShiftLeft'); }
+          const dist = e.pos.distanceTo(G.player.pos) - def.lead;
+          if (clear < 0 && dist > 120) clear = +(i / 30).toFixed(1);
+          if (clear >= 0 && e.behind) closest = Math.min(closest, Math.round(dist));
+        }
+        out.fleeLead[kind] = { turn: +(turned / 30).toFixed(1), lost, clear, closest, chase: e.chase };
         G.objectives.current.dispose(G);
         G.objectives.current = null;
         clearSky();
@@ -2059,12 +2216,23 @@ try {
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
-    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap > b.fight + 120 && b.backIn >= 0 && b.backIn < 10))(report.breathing || {}), `bosses let you fly off past their fight distance, then catch back up within 10 s (${JSON.stringify((report.breathing || {}))})`],
-    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap >= b.fight + 250 && b.quiet && b.again >= 0 && b.again < 6))(report.breathing || {}), 'boss breakaway: the gap opens 250 m+ past fight distance, no attacks until it is back in range, then it attacks again within 6 s'],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap > b.fight + 120 && b.waitIn >= 0 && b.waitIn <= 15 && Math.abs(b.waitDist - 150) <= 30 && b.stayed && b.minWait > 120 && b.reIn >= 0 && b.reIn <= 8))(report.breathing || {}), `bosses let you fly off, come back only to a standoff (fight + 150 ± 30 m) within 15 s, stay past fight + 120 m while you keep fleeing, and re-engage within 8 s of you turning in (${JSON.stringify((report.breathing || {}))})`],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap >= b.fight + 250 && b.quiet && b.again >= 2.5 && b.again <= 7))(report.breathing || {}), 'boss breakaway: the gap opens 250 m+ past fight distance, no attacks until it re-engages, then its first attack is 2.5 to 7 s later'],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.homeOff <= 30 && b.braking <= 12 && b.hovering <= 8))(report.breathing || {}), 'boss breakaway: a loose boss hovers within 30 m of where it lost you, at 8 m/s (12 while braking, the first 1.5 s)'],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.wait === 1 && b.barWait && !b.barReturn))(report.breathing || {}), 'boss breakaway: one "waiting for you" toast at the standoff; the boss bar says "(your move)" while it waits and nothing on the way back'],
+    [(({ farSpawn: f }) => f && !f.onBreak && f.waitToasts === 0 && f.attackIn >= 0 && f.attackIn <= 10)(report.breathing || {}), `a boss that spawns past the leash flies straight in and attacks within 10 s, never "coming back" or waiting at a standoff (${JSON.stringify(report.breathing?.farSpawn)})`],
+    [(({ gary: g }) => g && g.t >= 0 && g.t <= 6)(report.breathing || {}), `a boss faster than you (enraged Turbo Gary Prime) is still shaken off flying straight without boost within 6 s (${JSON.stringify(report.breathing?.gary)})`],
+    [(({ uturn: u }) => u && ['garyPrime', 'seagullSteven'].every((k) => u[k] && u[k].t >= 0 && u[k].t <= 4))(report.breathing || {}), `a boosted U-turn from deep inside the orbit (Gary Prime, Steven) breaks away within 4 s of the turn (${JSON.stringify(report.breathing?.uturn)})`],
+    [(({ snipe: n }) => n && n.loose && n.left >= 0 && n.left <= 0.1 && n.attack >= 1 && n.attack <= 2)(report.breathing || {}), `shooting a boss that has lost you wakes it at once (out of 'loose' within 0.1 s) and it fights back about 1.2 s later (${JSON.stringify(report.breathing?.snipe)})`],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.breatherWait === false))(report.breathing || {}), 'boss breakaway: no faster mending while the boss waits at its standoff (only while it has lost you or is coming back)'],
+    [(({ rematch: r }) => r && r.atTurn >= 120 && r.speed <= 33 && r.reIn >= 0 && r.firstAtk >= 4)(report.breathing || {}), `turn-back rematch after 14 s of fleeing: the boss is fight + 120 m+ away, comes in at 33 m/s or less (30 m/s faster than you fly away, plus slack) until it re-engages, and attacks no sooner than 4 s after the turn (${JSON.stringify(report.breathing?.rematch)})`],
+    [(({ standoff: s }) => s && s.arrived && s.attackIn >= 0 && s.attackIn <= 7.5)(report.breathing || {}), `circling a waiting boss (not fleeing) gets it attacking within ~7 s of reaching its standoff (${JSON.stringify(report.breathing?.standoff)})`],
+    [(({ standoff: s }) => s && s.pulledWaiting === 0 && s.engaged && Math.abs(s.pulledTo) < 1)(report.breathing || {}), 'persuasion "approach" leaves a waiting boss where it is and pulls an engaged one no closer than its standoff'],
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.hull >= 70))(report.breathing || {}), 'boss breakaway: the hull mends from 50 to 70+ hp within 12 s of breaking away'],
     [(({ repeat: r }) => r && r.first.max === 8 && r.second.max < r.first.max && r.second.t > 0 && r.second.t < r.second.max / 0.85 + 0.2 && r.afterHit.max === 8)(report.breathing || {}), 'boss breakaway: each one in a row without hurting the boss is shorter; hurting it resets that'],
     [(({ kingDrone, octopus, twins }) => [kingDrone, octopus].every((b) => b && b.shook === 1 && b.back === 1 && b.lostYou && !b.barBack && b.nags === 0) && twins?.both && twins.shook === 1)(report.breathing || {}), 'boss breakaway: one "shook off" toast (one for twins), one "coming back" toast, boss bar shows "(lost you)" while away, no wrong-way nag'],
     [Object.keys(report.fleeLead || {}).length >= 3 && Object.values(report.fleeLead).every((b) => b.turn < 10 && b.lost < 25), `fleeing a lead boss (180° boost turn, then straight) costs under 25 hp in 15 s (${JSON.stringify(report.fleeLead || {})})`],
+    [Object.keys(report.fleeLead || {}).length >= 3 && Object.values(report.fleeLead).every((b) => b.clear >= 0 && b.clear <= 4 && b.closest >= 120), `fleeing a lead boss: once it's fight + 120 m behind (within 4 s of the turn) it never comes closer while you keep going (${JSON.stringify(report.fleeLead || {})})`],
     [[report.breathing?.kingDrone, report.breathing?.octopus].every((b) => b?.hint4s === false), 'boss hints no longer promise repairs after "4 seconds"'],
     [report.twins.count === 2 && report.twins.halfDone && report.twins.done && report.twins.name.startsWith('Turbo'), 'boss twins with a modifier both have to go down'],
     [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Relax mode clears objectives, enemies and pickups'],
