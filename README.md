@@ -37,7 +37,8 @@ npm run build     # offline-ready copy in dist/ (three.js vendored, no CDN neede
 npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
                   # world mutations, every objective, every boss, landing, taxiing
-                  # and take-off, relax mode, lives and Game Over, the developer
+                  # and take-off, relax mode, lives, Game Over and Continue, the
+                  # PULL UP! warning, par times, saved settings, the developer
                   # menu and the secrets;
                   # fails on any error
 ```
@@ -87,7 +88,7 @@ setup, the SteamPipe templates in `electron/steam/` and the release checklist ar
 
 | Action | Keys |
 | --- | --- |
-| Climb / dive | `W` `S` or `↑` `↓` (`I` inverts) |
+| Climb / dive | `W` `S` or `↑` `↓` (`I` inverts, and it's remembered) |
 | Bank & turn | `A` `D` or `←` `→` |
 | Rudder | `Q` `E` |
 | Boost | `Shift` (also on the ground) |
@@ -95,11 +96,12 @@ setup, the SteamPipe templates in `electron/steam/` and the release checklist ar
 | Taxi | on the ground: `A` `D`, `←` `→` or `Q` `E` steer; `Shift` boosts |
 | Take off | on the ground: pull up (`W` / `↑`, or the touch stick up) |
 | Shoot | `Space`, `J` or left click |
-| Pause / music / mute all | `P` (or `Esc`) / `N` / `M` |
+| Pause / music / mute all | `P` (or `Esc`) / `N` / `M` (music and mute are remembered too) |
 | Relax Mode | `R` or the ☁️ Relax Mode button at the top |
 | Fly again | on the Game Over card: the FLY AGAIN button, or `Enter` / `Space` (after 1 s, so a stray shot can't skip the card) |
+| Continue | on the Game Over card, once you got past the first zone: the CONTINUE FROM *ZONE* button, or `C` (same 1 s lock) |
 | Stunts | quick double-tap (two short taps, not a hold) `↑`/`W`: **Immelmann** (half loop + roll, you turn back and climb) · `↓`/`S`: **Split-S** (roll + pull through, you turn back and dive; needs 45 m below you) · `←`/`A` or `→`/`D`: **barrel roll** that slides you sideways, and nothing can hit you mid-roll. Holding a key to steer and pressing it again won't trigger a stunt |
-| Touch | drag on the left to steer; BOOST / FIRE buttons on the right; flick the stick twice the same way (or swipe twice) for the same stunts; on the ground the stick steers, and pushing it up takes off |
+| Touch | drag a finger anywhere to steer; BOOST / FIRE buttons on the right; flick twice the same way for the same stunts (a flick is a quick push: 80 px within 220 ms, so a slow wide steer never triggers one); on the ground the stick steers, and pushing it up takes off |
 
 ## What's in it
 
@@ -114,6 +116,21 @@ off an edge and you're flying again; roll into a steep slope, a building or the 
 and streets are fair game, and landing works in Relax Mode, so you can park somewhere nice and enjoy the view.
 Ghost Mode skims the ground instead of landing. The first time you're low, slow and level over good ground (or nearly
 land but crash), the game gives you a one-time tip.
+
+**PULL UP!** (`src/pullup.js`): the game looks 0.5–2 s ahead along your straight flight path. If the ground or the
+sea is less than 1.5 s away, a red glow lights the bottom of the screen, a **PULL UP!** chip appears and it beeps
+(faster under 0.8 s). It stays quiet while you glide in to land on ground you could land on (the same flat, dry rule
+the landing uses), but a slope, a wall or the sea behind that strip still warns. Level flight into a hillside and
+a glide onto the sea warn too. It's off on the ground, while dead, in god mode and Ghost Mode, for the 3 s after a
+respawn, and for the grace moment after the world changes (the terrain lifts you then anyway). Pull out with
+less than 8 m under you and it's a **Close shave! +25** (at most once every 15 s; in Relax Mode it's bragging rights
+only). It doesn't see cave roofs, and because it looks straight ahead,
+weaving low over hills can warn late.
+
+**Flying feel:** boost lasts 4 s from full and refills in 5 s, and pressing it goes *whoosh*. The wind gets louder
+the faster you go. Your bullets hitting an enemy make a bright *tick*, getting hit still makes the crunch, and
+kills and shot-off parts pop a floating "+N" where they happened. The camera jolts when you take damage and shakes
+harder when you crash.
 
 **Procedural world** (`src/world.js`, `src/terrain.js`): an infinite, chunked terrain built from seeded simplex noise. It has
 ridged mountain ranges, mesas with sheer cliff walls, stepped terraces, river canyons, rock pinnacles, open sea with
@@ -191,7 +208,7 @@ a zone, but can't break its identity. To add or change a zone, see [`docs/zones.
 its signature sound, then the music moves in sections of 4 chords. Every section picks a new chord progression (each
 mood has 3–4), a new top layer (plucks, a soft arpeggio, a little call-and-answer melody, a pulsing bass, or just
 pads), a new pad colour and a slightly different brightness. Now and then it steps to a nearby key, and the next
-section usually steps back home. So it doesn't loop, but it stays the same mood. `N` toggles the music.
+section usually steps back home. So it doesn't loop, but it stays the same mood. `N` toggles the music, and the game remembers your choice.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double
@@ -209,11 +226,18 @@ above HULL and BOOST in the bottom-left. Every crash costs one, whether it's an 
 you respawn with a full hull and a note telling you how many are left ("2 lives left…", "Last life!"). Crashes in
 Relax Mode are free. The hull doesn't patch itself quickly: it only starts mending after 10 s without a hit, at 1 hp
 a second (the "Hull repairs twice as fast" perk doubles that). Breaking away from a boss mends it sooner and faster
-(see Bosses). The real fixes are levelling up and the Repair Kit.
+(see Bosses). The real fixes are levelling up and the Repair Kit. Beating a boss earns a spare plane (+1 ❤️, up to 5;
+after that the banner just says "Hangar full").
 Lose the last plane and, once the explosion clears, the **Game Over** card shows your score, level and rank,
 objectives and kills, and your best run (or "New best run!"). The game is paused behind it. Hit FLY AGAIN (or `Enter`
 / `Space`) for a fresh run right away, no reload: score 0, Level 1 with no perks, three lives, no power-ups, back to
 the first zone on a new landscape. Found secrets stay found.
+
+Got past the first zone (or onto lap 2)? Then the card also offers **CONTINUE FROM** *ZONE* (or `C`): the same fresh
+run, but in the zone (and lap) you reached, on a new landscape. Score, level and perks still start over. That run's
+Game Over card says "Continued from *zone*". The title card remembers the furthest zone you've ever reached ("🗺
+Furthest: Dune Sea (zone 4 of 29)", plus the lap after lap 1). Only flying on into a zone counts: a developer-menu jump
+doesn't by itself, but flying on from where it put you does.
 
 **Bosses** (`src/enemies.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
 (a fresh random gap each time). There are 15, drawn from a shuffled deck so you meet them all before any repeats:
@@ -251,8 +275,8 @@ before its first attack. Run off again without hurting it and the next break is 
 
 Bosses taunt you (never while they've lost you), and get ENRAGED below half
 health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
-fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
-other win.
+fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points, gives you a spare plane
+(see Lives) and reshapes the world like any other win.
 
 **39 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
 
@@ -294,6 +318,17 @@ other win.
   - **Photo Safari:** keep the shy sky whale centred on your nose, within 180 m, for 3 s to take a photo. It needs 3
     photos and bolts after every flash.
 
+**Par times and rewards:** a run's first hoop sits nearly straight ahead (within about 20°), 300–450 m out, so it's
+on screen from the start. Each objective card shows a par time ("⏱ Par 12 s · beat it for +60") until the clock passes
+it; finish under par for a +60 speed bonus. Par is 12 s for a hoop or an altitude climb, 14 s for the tiny and
+shrinking hoops, 15 s for the wandering hoop, 18 s for the searchlights, 25 s for the slalom chain, 10 s for a loop,
+8 s for a barrel roll or a bullseye, 30 s for the tour or a photo safari, 40 s for a pizza delivery or a hot potato,
+and 50 s for stars. The speed hoop gets 60% of its clock (17 s); everything else, bosses included, gets 25 s. Hints
+cost points (the "hint fee", 12 per persuasion tactic, never below 20 points left), except on the first 3 objectives of a run: "Hints on the
+house". The success banner keeps it short, at most 4 lines for 3.5 s: the points, one detail line (speed bonus, hint
+fee, spare plane), the headline world change and "+K more world changes. Look around!". When a win takes you into a
+new zone, it shows the points and "New zone: X!" and lets the zone card do the rest.
+
 Adding a type: write a maker that returns `objective({...})` (in `src/challenges.js` or `src/quests.js`), then add
 `['name', weight, maker]` to `TYPES` in `src/objectives.js`. The developer menu and the smoke test's start/complete
 loop pick it up on their own. If it needs ground, add it to `GROUND_OBJECTIVES` in `src/zones.js`; to keep it out of
@@ -310,7 +345,9 @@ when you fly away and barely moves while you close in. The first tactic comes af
 The "wrong way" nag comes at most every 25 s, and never during a fight with a flying boss (circling round for a pass
 is a tactic). While every boss has lost you, flying off doesn't speed up neglect and there's no "getting warmer" note. The game escalates through 37 tactics in three tiers:
 
-- *Mild:* nagging, guilt trips, pro tips, GPS distance, an on-screen edge arrow, sonar beeps panned toward the target,
+- *Mild:* nagging, guilt trips, pro tips, GPS distance, a promotion for the edge arrow (from the start, a small faint
+  white arrow points at any objective that's off screen; the first promotion makes it a normal one, the second big,
+  pink and "THIS WAY!!!"), sonar beeps panned toward the target,
   a 900 m light beam, reverse psychology ("Whatever you do, do NOT go to..."), a petition begging you to go (the
   signatures pile up over the next few seconds), and **hot & cold**: for 35 s the objective card tells you how warm
   you are, from ❄️ FREEZING to 🔥 ON FIRE.
@@ -342,6 +379,18 @@ upward for free.
 **Secrets** (`src/secrets.js`): there are 10 Easter eggs hidden in the game. Some you type, some you fly, some only
 show up on certain days. The title card counts how many you've found and drops a cryptic hint for one you haven't, and
 found secrets are remembered between flights. The full spoiler list is in [`docs/secrets.md`](docs/secrets.md).
+
+**Settings and comfort** (`src/main.js`): pitch invert (`I`), music (`N`) and mute (`M`) are saved in the browser
+(`localStorage['landed-settings']`), and take-off reminds you of any that aren't the default ("Remembered: pitch
+inverted, music off. (I / N / M to change)"). If your system asks for reduced motion, the game drops the camera shake
+and the persuasion engine's cinematic camera turn, stops the HUD marker, the big edge arrow and the PULL UP! chip from
+throbbing, and halves every screen flash. The crash flash is softer for everyone.
+
+**Phones and tablets** (`style.css`, `src/main.js`): in portrait the camera widens its view (up to 95° vertical), so
+about as much of the world fits across as on a landscape screen. The score and the objective card sit side by side at
+the top, the boss bar and the success banner get a full-width strip under them, and messages go below that. On a touch
+screen (a coarse pointer) the title card shows touch controls instead of keys, and the Game Over card leaves out "C to
+continue.".
 
 ## Debugging
 
@@ -381,8 +430,25 @@ whether the zone allows it, and it doesn't clear the current objective, the menu
 ground, `G.player.lastLanding` holds the latest touchdown (`{ grade, title, sink, bank, points, x, z }`), and the
 player pushes a `'landed'` event on each one. `G.player.lives` is the lives left (set it high, e.g. `1e6`, for a
 script that crashes on purpose; the HUD then shows `❤️ ×N`), `G.gameOver` is true while the Game Over card is up,
-`G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it. `LIVES`, `REGEN_DELAY`,
-`BREATHER_DELAY` and `BREATHER_REGEN` sit at the top of `src/player.js`. Boss breakaway tuning (`LEASH`, `LOOSE_T`,
+`G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it (`G.flyAgain(true)` continues
+from the current zone, without checking that you got past zone 1). `G.progress.furthest` is the furthest zone reached
+(`{ index, lap }` or `null`, saved in `localStorage['landed-furthest']` and checked on load); `G.progress.reachZone(index,
+lap)` records one if it's further. `LIVES`, `MAX_LIVES`, `REGEN_DELAY`, `BREATHER_DELAY`, `BREATHER_REGEN` and the
+boost tank (`BOOST_DRAIN`, `BOOST_REGEN`) sit at the top of `src/player.js`, which also exports `LAND` (the landing
+limits) and `Player.landableAt(x, z, y, ground)`, the "could you land here" test the landing and the pull-up warning
+share. `PAR` (par times per type) and `FREE_HINTS` sit above `TYPES` in `src/objectives.js`; each objective gets
+`par` when it starts.
+
+`G.pullup` is the PULL UP! warning: `on`, `tti` (seconds to impact, `Infinity` when clear) and `shows` (warnings so
+far); the look-ahead (`PROBE`, `WARN`, `URGENT`) and the close-shave rule (`SHAVE`) sit at the top of
+`src/pullup.js`. `G.shake(amp, dur)` jolts the camera (metres, seconds; a bigger jolt already running wins) and
+`G.camShake` holds the running one. `G.comfort.reducedMotion` mirrors the system setting; set it by hand to turn off the shake,
+the camera peek and the strong flashes (the CSS animations follow only the system setting).
+`G.fx.popText(pos, text)` floats a score number up from a world position (at most 6 at once).
+`G.audio.tick()` (your hit), `whoosh()` (boost) and `pullUp(urgent)` are the feedback sounds, and `G.audio.setEngine(ratio, on, wind01)` takes
+the wind level (0 at cruise, 1 at full boost). Touch flicks are tuned by `FLICK_OUT` and `FLICK_MS` in
+`src/input.js`. The render loop clamps each frame's `dt` to 0–0.05 s, so a clock that jumps
+backwards never runs time in reverse. Boss breakaway tuning (`LEASH`, `LOOSE_T`,
 `LOOSE_SHRINK`, `LOOSE_MIN`, `ENGAGED_T`, `CATCH_GAIN`, `CHASE_HOLD`) sits at the top of `src/enemies.js`, and a
 per-boss `leash` overrides `LEASH`. `G.enemies.breather` is true while every boss alive has lost you; each boss has
 `chase` (`null`, `'loose'` or `'catch'`), `looseMax` (this break's length), `breaks` (breakaways in a row without
