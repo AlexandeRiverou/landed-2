@@ -1,14 +1,14 @@
 // Objective types. Each one exposes hooks (grow / approach / teleport / easier / magnet)
 // so the persuasion system can bend it toward a player who is ignoring it.
 import * as THREE from 'three';
-import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, disposeTree } from './models.js';
+import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, makeTextSprite, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
 import { waterLine } from './world.js';
-import { MAX_LIVES } from './player.js';
+import { MAX_LIVES, TUCK } from './player.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -378,8 +378,61 @@ function mkGoose(G) {
 
 // ---------- maneuvers ----------
 
+// ---------- the loop dome (caves) ----------
+// Under a rock roof a loop needs a tall chamber. When a loop or upside-down objective starts in a cave, look DOME.dMin..
+// dMax m ahead (±spread rad) for a footprint (`back` m behind to `ahead` m in front along the approach, ±side m across)
+// with at least `gap` m from its highest floor to its lowest roof, and the floor right under the start at most `dip`
+// m below that highest floor. Mark it with a ring of crystals, a glow and a sign; the loop starts `entry` m above
+// that highest floor. null outside caves, or when no try qualifies (then the cave tuck, player.js, is all you get).
+const DOME = { dMin: 250, dMax: 600, spread: 0.6, tries: 60, gap: 120, dip: 10, entry: 35, back: 10, ahead: 70, side: 15, ring: 22, crystals: 10 };
+
+export function loopDome(G) {
+  if (!G.world.cave) return null;
+  const f = flatForward(G), p = G.player.pos, D = DOME;
+  for (let k = 0; k < D.tries; k++) {
+    const dir = f.clone().applyAxisAngle(Y, (Math.random() * 2 - 1) * D.spread), d = rand(D.dMin, D.dMax);
+    const x = p.x + dir.x * d, z = p.z + dir.z * d;
+    let floor = -Infinity, roof = Infinity;
+    for (let a = -D.back; a <= D.ahead; a += 10) for (const s of [-D.side, 0, D.side]) {
+      const X = x + dir.x * a - dir.z * s, Z = z + dir.z * a + dir.x * s;
+      floor = Math.max(floor, groundAt(G, X, Z));
+      roof = Math.min(roof, G.terrain.ceilingHeight(X, Z));
+    }
+    if (roof - floor >= D.gap && floor - groundAt(G, x, z) <= D.dip) return makeDome(G, new THREE.Vector3(x, floor + D.entry, z), dir, roof - floor);
+  }
+  return null;
+}
+
+// The marker: crystals in a ring round the middle of the loop's footprint, a soft glow on the floor there, and a
+// "LOOP HERE" sign floating just above the start. `pos` is the start (the objective's target).
+function makeDome(G, pos, dir, gap) {
+  const D = DOME, g = new THREE.Group();
+  const cx = pos.x + dir.x * (D.ahead / 2 - D.back), cz = pos.z + dir.z * (D.ahead / 2 - D.back);
+  for (let k = 0; k < D.crystals; k++) {
+    const a = (k / D.crystals) * Math.PI * 2, x = cx + Math.cos(a) * D.ring, z = cz + Math.sin(a) * D.ring;
+    const m = makeLandmark('crystal', rand(1, 1.4)); // at most ~21 m tall: well under the loop's entry height
+    m.position.set(x, groundAt(G, x, z) - 0.5, z);
+    m.rotation.y = rand(0, Math.PI * 2);
+    g.add(m);
+  }
+  const glowMat = new THREE.MeshBasicMaterial({ color: '#b08aff', transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(D.ring + 4, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), glowMat);
+  glow.position.set(cx, groundAt(G, cx, cz) - 1, cz);
+  glow.scale.y = 0.4;
+  const sign = makeTextSprite(['LOOP HERE ↺'], 13);
+  sign.position.set(pos.x, pos.y + 13, pos.z);
+  g.add(glow, sign);
+  G.scene.add(g);
+  return {
+    pos, dir, gap,
+    update(t) { glowMat.opacity = 0.16 + Math.sin(t * 2.5) * 0.06; },
+    dispose() { G.scene.remove(g); disposeTree(g); },
+  };
+}
+
 function mkLoop(G) {
   const need = Math.random() < 0.35 ? 2 : 1;
+  const cave = !!G.world.cave, dome = loopDome(G);
   let done = 0;
   return objective({
     type: 'loop', reward: 120 + need * 40, noun: 'the loop-de-loop',
@@ -387,19 +440,27 @@ function mkLoop(G) {
     desc: need > 1 ? 'Two full vertical loops. Your lunch will understand.' : 'Pull up and keep pulling until you\'re back where you started. Classic!',
     caps: new Set(['easier']),
     signText: ['DO A', 'LOOP! ↺'],
-    hints: ['Hold W (or ↑) and DON\'T let go. Trust the process.', 'Speed helps! Boost (Shift) then hold W.', 'Upside down is a phase. It will pass.'],
+    // In a cave, boost only makes the loop bigger: no hint may suggest it there.
+    hints: cave
+      ? ['In here, NO boost. Speed makes the loop bigger and the roof is not negotiable.', dome && 'Fly to the glowing crystal dome, stay low, then hold W.', 'Upside down is a phase. It will pass.'].filter(Boolean)
+      : ['Hold W (or ↑) and DON\'T let go. Trust the process.', 'Speed helps! Boost (Shift) then hold W.', 'Upside down is a phase. It will pass.'],
+    dome, // the cave's loop chamber, or null (loops anywhere still count)
+    target() { return dome ? dome.pos : null; },
     onUpdate(dt, G) {
       const p = G.player;
+      dome?.update(this.t);
       if (p.events.includes('loop')) { done++; this.progressed = true; G.audio.ding(); if (done < need) G.ui.notify('One down! Again! The crowd is mildly interested!', 'good'); }
       const pct = Math.min(100, Math.round((Math.abs(p.loopAccum) / (Math.PI * 2 * p.loopRequirement)) * 100));
       this.progress = `↺ Loops ${done}/${need} · current ${pct}%`;
       return done >= need ? 'done' : null;
     },
     easier(G) {
+      // Under a roof a smaller loop helps more than a shorter one: tighten the cave tuck instead.
+      if (G.world.cave) { G.player.loopTuck = Math.min(2.2, G.player.loopTuck + 0.25); return 'The cave agreed to be slightly roomier. It\'s the plane, actually. Don\'t tell the cave.'; }
       G.player.loopRequirement = Math.max(0.5, G.player.loopRequirement - 0.15);
       return `New rule: a loop only needs ${Math.round(G.player.loopRequirement * 360)}°. Standards are dropping.`;
     },
-    dispose(G) { G.player.loopRequirement = 1; },
+    dispose(G) { G.player.loopRequirement = 1; G.player.loopTuck = TUCK; dome?.dispose(); },
   });
 }
 

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
-import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, BUZZ } from './objectives.js';
+import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, loopDome, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -301,15 +301,21 @@ export function mkSpeed(G) {
 
 export function mkInverted(G) {
   const p = G.player;
+  const cave = !!G.world.cave, dome = loopDome(G); // under a roof, a tall chamber for the half loop (see objectives.js)
+  const flip = 'Pull up (W) until you\'re upside down at the top of a loop, then LET GO. You\'ll keep flying inverted.';
   let need = 4, time = 0, was = false;
   return objective({
-    type: 'inverted', reward: 150, noun: 'the upside-down', virtual: true,
+    type: 'inverted', reward: 150, noun: 'the upside-down', virtual: !dome,
     title: pick(['Upside Down Appreciation Day', 'Australian Mode', 'Ceiling Is The New Floor']),
     desc: `Fly upside down for ${need} seconds. The world looks better from up there. Down there. You know what we mean.`,
     caps: new Set(['easier']),
     signText: ['FLIP IT', '↻ ↻ ↻'],
-    hints: ['Pull up (W) until you\'re upside down at the top of a loop, then LET GO. You\'ll keep flying inverted.', 'Climb a bit first so you have room.'],
+    // Under a cave roof, climbing first is the wrong advice.
+    hints: cave ? [dome && 'Under the tall dome, pull up until you\'re upside down, then LET GO.', flip].filter(Boolean) : [flip, 'Climb a bit first so you have room.'],
+    dome,
+    target() { return dome ? dome.pos : null; },
     onUpdate(dt, G) {
+      dome?.update(this.t);
       const inv = !p.dead && p.up.y < -0.3;
       if (inv) { time += dt; this.progressed = true; if (!was) G.ui.notify('Upside down! Hold it there!', 'info', 2, 0); }
       was = inv;
@@ -317,6 +323,7 @@ export function mkInverted(G) {
       return time >= need ? 'done' : null;
     },
     easier() { need = Math.max(1.5, need - 1); return `Only ${need} seconds upside down now. Blood rushing to the head is optional.`; },
+    dispose() { dome?.dispose(); },
   });
 }
 

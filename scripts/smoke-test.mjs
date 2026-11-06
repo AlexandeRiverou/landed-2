@@ -1515,6 +1515,155 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
+  // Loops under a cave roof (Crystal Caverns): a loop or upside-down objective finds a tall chamber ahead (the dome)
+  // and targets it; from there, holding W (boosting or not) loops without touching the roof, thanks to the tuck; the
+  // hints fit a cave; easier() tightens the tuck. Outside caves loops are as before. No safety net: a crash is only
+  // recorded (no life lost), grace and invulnerability are off, no enemies, and objectives don't complete mid-check.
+  report.caveLoop = await page.evaluate(async () => {
+    const G = window.G, p = G.player, V = p.pos.constructor, Y = new V(0, 1, 0);
+    const { ZONES } = await import('./src/zones.js');
+    const { TUCK } = await import('./src/player.js');
+    const { waterLine } = await import('./src/world.js');
+    const saved = { zone: G.zones.index, baseSpeed: p.baseSpeed, update: G.objectives.update, spawn: G.enemies.spawnTimer, crash: p.crash, health: p.health, cooldown: G.objectives.cooldown, notify: G.ui.notify };
+    const out = {};
+    let crashed = null, notes = [];
+    p.crash = (r) => { crashed ||= r; };
+    G.ui.notify = function (text, ...rest) { notes.push({ text, t: G.time }); return saved.notify.call(this, text, ...rest); };
+    G.objectives.update = () => {};
+    G.enemies.spawnTimer = 1e9;
+    p.baseSpeed = 44; // a fresh run's cruise speed (the speed mutation may have raised it by now)
+    const clearObj = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); };
+    const calm = () => { G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e)); G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); };
+    const frame = () => { p.invuln = 0; p.grace = 0; p.health = 1e6; G.step(1 / 60); };
+    const enter = (i) => { G.zones.enter(i); for (let k = 0; k < 30; k++) G.step(0.1); G.objectives.cooldown = 1e9; clearObj(); calm(); };
+    const floor = (x, z) => Math.max(G.terrain.surfaceHeight(x, z), waterLine());
+    const chamber = (t, d) => { // lowest roof minus highest floor over the loop's footprint (as the dome search sees it)
+      let f = -Infinity, r = Infinity;
+      for (let a = -10; a <= 70; a += 10) for (const s of [-15, 0, 15]) { const x = t.x + d.x * a - d.z * s, z = t.z + d.z * a + d.x * s; f = Math.max(f, floor(x, z)); r = Math.min(r, G.terrain.ceilingHeight(x, z)); }
+      return Math.round(r - f);
+    };
+    const place = (pos, dir) => {
+      p.pos.copy(pos); p.prevPos.copy(p.pos);
+      p.quat.setFromAxisAngle(Y, Math.atan2(-dir.x, -dir.z)); p.updateAxes();
+      Object.assign(p, { speed: p.baseSpeed, loopAccum: 0, boost: 1, maneuver: null, landed: null, dead: false, god: false });
+      p.model.group.visible = true;
+    };
+    // Hold W (boosting: at full boost speed already, Shift held) until one full loop, or (invert) until upside down, then let go for 4 s inverted.
+    const fly = ({ boost = false, invert = false, max = 9 } = {}) => {
+      crashed = null; calm();
+      let t = 0, pa = 0, inv = 0, done = false, released = false, y0 = p.pos.y, ymax = y0, tucked = false;
+      if (boost) { G.input.keys.add('ShiftLeft'); p.speed = p.baseSpeed * 1.7; }
+      G.input.keys.add('KeyW');
+      while (t < max && !crashed && !done) {
+        frame(); t += 1 / 60; ymax = Math.max(ymax, p.pos.y); tucked ||= p.tuckT > 0;
+        if (invert) {
+          if (!released && p.up.y < -0.9 && p.forward.y < 0.15) { G.input.keys.delete('KeyW'); released = true; }
+          if (p.up.y < -0.3) inv += 1 / 60;
+          done = inv >= 4;
+        } else { done = pa > 5 && Math.abs(p.loopAccum) < 1; pa = Math.abs(p.loopAccum); }
+      }
+      G.input.keys.clear();
+      return { done, crashed, climb: Math.round(ymax - y0), secs: +t.toFixed(2), tucked };
+    };
+    // Start the objective from a few spots (wandering a little between tries) until it finds a dome.
+    const startDome = (type) => {
+      for (let k = 0; k < 12; k++) {
+        clearObj();
+        p.god = true; p.quat.setFromAxisAngle(Y, k * 2.4); p.updateAxes();
+        for (let i = 0; i < 30; i++) G.step(1 / 20);
+        p.god = false;
+        G.objectives.startType(type);
+        const o = G.objectives.current, tg = o.target();
+        if (!tg) continue;
+        return { o, tg: tg.clone(), dir: o.dome.dir.clone(), tries: k + 1, dist: Math.round(tg.distanceTo(p.pos)), chamber: chamber(tg, o.dome.dir), above: Math.round(tg.y - floor(tg.x, tg.z)), virtual: o.virtual, hints: o.hints };
+      }
+      return null;
+    };
+    try {
+      enter(ZONES.findIndex((z) => z.world.cave));
+      for (const type of ['loop', 'inverted']) {
+        const d = startDome(type);
+        out[type] = d && { tries: d.tries, dist: d.dist, chamber: d.chamber, above: d.above, virtual: d.virtual, hints: d.hints };
+        if (!d) continue;
+        G.persuasion.reset(null);
+        if (type === 'loop') {
+          place(d.tg, d.dir); out.loopW = fly();
+          place(d.tg, d.dir); out.loopBoost = fly({ boost: true });
+          // easier() under a roof tightens the tuck (+0.25, up to 2.2): each loop from the dome is shorter. dispose() resets it.
+          out.easier = [];
+          for (let k = 0; k < 4; k++) {
+            const text = k ? d.o.easier(G) : null;
+            place(d.tg, d.dir);
+            out.easier.push({ tuck: +p.loopTuck.toFixed(2), req: p.loopRequirement, text, ...fly() });
+          }
+          clearObj();
+          out.tuckAfter = p.loopTuck;
+          // The roof warning: a loop past 60° with the roof 15 m up warns once, then not again for 3 s.
+          const r = G.terrain.ceilingHeight(d.tg.x, d.tg.z);
+          const at = new V(d.tg.x, r - 15, d.tg.z);
+          place(at, d.dir);
+          notes = [];
+          const t0 = G.time;
+          G.input.keys.add('KeyW');
+          for (let i = 0; i < 60 * 3.3; i++) { p.pos.copy(at); p.loopAccum = 1.2; frame(); } // held in place, mid-loop
+          G.input.keys.clear();
+          out.roofWarns = notes.filter((n) => n.text === 'Roof! Pull harder!').map((n) => +(n.t - t0).toFixed(2));
+        } else {
+          // 4 s inverted flies on well past the dome, where the roof may come down again: up to 3 domes, one miss allowed.
+          out.inverted.fly = [];
+          for (let k = 0, e = d; k < 3 && e; k++) {
+            place(e.tg, e.dir);
+            out.inverted.fly.push(fly({ invert: true, max: 14 }));
+            if (out.inverted.fly.at(-1).done) break;
+            e = startDome('inverted');
+            G.persuasion.reset(null);
+          }
+          clearObj();
+        }
+      }
+      // Hot & cold survives a target it can't face (NaN): it used to throw.
+      const d = startDome('loop');
+      if (d) {
+        const P = G.persuasion, avail = P.available;
+        P.available = (o) => avail.call(P, o).filter((x) => x.t.id === 'hotCold');
+        P.escalate();
+        P.available = avail;
+        const fx = P.effects.at(-1);
+        d.o.target = () => new V(NaN, 0, 0);
+        try { fx.update(0.1); out.hotColdNaN = 'ok'; } catch (e) { out.hotColdNaN = e.message; }
+        clearObj();
+      }
+      // Outside caves nothing changed: a held-W loop in the start zone climbs ~71 m in ~5.8 s, with no tuck; the hints
+      // still suggest boost and climbing; easier() lowers the loop requirement.
+      enter(0);
+      const dir = new V(0, 0, -1);
+      place(new V(p.pos.x, floor(p.pos.x, p.pos.z) + 350, p.pos.z), dir);
+      for (let i = 0; i < 20; i++) frame(); // settle level
+      place(p.pos.clone(), dir);
+      out.zone0 = fly();
+      G.objectives.startType('loop');
+      out.zone0.loopHints = G.objectives.current.hints;
+      out.zone0.loopTarget = G.objectives.current.target();
+      G.objectives.current.easier(G);
+      out.zone0.easier = { req: +p.loopRequirement.toFixed(2), tuck: p.loopTuck };
+      clearObj();
+      G.objectives.startType('inverted');
+      out.zone0.invHints = G.objectives.current.hints;
+      out.zone0.invVirtual = G.objectives.current.virtual;
+      clearObj();
+    } finally {
+      G.input.keys.clear();
+      p.crash = saved.crash;
+      G.ui.notify = saved.notify;
+      G.objectives.update = saved.update;
+      G.enemies.spawnTimer = saved.spawn;
+      G.objectives.cooldown = saved.cooldown;
+      G.zones.enter(saved.zone);
+      for (let k = 0; k < 30; k++) G.step(0.1);
+      p.dead = false; p.god = false; p.health = saved.health; p.baseSpeed = saved.baseSpeed; p.loopTuck = TUCK; p.loopRequirement = 1;
+    }
+    return out;
+  });
   // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick. Over flat land (no
   // mountains, hills, cliffs, canyons or pinnacles): 200 m up over a mountain range, grace would lift the plane over a
   // peak mid-stunt. Not drained: a drained sea carves its canyons 400 m deep, and the plane would start in one.
@@ -2632,6 +2781,18 @@ try {
     [(({ city: c }) => c && Object.keys(c.props).length >= 10 && ['car', 'streetLamp', 'trafficLight'].every((t) => c.props[t] > 0) && ['waterTower', 'antenna', 'helipad'].some((t) => c.props[t] > 0) && c.misplaced.length === 0)(report), 'Metropolis: city props are instanced, traffic on the streets, rooftop props on the roofs'],
     [['picnicTable', 'tractor', 'camperVan', 'skiLift'].every((t) => report.countrySeen[t] > 0), 'new countryside, desert and snow props turn up in their zones'],
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
+    ...(({ caveLoop: c }) => [
+      [['loop', 'inverted'].every((k) => c[k] && c[k].dist >= 200 && c[k].dist <= 650 && c[k].chamber >= 120 && c[k].above >= 25 && c[k].above <= 45 && !c[k].virtual), `cave loops: a loop or upside-down objective targets a dome 200-650 m ahead, with >= 120 m from floor to roof over the loop and the start 25-45 m up (${JSON.stringify({ loop: c.loop && { ...c.loop, hints: undefined }, inverted: c.inverted && { ...c.inverted, hints: undefined, fly: undefined } })})`],
+      [c.loopW?.done && !c.loopW.crashed && c.loopW.tucked && c.loopBoost?.done && !c.loopBoost.crashed, `cave loops: from the dome, holding W loops under the roof (tucked), and so does a boosted loop (${JSON.stringify([c.loopW, c.loopBoost])})`],
+      [c.inverted?.fly?.at(-1)?.done && c.inverted.fly.length <= 2, `cave loops: from the dome, pulling up and letting go flies 4 s inverted without touching the roof (${JSON.stringify(c.inverted?.fly)})`],
+      [c.loop?.hints.includes('In here, NO boost. Speed makes the loop bigger and the roof is not negotiable.') && c.loop.hints.includes('Fly to the glowing crystal dome, stay low, then hold W.') && !c.loop.hints.some((h) => /Shift/.test(h))
+        && c.inverted?.hints.includes('Under the tall dome, pull up until you\'re upside down, then LET GO.') && !c.inverted.hints.some((h) => /climb/i.test(h)), 'cave loops: the hints say no boost and point at the dome, and never suggest boosting (loop) or climbing (inverted)'],
+      [c.easier?.length === 4 && c.easier.slice(1).every((e, i) => e.tuck === [1.75, 2, 2.2][i] && e.req === 1 && e.done && !e.crashed && e.climb <= c.easier[i].climb - 2 && /roomier/.test(e.text)) && c.tuckAfter === 1.5, `cave loops: each easier() tightens the tuck (+0.25, to 2.2 at most) and makes the loop at least 2 m shorter; the requirement stays 360°, and dispose resets the tuck (${JSON.stringify(c.easier?.map((e) => [e.tuck, e.climb]))})`],
+      [c.roofWarns?.length === 2 && c.roofWarns[0] < 0.2 && c.roofWarns[1] >= 3, `cave loops: a loop past 60° with the roof close warns "Roof! Pull harder!", at most every 3 s (${JSON.stringify(c.roofWarns)})`],
+      [c.hotColdNaN === 'ok', `hot & cold: a target it can't face (NaN) doesn't throw (${c.hotColdNaN})`],
+      [c.zone0?.done && !c.zone0.crashed && !c.zone0.tucked && Math.abs(c.zone0.climb - 71) <= 5 && Math.abs(c.zone0.secs - 5.8) <= 0.3 && c.zone0.loopTarget === null, `loops outside caves are unchanged: no tuck, ~71 m up, ~5.8 s, no dome (${JSON.stringify(c.zone0 && { climb: c.zone0.climb, secs: c.zone0.secs })})`],
+      [c.zone0?.loopHints.includes('Speed helps! Boost (Shift) then hold W.') && c.zone0.invHints.includes('Climb a bit first so you have room.') && c.zone0.invVirtual && c.zone0.easier.req === 0.85 && c.zone0.easier.tuck === 1.5, 'loops outside caves: the old hints stay, and easier() still lowers the loop requirement'],
+    ])(report),
     [report.zones.filter((z) => z.name !== 'Crystal Caverns' && z.name !== 'Sunken Reef').every((z) => z.roof === null), 'only the cave has a roof (and the reef, see below)'],
     [(({ underwater: u }, r) => r && r.roof === r.sea - 4 && r.planeUnderRoof && !u.dead && u.pressedSecs >= 1 && u.maxY < u.sea && u.aboveSurface.length === 0 && u.hues >= 6)(report, report.zones.find((z) => z.name === 'Sunken Reef')), 'underwater: the surface is the roof, the plane and objectives stay under it, and the seabed is colourful'],
     [report.zones.find((z) => z.name === 'Planet Pebble').curve > 1 && report.zones[0].curve < 0.5, 'Planet Pebble curves the horizon (and nothing else does)'],
