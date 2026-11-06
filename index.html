@@ -39,6 +39,7 @@
       <div id="obj-desc"></div>
       <div id="obj-progress"></div>
       <div id="obj-dist"></div>
+      <div id="obj-par"></div>
     </div>
 
     <div id="bars" class="panel">
@@ -72,7 +73,7 @@
       <h1 id="logo">Landed</h1>
       <p id="holiday"></p>
       <p class="tag">A casual flying game with an extremely needy objective system.</p>
-      <div class="controls">
+      <div class="controls key-rows">
         <div><b>W / ↑</b> climb &nbsp; <b>S / ↓</b> dive</div>
         <div><b>A D / ← →</b> bank &amp; turn &nbsp; <b>Q E</b> rudder</div>
         <div><b>Shift</b> boost &nbsp; <b>Space</b> / click shoot</div>
@@ -80,8 +81,15 @@
         <div><b>R</b> ☁️ Relax Mode: no objectives, no enemies, just fly</div>
         <div><b>Quick double-tap</b> ↑ turn back &nbsp; ↓ dive back &nbsp; ← → barrel roll</div>
         <div><b>Land</b> slow, level, gentle sink &nbsp; <b>W / ↑</b> on the ground to take off</div>
-        <div><b>❤️❤️❤️</b> three planes: each crash costs one. Level up to repair the hull</div>
-        <div class="touch-hint">Touch: drag on the left to steer, buttons on the right. Flick twice for stunts.</div>
+        <div><b>❤️❤️❤️</b> three planes: each crash costs one. Level up to repair the hull. Beat a boss for a spare.</div>
+        <div class="touch-hint">Touch: drag anywhere to steer, buttons on the right. Flick twice for stunts.</div>
+      </div>
+      <div class="controls touch-rows">
+        <div><b>Drag</b> a finger anywhere to steer · <b>BOOST</b> and <b>FIRE</b> on the right</div>
+        <div><b>Flick twice</b> the same way for stunts: ← → barrel roll, ↑ turn back, ↓ dive back</div>
+        <div><b>☁️ button</b>: Relax Mode: no objectives, no enemies, just fly</div>
+        <div><b>Land</b> slow, level, gentle sink · drag up on the ground to take off</div>
+        <div><b>❤️❤️❤️</b> three planes: each crash costs one. Beat a boss for a spare.</div>
       </div>
       <button id="start">TAKE OFF</button>
       <div class="desktop-row hidden">
@@ -89,6 +97,7 @@
         <button id="title-quit" class="desktop-quit" type="button">QUIT</button>
       </div>
       <p id="best"></p>
+      <p id="furthest"></p>
       <p id="secrets-count" class="small"></p>
       <p id="build-info" class="small"></p>
       <p class="small">Grab spinning power-ups for a few seconds of chaos. Earn points to rank up and unlock perks.</p>
@@ -118,6 +127,10 @@
         <div id="go-lines"></div>
       </div>
       <p id="go-best"></p>
+      <div id="go-continue" class="hidden">
+        <button id="continue" class="secondary" type="button">CONTINUE</button>
+        <p class="small"><span class="key-hint">C to continue. </span>Same zone, new landscape, fresh planes. Score and level start over.</p>
+      </div>
       <button id="again" type="button">FLY AGAIN</button>
       <p class="small">Enter or Space to fly again. Three fresh planes, back to Level 1.</p>
     </div>

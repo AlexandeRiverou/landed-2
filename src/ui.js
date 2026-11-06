@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { curveDrop } from './curve.js';
 import { waterLine } from './world.js';
-import { LIVES } from './player.js';
+import { LIVES, MAX_LIVES } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_NOTES = 2;   // on screen at once
@@ -14,10 +14,10 @@ export class UI {
     this.G = G;
     this.el = {
       score: $('score'), stats: $('stats'), obj: $('objective'), objTitle: $('obj-title'), objDesc: $('obj-desc'),
-      objProgress: $('obj-progress'), objDist: $('obj-dist'), hp: $('hp-fill'), boost: $('boost-fill'), speed: $('speed'),
+      objProgress: $('obj-progress'), objDist: $('obj-dist'), objPar: $('obj-par'), hp: $('hp-fill'), boost: $('boost-fill'), speed: $('speed'),
       lives: $('lives'), notes: $('notifications'), banner: $('banner'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
     };
-    this.edgeArrow = 0;      // 0 off, 1 normal, 2 big & pulsing (persuasion unlocks)
+    this.edgeArrow = 0;      // 0 faint, 1 normal, 2 big & pulsing (persuasion unlocks)
     this.showDistance = false;
     this.shownScore = 0;
     this.shownLives = null;
@@ -109,12 +109,12 @@ export class UI {
     document.getElementById('boss-fill').style.width = `${Math.max(0, (b.hp / b.maxHp) * 100)}%`;
   }
 
-  // Hearts left: ❤️ per life, 🖤 per life lost. More than the usual (a test, a future perk) shows as a count.
+  // Hearts left: ❤️ per life, 🖤 per life lost; spare planes (up to MAX_LIVES) add hearts. More (a test) shows as a count.
   renderLives() {
     const n = this.G.player.lives;
     if (n === this.shownLives) return;
     this.shownLives = n;
-    this.el.lives.textContent = n > LIVES ? `❤️ ×${n}` : '❤️'.repeat(n) + '🖤'.repeat(LIVES - n);
+    this.el.lives.textContent = n > MAX_LIVES ? `❤️ ×${n}` : '❤️'.repeat(n) + '🖤'.repeat(Math.max(0, LIVES - n));
     this.el.lives.title = `${n} ${n === 1 ? 'life' : 'lives'} left`;
   }
 
@@ -134,7 +134,7 @@ export class UI {
     this.renderLives();
   }
 
-  flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = a; }
+  flash(color = '#ffffff', a = 0.6) { this.el.flash.style.background = color; this.flashA = this.G.comfort?.reducedMotion ? a * 0.5 : a; }
   // Soft edge vignette in `color`; the centre half of the screen is left untouched.
   tint(color, seconds) { this.el.tint.style.background = `radial-gradient(ellipse at center, transparent 50%, ${color}88 80%, ${color}dd 100%)`; this.el.tint.style.opacity = 1; this.tintTimer = seconds; }
 
@@ -163,6 +163,7 @@ export class UI {
 
     const obj = G.objectives.current;
     e.objProgress.textContent = obj ? obj.progress || '' : '';
+    e.objPar.textContent = obj && obj.par && obj.t < obj.par ? `⏱ Par ${obj.par} s · beat it for +60` : '';
     const t = obj && obj.target();
     if (!t || p.dead) {
       e.marker.style.display = 'none';
@@ -198,14 +199,15 @@ export class UI {
       return;
     }
     e.marker.style.display = 'none';
-    if (!arrow) { e.arrow.style.display = 'none'; return; }
+    // Off screen with no arrow unlocked yet: a faint, small one still points the way (no label).
     const ang = Math.atan2(camY, camX);
     const rx = w / 2 - 60, ry = h / 2 - 70;
     e.arrow.style.display = 'block';
+    e.arrow.classList.toggle('faint', !arrow);
     e.arrow.classList.toggle('big', arrow > 1);
     e.arrow.style.left = `${w / 2 + Math.cos(ang) * rx}px`;
     e.arrow.style.top = `${h / 2 - Math.sin(ang) * ry}px`;
     e.arrow.querySelector('.rot').style.transform = `rotate(${-ang}rad)`;
-    e.arrow.querySelector('span').textContent = label || (arrow > 1 ? 'THIS WAY!!!' : '');
+    e.arrow.querySelector('span').textContent = !arrow ? '' : label || (arrow > 1 ? 'THIS WAY!!!' : '');
   }
 }

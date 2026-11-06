@@ -668,7 +668,7 @@ export class Enemies {
         else {
           e.hp -= dmg * (e.def.armor ?? 1);
           G.fx.sparkle(bp, e.def.armor || e.shield < 1 ? '#9aa0a6' : '#ffaa55');
-          G.audio.hit();
+          G.audio.tick();
         }
         if (e.hp <= 0) break;
       }
@@ -703,7 +703,7 @@ export class Enemies {
       if (!this.weakTip) { this.weakTip = true; G.ui.notify('WEAK SPOT! Glowing parts take extra damage. Aim there.', 'good', 4, 1); }
     } else {
       G.fx.sparkle(pos, '#ffaa55');
-      G.audio.hit();
+      G.audio.tick();
     }
     if (!Number.isFinite(part.hp)) return;
     part.hp -= dmg;
@@ -721,6 +721,7 @@ export class Enemies {
     const n = e.broken[part.name];
     const total = e.mesh.userData.parts.filter((x) => x.name === part.name).length;
     G.score += e.boss ? 40 : 10;
+    G.fx.popText(_pp, e.boss ? '+40' : '+10');
     switch (part.name) {
       case 'rotor': if (e.boss) e.hp -= e.maxHp * 0.06; else if (n >= 2) e.state = 'falling'; break;
       // A boss doesn't drop out of the sky from one part: it slows down and takes a chunk of damage instead.
@@ -904,6 +905,7 @@ export class Enemies {
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
     } else if (byPlayer) {
       G.score += e.def.score;
+      G.fx.popText(e.pos, `+${e.def.score}`);
       G.stats.kills++;
       if (Math.random() < 0.3) G.ui.notify(`${pick(T.kill)} +${e.def.score}`, 'good', 2.5, 0);
     }

@@ -21,12 +21,14 @@ const MANEUVERS = {
   left: { name: 'Barrel roll', text: 'Barrel roll! Nothing can hit you mid-roll.', steps: [{ axis: Z, angle: 2 * PI, dur: 0.7 }], slide: -1, dodge: true },
   right: { name: 'Barrel roll', text: 'Barrel roll! Nothing can hit you mid-roll.', steps: [{ axis: Z, angle: -2 * PI, dur: 0.7 }], slide: 1, dodge: true },
 };
+// Boost tank (0..1) per second, before perks: a full tank lasts 4 s and refills in 5 s.
+const BOOST_DRAIN = 0.25, BOOST_REGEN = 0.2, WHOOSH_GAP = 0.6;
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 
 // Landing. A touchdown is a landing (not a crash) when the sink rate (m/s), bank (rad), nose (forward.y) and
 // wings (up.y) are within these, on dry ground whose slope (rise per metre) is gentle enough.
-const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
+export const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
 const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels down, on a runway's asphalt (times Mega / Tiny Plane's scale)
 // On the ground: roll out to taxi speed (m/s), braking/accelerating at these m/s², turning at TAXI_TURN rad/s.
 // Pulling up takes off once you're at LIFTOFF × cruise speed. Bonus points need this long in the air first (s).
@@ -43,6 +45,7 @@ const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
 // Lives and hull. Every crash costs a life (not in Relax Mode or god mode); the last one ends the run (main.js
 // endRun). The hull mends itself only after REGEN_DELAY s without a hit, at stats.regen hp/s; levelling up mends it fully.
 export const LIVES = 3;
+export const MAX_LIVES = 5; // beating a boss gives a spare plane, up to this many (objectives.js complete)
 const REGEN_DELAY = 10;
 // Breather (every boss alive has lost you, see enemies.js): repairs start sooner and run faster.
 const BREATHER_DELAY = 3, BREATHER_REGEN = 3;
@@ -78,6 +81,8 @@ export class Player {
     this.dodging = false;    // mid barrel roll: shots and bumps miss
     this.god = false;        // developer menu: no damage, and the ground can't hurt you
     this.shootCd = 0;
+    this.pressedBoost = false; // boost held (by you, not Turbo / free boost) last frame
+    this.whooshAt = -99;
     this.bullets = [];
     this.ceilingWarned = 0;
     this.surfaceWarned = -99;
@@ -262,12 +267,16 @@ export class Player {
   }
 
   // Boost: drains while held (Turbo and free boost cost nothing), recharges otherwise. Returns whether it's on.
+  // Pressing it yourself goes whoosh (at most every WHOOSH_GAP s); Turbo and free boost stay quiet.
   throttle(dt, input) {
-    const turbo = this.G.powerups.has('turbo');
-    const boosting = turbo || this.freeBoost > 0 || (input.boost && this.boost > 0.02);
+    const G = this.G, turbo = G.powerups.has('turbo');
+    const pressed = !turbo && this.freeBoost <= 0 && input.boost && this.boost > 0.02;
+    const boosting = turbo || this.freeBoost > 0 || pressed;
+    if (pressed && !this.pressedBoost && G.time - this.whooshAt >= WHOOSH_GAP) { this.whooshAt = G.time; G.audio.whoosh(); }
+    this.pressedBoost = pressed;
     if (this.freeBoost > 0) this.freeBoost -= dt;
-    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * 0.35 * this.stats.boostDrain);
-    else this.boost = Math.min(1, this.boost + dt * 0.15 * this.stats.boostRegen);
+    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * BOOST_DRAIN * this.stats.boostDrain);
+    else this.boost = Math.min(1, this.boost + dt * BOOST_REGEN * this.stats.boostRegen);
     this.boosting = boosting;
     return boosting;
   }
@@ -280,6 +289,12 @@ export class Player {
     return Math.max(Math.abs(h(4, 0) - h(-4, 0)), Math.abs(h(0, 4) - h(0, -4))) / 8;
   }
 
+  // Could you land on the ground g at (x, z), asked at height y? Dry and flat enough, never the seabed.
+  // canLand and the pull-up warning (pullup.js) both ask this, so they can't disagree.
+  landableAt(x, z, y, g) {
+    return !this.G.world.underwater && g > waterLine() && this.slopeAt(x, z, y) < LAND.slope;
+  }
+
   // Reaching the ground gently, wings level and nose up enough, on dry and flat-enough ground: that's a landing.
   // Not mid-stunt, and never on the seabed. The ground under the last position must be close too (no wall in the way).
   canLand(ground, dt) {
@@ -287,7 +302,7 @@ export class Player {
     if (this.maneuver || G.world.underwater || ground <= waterLine()) return false;
     const sink = (q.y - p.y) / dt;
     return sink < LAND.sink && Math.abs(this.bank()) < LAND.bank && this.forward.y > LAND.noseDown && this.up.y > LAND.upright
-      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.slopeAt(p.x, p.z, p.y) < LAND.slope;
+      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.landableAt(p.x, p.z, p.y, ground);
   }
 
   touchdown(ground, dt) {
@@ -504,6 +519,7 @@ export class Player {
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);
     G.audio.hit();
+    G.shake?.(0.6, 0.15);
     if (Math.random() < 0.2) G.ui.notify(pick(T.hurt), 'bad', 2, 0);
     if (this.health <= 0) this.crash('enemy');
   }
@@ -525,7 +541,8 @@ export class Player {
       if (reason === 'ground') G.terrain.deform(this.pos.x, this.pos.z, 12, 6); // you left a mark
     }
     G.audio.explode();
-    G.ui.flash('#ffffff', 0.7);
+    G.ui.flash('#ffffff', 0.5);
+    G.shake?.(1.5, 0.35);
     G.ui.notify(pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
     if (free) return;
     G.ui.livesLost();

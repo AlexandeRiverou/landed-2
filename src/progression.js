@@ -1,5 +1,7 @@
 // Pilot progression: your score is XP. Each level gives a new rank and a permanent perk for the
 // rest of the flight, and your best run is remembered between visits.
+import { ZONES } from './zones.js';
+
 const RANKS = [
   'Cadet Who Means Well', 'Sky Intern', 'Junior Wingperson', 'Cloud Botherer', 'Hoop Enthusiast',
   'Ace-ish', 'Loop Lord', 'Captain Of The Clouds', 'Air Marshal Of Nonsense', 'Sky Legend',
@@ -22,6 +24,11 @@ const LATER_PERK = { text: 'Hull +10', apply: (G) => { G.player.maxHealth += 10;
 
 const STORE_KEY = 'landed-best';
 const OLD_STORE_KEY = 'loop-de-whoops-best'; // the game's old name: best runs saved under it still count
+const FURTHEST_KEY = 'landed-furthest'; // the furthest zone ever reached, { index, lap }: the title card shows it
+const MAX_LAP = 999; // a saved lap above this is junk, not progress
+// A sane { index, lap }: a zone the list has, a lap from 1 to MAX_LAP (saved data is untrusted).
+const validFurthest = (index, lap) => Number.isInteger(index) && index >= 0 && index < ZONES.length
+  && Number.isSafeInteger(lap) && lap >= 1 && lap <= MAX_LAP;
 // Points needed to reach `level`: 250, 750, 1500, 2500, 3750, ... (each level a bit further).
 export const xpForLevel = (level) => 125 * (level - 1) * level;
 
@@ -30,6 +37,7 @@ export class Progress {
     this.G = G;
     this.ranks = RANKS; // April 1 (secrets.js) swaps in sillier ones
     this.best = load();
+    this.furthest = loadFurthest(); // null until a run flies into a second zone
     this.resetRun();
     this.el = {
       level: document.getElementById('level'),
@@ -91,6 +99,16 @@ export class Progress {
     this.best = { score: Math.max(G.score, this.best.score), level: Math.max(this.level, this.best.level) };
     try { localStorage.setItem(STORE_KEY, JSON.stringify(this.best)); } catch { /* private mode: no record, no problem */ }
   }
+
+  // The journey reached zone `index` on lap `lap` (Zones.onObjectiveComplete: real progress, not dev-menu jumps).
+  // Remembered only if it's further than ever before: a later lap, or a later zone on the same lap.
+  reachZone(index, lap) {
+    const f = this.furthest;
+    if (!validFurthest(index, lap)) return;
+    if (f && (lap < f.lap || (lap === f.lap && index <= f.index))) return;
+    this.furthest = { index, lap };
+    try { localStorage.setItem(FURTHEST_KEY, JSON.stringify(this.furthest)); } catch { /* storage unavailable */ }
+  }
 }
 
 function rankFor(level, ranks = RANKS) { return ranks[Math.min(level, ranks.length) - 1]; }
@@ -101,4 +119,12 @@ function load() {
     if (b && Number.isFinite(b.score) && Number.isFinite(b.level)) return { score: Math.max(0, Math.floor(b.score)), level: Math.max(1, Math.floor(b.level)) };
   } catch { /* storage unavailable */ }
   return { score: 0, level: 1 };
+}
+
+function loadFurthest() {
+  try {
+    const f = JSON.parse(localStorage.getItem(FURTHEST_KEY) || 'null');
+    if (f && validFurthest(f.index, f.lap)) return { index: f.index, lap: f.lap };
+  } catch { /* storage unavailable */ }
+  return null;
 }

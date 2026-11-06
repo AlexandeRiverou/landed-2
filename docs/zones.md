@@ -3,6 +3,10 @@
 A zone is one entry in the `ZONES` array in `src/zones.js`. The journey plays them in array order and loops. The
 developer menu and the smoke test pick up new entries on their own, so adding a zone is mostly data.
 
+The title card's "Furthest" line (`landed-furthest` in `localStorage`, see `src/progression.js`) saves a zone by its
+index in `ZONES`. Adding a zone at the end is safe. Inserting one earlier shifts what a saved index points at, so a
+returning player's "Furthest" line names a different zone. That's harmless, but say so in the PR.
+
 ## A zone entry
 
 | Field | What it does |

@@ -87,7 +87,7 @@ export const T = {
     "That was... adjacent to success.",
   ],
   successTitle: [
-    "NAILED IT!", "LOOP-TASTIC!", "SKY LEGEND!", "OBJECTIVE OBLITERATED!", "WOW, ACTUAL SKILL!",
+    "NAILED IT!", "TEXTBOOK!", "SKY LEGEND!", "OBJECTIVE OBLITERATED!", "WOW, ACTUAL SKILL!",
     "CERTIFIED PILOT MOMENT!", "THE CROWD GOES MILD!", "MAGNIFICENT!", "BIG PLANE ENERGY!", "AERODYNAMIC GENIUS!",
   ],
   worldChange: [
@@ -103,6 +103,13 @@ export const T = {
     "Landing score: 0/10. Enthusiasm: 10/10.",
     "Lithobraking is not an approved maneuver.",
     "The ground says hi. Very firmly.",
+  ],
+  // Pulling out of a PULL UP! warning very low (pullup.js).
+  closeShave: [
+    "Close shave! The grass felt that.",
+    "Close shave! You owe that hill an apology.",
+    "Close shave! Mountain 0, you 1.",
+    "Close shave! Your landing gear got a haircut.",
   ],
   // Landing grades (see LANDING_GRADES in player.js), softest first.
   landButter: [
@@ -172,6 +179,10 @@ export const T = {
     "Fresh run, three fresh planes. They're very shiny.",
     "New day, new planes. The factory forgives you. Mostly.",
     "Back to Level 1. The sky remembers nothing.",
+  ],
+  continueRun: [
+    "Back where you left off. The scenery missed you.",
+    "Fresh planes, same view. The factory sent a sticky note: 'please'.",
   ],
   kill: [
     "Bonk!",

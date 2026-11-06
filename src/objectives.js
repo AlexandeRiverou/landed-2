@@ -8,6 +8,7 @@ import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
 import { waterLine } from './world.js';
+import { MAX_LIVES } from './player.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -112,7 +113,9 @@ export function objective(o) {
 function mkHoop(G, opt = {}) {
   const R = opt.radius || 17;
   const ring = makeRing(R, opt.color ?? '#ffc23a');
-  ring.position.copy(pointAhead(G, opt.dMin ?? 350, opt.dMax ?? 620, opt.spread ?? 1.1));
+  // A run's very first hoop sits nearly straight ahead and closer, so it's on screen from the start.
+  const first = !opt.type && G.objectives.completed === 0;
+  ring.position.copy(pointAhead(G, opt.dMin ?? (first ? 300 : 350), opt.dMax ?? (first ? 450 : 620), opt.spread ?? (first ? 0.35 : 1.1)));
   faceFlat(ring, G.player.pos);
   G.scene.add(ring);
   let warnedTime = false;
@@ -636,6 +639,11 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
 
 // ---------- manager ----------
 
+// Par times (s): finish under par for the speed bonus. Timed objectives get 60% of their clock; the rest (bosses too) 25 s.
+const PAR = { hoop: 12, tiny: 14, shrink: 14, moving: 15, altitude: 12, searchlight: 18, chain: 25, loop: 10, roll: 8, bullseye: 8, tour: 30, photo: 30, delivery: 40, bomb: 40, stars: 50 };
+const parFor = (obj, type) => PAR[type] ?? (obj.timeLimit ? Math.round(0.6 * obj.timeLimit) : 25);
+const FREE_HINTS = 3; // the first objectives of a run charge no hint fee
+
 const TYPES = [
   ['hoop', 3, mkHoop], ['chain', 1.6, (G) => mkChain(G, 'slalom')], ['tiny', 1, mkTinyHoop], ['timed', 1, mkTimedHoop],
   ['spiral', 1, (G) => mkChain(G, 'spiral')], ['stairs', 0.9, (G) => mkChain(G, 'stairs')], ['dive', 0.9, (G) => mkChain(G, 'dive')],
@@ -707,6 +715,7 @@ export class Objectives {
     const G = this.G;
     this.recent = [type, ...this.recent].slice(0, 4);
     this.current = obj;
+    obj.par = parFor(obj, type);
     G.persuasion.reset(obj);
     G.ui.setObjective(obj);
     if (type !== 'boss') G.ui.notify(`${pick(T.newObjective)} ${obj.title}`, 'good', 4);
@@ -754,14 +763,22 @@ export class Objectives {
     if (!obj) return;
     const stage = G.persuasion.stage;
     let reward = forced ? 10 : obj.reward;
-    const lines = [];
+    const detail = [];
+    let spare = null;
     if (!forced) {
-      if (obj.t < 25) { reward += 60; lines.push('Speed bonus! +60 (show-off)'); }
-      if (stage > 0) {
+      if (obj.t < obj.par) { reward += 60; detail.push('Speed bonus +60 (under par!)'); }
+      if (stage > 0 && this.completed < FREE_HINTS) detail.push('Hints on the house');
+      else if (stage > 0) {
         const fee = Math.min(reward - 20, stage * 12);
         reward -= fee;
-        lines.push(`Hand-holding fee: -${fee} (${stage} hint${stage > 1 ? 's' : ''})`);
-      } else lines.push('No hints needed! Natural talent!');
+        detail.push(`Hint fee -${fee}`);
+      } else detail.push('No hints! Natural talent!');
+      // Beating a boss earns a spare plane (never takes any away: tests run with a huge stack).
+      if (obj.type === 'boss') {
+        if (G.player.lives < MAX_LIVES) { G.player.lives++; spare = 'Spare plane +1 ❤️'; }
+        else spare = `Hangar full (${MAX_LIVES} planes)`;
+        detail.push(spare);
+      }
     }
     G.score += reward;
     this.completed++;
@@ -771,7 +788,15 @@ export class Objectives {
     this.cooldown = 4;
     G.ui.setObjective(null);
     const changes = G.mutations.celebrate(forced);
-    G.ui.banner(forced ? 'PARTICIPATION TROPHY!' : obj.type === 'boss' ? 'BOSS DEFEATED!' : pick(T.successTitle), [`+${reward} points`, ...lines, ...changes.map((c) => '• ' + c)], 6);
+    // At most 4 lines: points, one detail line, the headline change, and how many more. A new zone (it has its own
+    // title card) keeps only its name, and of the details only the spare plane.
+    const zone = G.zones.sinceZone === 0 && changes.length > 0;
+    const info = zone ? (spare ? [spare] : []) : detail;
+    const lines = [`+${reward} points`, ...(info.length ? [info.join(' · ')] : []), ...changes.slice(0, 1)];
+    const more = changes.length - 1;
+    if (!zone && more > 0) lines.push(`+${more} more world change${more > 1 ? 's' : ''}. Look around!`);
+    const title = forced ? 'PARTICIPATION TROPHY!' : obj.type === 'boss' ? 'BOSS DEFEATED!' : obj.type === 'loop' && Math.random() < 0.5 ? 'LOOP-TASTIC!' : pick(T.successTitle);
+    G.ui.banner(title, lines, 3.5);
     document.getElementById('score').classList.remove('bump');
     void document.getElementById('score').offsetWidth;
     document.getElementById('score').classList.add('bump');

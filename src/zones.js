@@ -178,6 +178,9 @@ export class Zones {
     G.scene.add(this.decor);
     this.el = { label: document.getElementById('zone'), card: document.getElementById('zone-card') };
     this.cardTimer = 0;
+    // The title card's "furthest zone" line (Progress remembers it between visits). A zone the list no longer has: no line.
+    const f = G.progress.furthest, far = f && ZONES[f.index];
+    if (far) document.getElementById('furthest').textContent = `🗺 Furthest: ${far.name} (zone ${f.index + 1} of ${ZONES.length}${f.lap > 1 ? `, lap ${f.lap}` : ''})`;
   }
 
   get current() { return ZONES[this.index]; }
@@ -196,6 +199,7 @@ export class Zones {
     let next = this.index + 1;
     if (next >= ZONES.length) { next = 0; this.lap++; }
     this.enter(next);
+    this.G.progress.reachZone(next, this.lap);
     const z = this.current;
     return [`New zone: ${z.name}${this.lap > 1 ? ` (lap ${this.lap})` : ''}!`, z.blurb];
   }

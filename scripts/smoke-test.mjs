@@ -48,6 +48,12 @@ try {
   // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
   const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
   const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
+  // Title card rows: keyboard rows with a mouse, touch rows on a phone (the phone side is in the phone HUD context below).
+  const titleRows = () => ({
+    touch: document.querySelector('#title .touch-rows').getClientRects().length > 0,
+    keys: [...document.querySelectorAll('#title .controls > div')].some((d) => d.textContent.includes('W / ↑') && d.getClientRects().length > 0),
+  });
+  const desktopTitleRows = await page.evaluate(titleRows);
   // Secrets, part 1 (the rest is at the end): click the title 7 times before take-off. Six isn't enough.
   const secretsReport = {};
   await page.evaluate(() => window.G.secrets.reset()); // a clean slate, whatever today's date found at boot
@@ -167,11 +173,92 @@ try {
       G.objectives.current = null;
     }
 
+    // Guidance and the success card: the first hoop sits ahead, a faint arrow points at an off-screen objective, the
+    // first objectives charge no hint fee, par times, the 4-line banner, and a spare plane for beating a boss.
+    {
+      const O = G.objectives, p = G.player, celebrate = G.mutations.celebrate, has = G.powerups.has, cooldown = O.cooldown;
+      const res = (out.guide = { firstHoop: [], markerSeen: 0 });
+      const drop = () => { if (O.current) { O.current.dispose(G); O.current = null; } G.persuasion.reset(null); };
+      const start = (type, completed = 1) => { drop(); O.completed = completed; O.startType(type); return O.current; };
+      const lines = () => [...document.querySelectorAll('#banner li')].map((l) => l.textContent);
+      const finish = (obj, { t = 30, stage = 0, completed = O.completed, forced = false } = {}) => {
+        obj.t = t; G.persuasion.stage = stage; O.completed = completed; G.zones.sinceZone = 1;
+        const s0 = G.score;
+        O.complete(forced);
+        return { gain: G.score - s0, lines: lines(), title: document.querySelector('#banner h1').textContent };
+      };
+      O.cooldown = 1e9;
+      G.mutations.celebrate = () => []; // no world changes (and no zone change) unless a check asks for them
+      // 20 first hoops: within 20° of straight ahead, 300-450 m away, and on screen.
+      for (let k = 0; k < 20; k++) {
+        const ring = start('hoop', 0).target();
+        const f = p.forward.clone().setY(0).normalize(), d = ring.clone().sub(p.pos).setY(0);
+        res.firstHoop.push({ deg: +(f.angleTo(d) * 180 / Math.PI).toFixed(1), dist: Math.round(d.length()) });
+        G.step(1 / 30);
+        if (document.getElementById('marker').style.display === 'block') res.markerSeen++;
+      }
+      // Off screen behind the plane with no arrow unlocked: a faint arrow, no label. Persuasion steps make it normal, then big.
+      G.powerups.has = () => false; // no Objective Radar arrow
+      const arrowAt = (level) => {
+        G.ui.edgeArrow = level; G.ui.showDistance = true;
+        O.current.target().copy(p.pos).addScaledVector(p.forward, -300);
+        p.invuln = 99; G.step(1 / 30);
+        const a = document.getElementById('edge-arrow');
+        return { shown: a.style.display === 'block', faint: a.classList.contains('faint'), big: a.classList.contains('big'), label: a.querySelector('span').textContent };
+      };
+      start('hoop');
+      res.arrow = [0, 1, 2].map(arrowAt);
+      G.ui.edgeArrow = 0; G.ui.showDistance = false;
+      G.powerups.has = has;
+      // Hint fee: waived for the first 3 objectives of a run, charged from then on.
+      res.feeFree = finish(start('hoop'), { stage: 2, completed: 0 });
+      res.feeFree2 = finish(start('hoop'), { stage: 2, completed: 2 });
+      res.feePaid = finish(start('hoop'), { stage: 2, completed: 3 });
+      // Par: the hoop's card shows "Par 12 s" until 12 s pass; done at 10 s earns the bonus, at 14 s not.
+      let obj = start('hoop');
+      G.step(1 / 30);
+      res.par = { card: document.getElementById('obj-par').textContent, hoop: obj.par };
+      obj.t = 12.5; G.step(1 / 30);
+      res.par.cardAfter = document.getElementById('obj-par').textContent;
+      res.par.at10 = finish(obj, { t: 10 });
+      res.par.at14 = finish(start('hoop'), { t: 14 });
+      res.par.timed = start('timed').par;
+      // The banner: 4 world changes show the first and "+3 more", and it leaves within 3.6 s (still up at 3 s).
+      G.mutations.celebrate = () => ['The trees are blue now.', 'Gravity is optional.', 'Clouds got bigger.', 'Sheep learned to fly.'];
+      res.four = finish(start('hoop'));
+      for (let i = 0; i < 90; i++) { p.invuln = 99; G.step(1 / 30); }
+      res.four.showAt3s = document.getElementById('banner').classList.contains('show');
+      for (let i = 0; i < 18; i++) { p.invuln = 99; G.step(1 / 30); }
+      res.four.showAt36s = document.getElementById('banner').classList.contains('show');
+      G.mutations.celebrate = () => [];
+      // 200 hoops never say LOOP-TASTIC!; the loop objective does, about half the time.
+      res.loopTasticHoops = 0; res.loopTasticLoops = 0;
+      for (let k = 0; k < 200; k++) if (finish(start('hoop')).title === 'LOOP-TASTIC!') res.loopTasticHoops++;
+      for (let k = 0; k < 30; k++) if (finish(start('loop')).title === 'LOOP-TASTIC!') res.loopTasticLoops++;
+      // Spare plane: beating a boss adds a life, up to 5; never lowers a big stack; not for a forced finish.
+      const level = O.bossLevel;
+      const boss = (lives, forced = false) => {
+        drop(); p.lives = lives;
+        O.start(O.makeBoss('kingDrone'), 'boss');
+        const par = O.current.par, r = finish(O.current, { forced });
+        return { lives: p.lives, par, detail: r.lines[1] || '' };
+      };
+      res.spare = { from2: boss(2), from5: boss(5), big: boss(1e6), forced: boss(2, true) };
+      O.bossLevel = level;
+      p.lives = 4; G.ui.renderLives();
+      res.spare.hearts4 = document.getElementById('lives').textContent;
+      p.lives = 1e6;
+      G.mutations.celebrate = celebrate;
+      O.completed = 1;
+      O.cooldown = cooldown;
+    }
+
     // Every objective type once, run for a bit, then completed normally (each triggers world mutations).
     // Stay in the first zone: space zones don't offer the ground objectives.
     const { OBJECTIVE_TYPES: types, BOSS_GAP } = window.OBJ_FOR_TEST;
     out.objectiveTypes = types.length;
     out.noHerd = !types.includes('herd') && types.includes('treasure');
+    out.bannerMaxLines = 0;
     for (const t of types) {
       step(60);
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
@@ -182,6 +269,7 @@ try {
       if (G.objectives.current.type !== t) throw new Error(`expected objective ${t}, got ${G.objectives.current.type}`);
       step(90);
       G.objectives.complete(false);
+      out.bannerMaxLines = Math.max(out.bannerMaxLines, document.querySelectorAll('#banner li').length);
     }
     step(150);
 
@@ -365,8 +453,9 @@ try {
           for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; p.quat.copy(q); p.updateAxes(); G.step(1 / 30); }
         };
         const free = (frames, until = () => false) => { for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); } }; // hands off the stick
+        const pullUps = G.pullup.shows; // a landing approach is not a reason to PULL UP!
         fly(at(85, 4.5), glide, 150, () => p.landed);
-        const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding };
+        const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding, pullUps: G.pullup.shows - pullUps };
         free(150, () => G.objectives.current !== run);
         Object.assign(L, { done: G.objectives.current !== run && G.objectives.completed === done0 + 1, rollSpeed: Math.round(p.speed), stillLanded: !!p.landed });
         G.objectives.cooldown = 1e9; // completing it re-armed the cooldown: nothing new (a boss!) starts mid-check
@@ -608,6 +697,10 @@ try {
         G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
         const pair = startBoss('kingDrone', { mod: null, duo: true });
         engage(pair);
+        // Passes on the way in may have set off a breakaway (and its toast, which rate-limits the next one), as may the
+        // King Drone's repeats above: start this one fresh, and count from here.
+        pair.forEach((e) => { e.breaks = 0; });
+        G.enemies.shookAt = G.enemies.backAt = -99;
         const t0 = toasts.length, mid = pair[0].pos.clone().lerp(pair[1].pos, 0.5);
         G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(mid.x - G.player.pos.x, mid.z - G.player.pos.z));
         let both = false;
@@ -818,6 +911,7 @@ try {
     G.objectives.next();
     G.objectives.complete(false);
     out.zoneAdvanced = G.zones.index === zone0 + 1;
+    out.zoneBanner = [...document.querySelectorAll('#banner li')].map((l) => l.textContent);
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
     const { CURVE, AXIS_CURVE, CURVE_AXIS } = await import('./src/curve.js');
@@ -1143,7 +1237,17 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
-  // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick.
+  // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick. Over flat land (no
+  // mountains, hills, cliffs, canyons or pinnacles): 200 m up over a mountain range, grace would lift the plane over a
+  // peak mid-stunt. Not drained: a drained sea carves its canyons 400 m deep, and the plane would start in one.
+  const FLAT = { amp: 0, roughness: 0, hillBase: 0, terrace: 0, mesa: 0, canyon: 0, spikes: 0 };
+  const land = await page.evaluate((FLAT) => {
+    const G = window.G, was = Object.fromEntries(Object.keys(FLAT).map((k) => [k, G.world[k]]));
+    Object.assign(G.world, FLAT);
+    G.terrain.rebuildAll();
+    G.terrain.update(G.player.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+    return was;
+  }, FLAT);
   const setUp = (above) => page.evaluate((above) => {
     const G = window.G, p = G.player;
     G.enemies.spawnTimer = 1e9;
@@ -1190,12 +1294,86 @@ try {
   await setUp(200); await keyTwice('ArrowRight'); report.stunts.right = await measure();
   await setUp(200); await flick(-90, 0); report.stunts.touchLeft = await measure();
   await setUp(200); await flick(0, -90); report.stunts.touchUp = await measure();
+  // Flicks in real time: each touch is a list of [dx px, ms to get there] stick moves (each ramped in ~10 px steps).
+  // Returns how many gestures fired. A flick must pass 80 px within 220 ms of leaving the centre.
+  const timedFlicks = (touches) => page.evaluate(async (touches) => {
+    const G = window.G, c = document.getElementById('game'), g = G.input.gestures;
+    let n = 0;
+    g.push = (...a) => { n += a.length; return Array.prototype.push.apply(g, a); };
+    const ev = (type, x) => {
+      const t = new Touch({ identifier: 8, target: c, clientX: 150 + x, clientY: 400 });
+      c.dispatchEvent(new TouchEvent(type, { changedTouches: [t], touches: type === 'touchend' ? [] : [t], bubbles: true, cancelable: true }));
+    };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const moves of touches) {
+      let x = 0;
+      ev('touchstart', 0);
+      for (const [to, ms] of moves) {
+        const k = Math.max(1, Math.round(Math.abs(to - x) / 10)), from = x;
+        for (let i = 1; i <= k; i++) { if (ms) await wait(ms / k); x = from + ((to - from) * i) / k; ev('touchmove', x); }
+      }
+      ev('touchend', x);
+    }
+    delete g.push;
+    g.length = 0;
+    return n;
+  }, touches);
+  report.flicks = {};
+  await setUp(200); report.flicks.quick90 = await timedFlicks([[[45, 0], [90, 20], [0, 0], [45, 0], [90, 20]]]);
+  await setUp(200); report.flicks.steer75 = await timedFlicks([[[75, 300], [0, 50], [75, 100]]]);
+  await setUp(200); report.flicks.push70 = await timedFlicks([[[70, 0]], [[70, 0]]]);
+  // Slow: from the edge of the centre (20 px) it takes 280 ms to reach 70 px, then 90. The old rule (55 px, no clock) made this a stunt.
+  await setUp(200); report.flicks.slow90 = await timedFlicks([[[20, 0], [70, 280], [90, 0], [0, 0], [20, 0], [70, 280], [90, 0]]]);
   await setUp(20); await keyTwice('ArrowDown'); report.stunts.lowSplitS = await measure();
   await setUp(200); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500); await page.keyboard.press('ArrowLeft'); report.stunts.slowTaps = await measure();
   // Holding a key to steer (300 ms: past KEY_TAP_HOLD_MS, inside the old 350 ms window), then pressing it again, is not
   // a double tap; nor is W, D, W.
   await setUp(200); await page.keyboard.down('ArrowUp'); await page.waitForTimeout(300); await page.keyboard.up('ArrowUp'); await page.keyboard.press('ArrowUp'); report.stunts.heldThenTap = await measure();
   await setUp(200); await page.keyboard.press('KeyW'); await page.keyboard.press('KeyD'); await page.keyboard.press('KeyW'); report.stunts.otherKeyBetween = await measure();
+  await page.evaluate((land) => { const G = window.G; Object.assign(G.world, land); G.terrain.rebuildAll(); G.terrain.update(G.player.pos, 999); }, land);
+
+  // Phone HUD (a touch phone context per size): the title card shows the touch rows, and with the objective card, an
+  // enraged boss bar, two notes, a power-up and the touch buttons up, no HUD panel overlaps another; nor does the success card.
+  report.phone = {};
+  for (const [w, h] of [[390, 844], [360, 640]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
+    const pp = await guard(await ctx.newPage());
+    await pp.goto(origin + '/');
+    await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    const rows = await pp.evaluate(titleRows);
+    await pp.evaluate(() => document.getElementById('start').click());
+    const hud = await pp.evaluate(async () => {
+      const G = window.G, p = G.player, c = document.getElementById('game');
+      const t = new Touch({ identifier: 1, target: c, clientX: 100, clientY: 500 });
+      c.dispatchEvent(new TouchEvent('touchstart', { changedTouches: [t], touches: [t], bubbles: true, cancelable: true }));
+      c.dispatchEvent(new TouchEvent('touchend', { changedTouches: [t], touches: [], bubbles: true, cancelable: true }));
+      p.lives = 1e6; p.god = true;
+      G.enemies.spawnTimer = 1e9;
+      for (let i = 0; i < 30; i++) { p.invuln = 99; G.step(1 / 30); }
+      if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+      G.objectives.cooldown = 1e9;
+      G.objectives.start(G.objectives.makeBoss('kingDrone'), 'boss');
+      for (const e of G.enemies.list) if (e.boss) e.enraged = true;
+      G.powerups.activate('radar');
+      G.ui.notify('A first note, long enough to wrap onto a second line on a phone.', 'info', 4, 2);
+      G.ui.notify('A second note, also rather chatty.', 'warn', 4, 2);
+      p.invuln = 99; G.step(1 / 30);
+      await new Promise((r) => setTimeout(r, 1300)); // the card's pop animation settles
+      const ids = ['topleft', 'objective', 'boss-bar', 'bars', 't-boost', 't-fire'];
+      const rect = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { id, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+      const out = { rects: ids.map(rect), name: document.getElementById('boss-name').textContent, notes: document.querySelectorAll('.note').length, pu: document.querySelectorAll('.pu').length };
+      G.objectives.complete(false); // the success card, with real lines
+      await new Promise((r) => setTimeout(r, 600)); // it slides in
+      out.banner = { ...rect('banner'), show: document.getElementById('banner').classList.contains('show') };
+      return out;
+    });
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const overlaps = [];
+    hud.rects.forEach((a, i) => hud.rects.slice(i + 1).forEach((b) => { if (hit(a, b)) overlaps.push(`${a.id}/${b.id}`); }));
+    hud.rects.filter((a) => a.id !== 'boss-bar').forEach((a) => { if (hit(a, hud.banner)) overlaps.push(`banner/${a.id}`); });
+    report.phone[`${w}x${h}`] = { rows, overlaps, enraged: /ENRAGED/.test(hud.name), notes: hud.notes, pu: hud.pu, banner: hud.banner.show, sized: hud.rects.every((r) => r.right > r.left && r.bottom > r.top) };
+    await ctx.close();
+  }
 
   // Developer menu: hold 1 + 0 for 3 s of real time. It pauses the game and swallows gameplay keys.
   const menu = () => page.evaluate(() => ({
@@ -1326,6 +1504,330 @@ try {
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
     return out;
   });
+  // Feel: the PULL UP! warning and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
+  // the boost tank's timing, the crash flash, the portrait FOV, reduced motion and saved settings. Over calmed,
+  // drained land (as for the forts), with no enemies, objectives or power-ups, and no safety net where it matters.
+  const F = await page.evaluate((FLAT) => {
+    const G = window.G, p = G.player, out = {}, U = G.pullup;
+    const V = p.pos.constructor, Q = p.quat.constructor, UP = new V(0, 1, 0), XA = new V(1, 0, 0);
+    const god = p.god, land = Object.fromEntries([...Object.keys(FLAT), 'seaLevel'].map((k) => [k, G.world[k]]));
+    p.god = false;
+    if (G.relax) G.setRelax(false);
+    G.enemies.spawnTimer = 1e9;
+    G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e));
+    G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.persuasion.reset(null);
+    G.objectives.cooldown = 1e9;
+    G.powerups.active.clear();
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+    G.powerups.timer = 1e9;
+    Object.assign(G.world, FLAT, { seaLevel: -400 }); // flat (see the stunts) and drained: canyons are off, so no 400 m gorges
+    G.terrain.rebuildAll();
+    G.terrain.update(p.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+    for (let k = 0; k < 30; k++) { p.invuln = 99; G.step(1 / 30); }
+    const notes = [], notify = G.ui.notify.bind(G.ui);
+    G.ui.notify = (text, ...a) => { notes.push(text); return notify(text, ...a); };
+    let flashPeak = 0;
+    const flash = G.ui.flash.bind(G.ui);
+    G.ui.flash = (...a) => { flash(...a); flashPeak = Math.max(flashPeak, G.ui.flashA); };
+    let reason = null;
+    const crash = p.crash.bind(p);
+    p.crash = (r) => { reason = `${r} at ${Math.round(p.pos.y - ground())} m, hp ${Math.round(p.health)}, zone ${G.zones.index}, tunnels ${!!G.world.tunnels}`; crash(r); };
+    const ground = () => G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y);
+    const nose = (pitch) => { const yaw = Math.atan2(-p.forward.x, -p.forward.z); return new Q().setFromAxisAngle(UP, yaw).multiply(new Q().setFromAxisAngle(XA, pitch)); };
+    // A fresh plane `above` m over the ground, nose at `pitch` rad, cruising, no boost, no safety net. Where the whole
+    // corridor it flies (600 m ahead, 10 m either side) is flat: flat land still has sea basins and old craters or
+    // bullet pits, so the terrain roll never matters. Pending crater rebuilds land first, or the scan would read the
+    // ground from before them and the hole (or its rim) would open under the plane mid-dive. No flat corridor: throw.
+    const flush = (at) => {
+      G.terrain.update(at, 999);
+      for (let n = 0; n < 99 && G.terrain.dirty.size; n++) { G.terrain.nextDirtyBuild = 0; G.terrain.update(at, 0); }
+    };
+    const place = (above, pitch) => {
+      const f = new V(p.forward.x, 0, p.forward.z).normalize(), at = p.pos.clone();
+      let flat = false;
+      for (let k = 0; k < 60 && !flat; k++) {
+        if (k) at.addScaledVector(f, 300);
+        flush(at); // the ground the scan reads is the ground the plane will meet
+        let lo = Infinity, hi = -Infinity;
+        for (let d = -20; d <= 600; d += 5) {
+          for (const s of [-10, 0, 10]) { const g = G.terrain.surfaceHeight(at.x + f.x * d - f.z * s, at.z + f.z * d + f.x * s); lo = Math.min(lo, g); hi = Math.max(hi, g); }
+        }
+        flat = hi - lo < 3;
+      }
+      if (!flat) throw new Error('feel: no flat corridor found to place the plane');
+      p.pos.copy(at);
+      p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z));
+      p.quat.copy(nose(pitch)); p.updateAxes();
+      p.pos.y = ground() + above; p.prevPos.copy(p.pos);
+      p.invuln = 0; p.grace = 0; p.freeBoost = 0; p.wind.set(0, 0, 0);
+    };
+    const chip = () => U.on && getComputedStyle(U.chip).display === 'block' && U.glow.classList.contains('on');
+    // Fly `frames` steps (or until something returns true / the plane crashes); was the chip ever on screen?
+    const live = (frames, each = () => {}) => {
+      let shown = false;
+      for (let k = 0; k < frames && !p.dead; k++) { if (each(k)) break; p.invuln = 0; p.grace = 0; G.step(1 / 30); shown ||= chip(); }
+      return shown;
+    };
+    const settle = () => { for (let k = 0; k < 120 && p.dead; k++) G.step(1 / 30); for (let k = 0; k < 100; k++) { p.invuln = 99; G.step(1 / 30); } };
+
+    // Diving at the ground: the warning shows over a second before the crash. The crash flash peaks at 0.5.
+    place(60, -Math.PI / 6);
+    let t = 0, shownAt = null;
+    for (let k = 0; k < 300 && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (shownAt === null && chip()) shownAt = t; }
+    out.dive = { dead: p.dead, lead: shownAt === null ? null : +(t - shownAt).toFixed(2), flashPeak };
+    settle();
+    // Level at 100 m for 10 s: never. And cruising on a landscape screen keeps the 70° view.
+    place(100, 0);
+    reason = null;
+    out.level = { shown: live(300), dead: p.dead, reason, fov: +G.camera.fov.toFixed(1) };
+    settle();
+    // Level flight (which looks like a landing approach) still warns when the ground ahead isn't landable. Seconds
+    // from the chip to the crash, and the crash reason; null lead: it never showed.
+    const lead = (frames) => {
+      let t = 0, at = null;
+      reason = null;
+      for (let k = 0; k < frames && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (at === null && chip()) at = t; }
+      return { dead: p.dead, reason, lead: at === null ? null : +(t - at).toFixed(2) };
+    };
+    // 15 m up, level, toward a rise of 0.6 m per metre starting 150 m ahead (laid over the flat land, for this check
+    // only: the crash and the warning both read G.terrain.surfaceHeight).
+    place(15, 0);
+    {
+      const sh = G.terrain.surfaceHeight, o = p.pos.clone(), f = new V(p.forward.x, 0, p.forward.z).normalize();
+      G.terrain.surfaceHeight = function (x, z, y) { return sh.call(this, x, z, y) + Math.max(0, (x - o.x) * f.x + (z - o.z) * f.z - 150) * 0.6; };
+      out.rise = lead(300);
+      G.terrain.surfaceHeight = sh;
+    }
+    settle();
+    // On approach (wings level, nose -0.06, 4 m up) over flat, landable ground with a steep rise (2 m per metre)
+    // 75 m ahead: the near probes touch the landable strip, a later one hits the rise, and that one still warns.
+    place(4, -0.06);
+    {
+      const sh = G.terrain.surfaceHeight, o = p.pos.clone(), f = new V(p.forward.x, 0, p.forward.z).normalize();
+      G.terrain.surfaceHeight = function (x, z, y) { return sh.call(this, x, z, y) + Math.max(0, (x - o.x) * f.x + (z - o.z) * f.z - 75) * 2; };
+      out.approachWall = { approach: U.approach(), ...lead(300) };
+      G.terrain.surfaceHeight = sh;
+    }
+    settle();
+    // The sea is never landable: a gentle glide (wings level, nose -0.08) from 30 m onto it warns; level 6 m over it doesn't.
+    place(30, -0.08);
+    G.world.seaLevel = ground() + 5; // the flat land is under the sea now
+    p.pos.y = G.world.seaLevel + 30; p.prevPos.copy(p.pos);
+    out.seaGlide = lead(600);
+    settle();
+    place(6, 0);
+    G.world.seaLevel = ground() + 5;
+    p.pos.y = G.world.seaLevel + 6; p.prevPos.copy(p.pos);
+    reason = null;
+    out.seaLevel = { shown: live(240), dead: p.dead, reason };
+    G.world.seaLevel = -400;
+    settle();
+    // Pulling out low: dive steeply from 10 m (faster than any slope here falls away) to under 5 m, then climb away. Exactly +25 and a "Close shave!" note; a second
+    // one straight after pays nothing (15 s cooldown); in Relax Mode the warning still shows, for no points.
+    const pullOut = () => {
+      const s0 = G.score, n0 = notes.length;
+      reason = null;
+      place(10, -0.5);
+      let shown = live(60, () => p.pos.y - ground() < 5);
+      const up = nose(0.35);
+      shown = live(60, () => { p.quat.copy(up); p.updateAxes(); }) || shown;
+      return { shown, dead: p.dead, reason, min: +U.minClear.toFixed(1), off: !U.on, points: G.score - s0, notes: notes.slice(n0).filter((n) => /^Close shave!/.test(n)) };
+    };
+    out.shave1 = pullOut();
+    out.shave2 = pullOut();
+    U.lastShave = -Infinity; // past the cooldown
+    G.setRelax(true);
+    out.shaveRelax = pullOut();
+    G.setRelax(false);
+    G.enemies.spawnTimer = 1e9;
+    // Developer god mode and Ghost Mode can't hit the ground: no warning.
+    p.god = true; place(60, -Math.PI / 6); out.godShown = live(90); p.god = false;
+    G.powerups.active.set('ghost', 10); place(60, -Math.PI / 6); out.ghostShown = live(90); G.powerups.active.clear();
+    p.crash = crash;
+    place(150, 0);
+    settle();
+
+    // Hitting sounds like a tick, being hit like a hit. Kills and broken parts pop their points; at most 6 at once.
+    const calls = { tick: 0, hit: 0, whoosh: 0 };
+    for (const name of Object.keys(calls)) { const f = G.audio[name].bind(G.audio); G.audio[name] = (...a) => { calls[name]++; return f(...a); }; }
+    const step = (n) => { for (let k = 0; k < n; k++) { p.invuln = 99; G.step(1 / 30); } };
+    const pops = () => [...document.querySelectorAll('.pop-score')].map((el) => el.textContent);
+    const shoot = (at) => { while (p.bullets.length) p.removeBullet(0); p.shootCd = 0; p.fire(); for (const b of p.bullets) { b.pos.copy(at); b.vel.set(0, 0, 0); } step(1); };
+    const ahead = () => p.pos.clone().addScaledVector(p.forward, 120).setY(p.pos.y + 20);
+    G.powerups.active.set('freeze', 999); // hold them still so a placed bullet stays on target
+    const mine = G.enemies.spawn('mine', ahead()); // no weak points or parts: a body hit
+    mine.hp = 100;
+    step(1);
+    shoot(mine.pos);
+    out.bulletHit = { ...calls, hp: mine.hp };
+    const drone = G.enemies.spawn('drone', ahead().addScaledVector(p.right, 60)); // a rotor: a breakable part, not a weak point
+    drone.hp = 100;
+    step(1);
+    const rotor = drone.mesh.userData.parts.find((x) => x.name === 'rotor');
+    const ticks = calls.tick;
+    shoot(rotor.obj.getWorldPosition(new V()));
+    out.partHit = { tick: calls.tick - ticks, hit: calls.hit, broken: rotor.broken, pops: pops() };
+    G.enemies.removeEnemy(drone);
+    step(36);
+    mine.hp = 0.1;
+    shoot(mine.pos);
+    out.kill = { dead: mine.dead, pops: pops(), score: mine.def.score };
+    step(36);
+    out.kill.after = pops().length;
+    G.powerups.active.clear();
+    for (let k = 0; k < 10; k++) G.fx.popText(p.pos.clone().addScaledVector(p.forward, 100), `+${k}`);
+    out.popMax = pops().length;
+    step(36);
+    out.popGone = pops().length;
+    // Taking damage goes hit, and shakes the camera.
+    const hits = calls.hit;
+    p.invuln = 0;
+    p.damage(5);
+    p.health = p.maxHealth;
+    step(1);
+    out.shake = { hit: calls.hit - hits, off: +G.camShake.off.length().toFixed(3) };
+    step(30);
+    // The cinematic look (G.camPeek) turns the view; the reduced-motion check below shows it doesn't there.
+    const look = () => { const d = new V(); G.camera.getWorldDirection(d); return +d.dot(p.pos.clone().addScaledVector(p.forward, 30).sub(G.camera.position).normalize()).toFixed(3); };
+    G.camPeek = { at: p.pos.clone().addScaledVector(p.right, 300), w: 1 };
+    step(1);
+    out.peekLook = look();
+    G.camPeek = null;
+    step(1);
+    // Boost, at base stats: pressing it from full goes whoosh once while held; a full tank lasts 4 s, refills in 5 s.
+    const stats = { ...p.stats };
+    Object.assign(p.stats, { boostDrain: 1, boostRegen: 1 });
+    p.boost = 1;
+    const w0 = calls.whoosh;
+    G.input.keys.add('ShiftLeft');
+    step(60);
+    out.boost = { whooshes: calls.whoosh - w0 };
+    let frames = 60;
+    while (p.boosting && frames < 30 * 8) { step(1); frames++; }
+    out.boost.drain = +(frames / 30).toFixed(2);
+    G.input.keys.delete('ShiftLeft');
+    p.boost = 0;
+    frames = 0;
+    while (p.boost < 1 && frames < 30 * 8) { step(1); frames++; }
+    out.boost.regen = +(frames / 30).toFixed(2);
+    Object.assign(p.stats, stats);
+    for (const name of Object.keys(calls)) delete G.audio[name];
+    G.ui.notify = notify;
+    G.ui.flash = flash;
+    Object.assign(G.world, land);
+    G.terrain.rebuildAll();
+    step(30);
+    p.god = god;
+    return out;
+  }, FLAT);
+  // A portrait phone gets the wider view.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const pp = await guard(await ctx.newPage());
+    await pp.goto(origin + '/');
+    await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await pp.click('#start');
+    F.portraitFov = await pp.evaluate(() => { const G = window.G; for (let k = 0; k < 120; k++) { G.player.invuln = 99; G.step(1 / 30); } return +G.camera.fov.toFixed(1); });
+    // At that wider view, a fresh run's first hoop is on screen too (20 first hoops, from fresh headings).
+    F.portraitMarker = await pp.evaluate(() => {
+      const G = window.G, O = G.objectives, p = G.player;
+      O.cooldown = 1e9;
+      G.enemies.spawnTimer = 1e9;
+      let seen = 0;
+      for (let k = 0; k < 20; k++) {
+        if (O.current) { O.current.dispose(G); O.current = null; }
+        G.persuasion.reset(null);
+        p.spawn(p.pos.x, p.pos.z, Math.random() * Math.PI * 2);
+        for (let i = 0; i < 30; i++) { p.invuln = 99; G.step(1 / 30); } // the camera swings round behind the new heading
+        O.completed = 0;
+        O.startType('hoop');
+        p.invuln = 99; G.step(1 / 30);
+        if (document.getElementById('marker').style.display === 'block') seen++;
+      }
+      return seen;
+    });
+    await ctx.close();
+  }
+  // Reduced motion: no shake, no cinematic look, and the CSS throbs and spins stop.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 }, reducedMotion: 'reduce' });
+    const rp = await guard(await ctx.newPage());
+    await rp.goto(origin + '/');
+    await rp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await rp.click('#start');
+    F.reduced = await rp.evaluate(() => {
+      const G = window.G, p = G.player, V = p.pos.constructor;
+      const step = (n) => { for (let k = 0; k < n; k++) { p.invuln = 99; G.step(1 / 30); } };
+      step(30);
+      p.invuln = 0;
+      p.damage(5);
+      step(1);
+      const off = G.camShake.off.length();
+      G.camPeek = { at: p.pos.clone().addScaledVector(p.right, 300), w: 1 };
+      step(1);
+      const d = new V();
+      G.camera.getWorldDirection(d);
+      const look = +d.dot(p.pos.clone().addScaledVector(p.forward, 30).sub(G.camera.position).normalize()).toFixed(3);
+      G.camPeek = null;
+      G.pullup.chip.classList.add('on');
+      const anim = ['#pullup-chip', '#marker .diamond'].map((s) => getComputedStyle(document.querySelector(s)).animationName);
+      G.pullup.chip.classList.remove('on');
+      p.invuln = 0;
+      p.crash('ground');
+      const flash = G.ui.flashA; // the crash flash's peak (halved under reduced motion by ui.js flash())
+      return { on: G.comfort.reducedMotion, off, look, anim, flash };
+    });
+    await ctx.close();
+  }
+  // Settings: I, N and M are remembered across a reload (and said so at take-off). Cleared afterwards.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    const sp = await guard(await ctx.newPage());
+    await sp.goto(origin + '/');
+    await sp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    F.settingsDefault = await sp.evaluate(() => ({ invert: window.G.input.invert, muted: window.G.audio.muted, stored: localStorage.getItem('landed-settings') }));
+    await sp.click('#start');
+    for (const k of ['KeyI', 'KeyN', 'KeyM']) await sp.keyboard.press(k);
+    await sp.reload();
+    await sp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    const before = await sp.evaluate(() => ({ invert: window.G.input.invert, muted: window.G.audio.muted }));
+    await sp.click('#start');
+    F.settings = await sp.evaluate((before) => {
+      const G = window.G;
+      const notes = [...G.ui.notes, ...G.ui.queue].map((n) => n.text);
+      return { before, invert: G.input.invert, music: G.audio.music?.enabled, muted: G.audio.muted, master: G.audio.master?.gain.value, note: notes.find((n) => /Remembered/.test(n)) || null };
+    }, before);
+    await sp.evaluate(() => localStorage.removeItem('landed-settings'));
+    F.settingsCleared = await sp.evaluate(() => localStorage.getItem('landed-settings') === null);
+    await ctx.close();
+  }
+  // Junk in storage (hand-edited, or from another build): the game boots with the defaults, no page errors, and no
+  // "Furthest" line for a zone the list doesn't have or an absurd lap. Cleared afterwards.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    const jp = await guard(await ctx.newPage());
+    await jp.goto(origin + '/');
+    await jp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    const errors0 = errors.length;
+    F.junk = [];
+    for (const [settings, furthest] of [['{bad', '{"index":99,"lap":1}'], ['5', '{"index":0,"lap":1e21}'], ['{"invert":"yes"}', '{"index":0,"lap":1e21}']]) {
+      await jp.evaluate(([s, f]) => { localStorage.setItem('landed-settings', s); localStorage.setItem('landed-furthest', f); }, [settings, furthest]);
+      await jp.reload();
+      await jp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+      F.junk.push(await jp.evaluate(() => {
+        const G = window.G, el = document.getElementById('furthest');
+        return { invert: G.input.invert, muted: G.audio.muted, furthest: G.progress.furthest, text: el.textContent, shown: el.checkVisibility() };
+      }));
+    }
+    F.junkErrors = errors.slice(errors0);
+    await jp.evaluate(() => { localStorage.removeItem('landed-settings'); localStorage.removeItem('landed-furthest'); });
+    F.junkCleared = await jp.evaluate(() => localStorage.getItem('landed-settings') === null && localStorage.getItem('landed-furthest') === null);
+    await ctx.close();
+  }
+  report.feel = F;
+
   // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
   // mends slowly (nothing in the first 10 s after a hit), a promotion repairs it, and losing the last life shows the
   // Game Over card and freezes the game. "Fly again" (a real click, then Enter) starts a fresh run in place.
@@ -1402,19 +1904,78 @@ try {
   await page.keyboard.press('Space'); // a shot just as the card appears doesn't skip it...
   await page.keyboard.press('Enter');
   L.keyLocked = await page.evaluate(() => window.G.gameOver && !document.getElementById('gameover').classList.contains('hidden'));
+  // A Game Over back in zone 1 (lap 1) has nothing to continue from: no Continue button.
+  L.noContinueAtZone0 = await page.evaluate(() => window.G.zones.index === 0 && window.G.zones.lap === 1 && !document.getElementById('continue').checkVisibility());
   await page.waitForTimeout(1100); // ...but after a second, Enter flies again
   await page.keyboard.press('Enter');
   L.againByKey = await fresh();
+  // Continue: a Game Over in zone 5 (index 4) offers to continue from it. Clicking starts the same fresh run as Fly
+  // again, but in that zone; that run's Game Over card says where it continued from, and C (after the key lock) works too.
+  const zoneOver = () => page.evaluate(() => {
+    const G = window.G, p = G.player;
+    G.score = 321;
+    G.devmenu.levelUp();
+    G.objectives.completed = 2;
+    p.lives = 1; p.invuln = 0; p.crash('ground');
+    for (let i = 0; i < 90 && !G.gameOver; i++) G.step(1 / 30);
+    const btn = document.getElementById('continue');
+    return { over: G.gameOver, shown: btn.checkVisibility(), label: btn.textContent, lines: document.getElementById('go-lines').textContent };
+  });
+  L.zone4 = await page.evaluate(async () => {
+    const { ZONES } = await import('./src/zones.js');
+    window.G.zones.enter(4);
+    window.G.step(1 / 30);
+    return { name: ZONES[4].name, zone: window.G.zones.index };
+  });
+  L.continueCard = await zoneOver();
+  await page.click('#continue');
+  L.continued = await fresh();
+  L.continuedCard = await zoneOver();
+  await page.keyboard.press('KeyC');
+  L.continueKeyLocked = await page.evaluate(() => window.G.gameOver);
+  await page.waitForTimeout(1100);
+  await page.keyboard.press('KeyC');
+  L.continuedByKey = await fresh();
+  // Furthest zone: three objectives in zone 1 fly on into zone 2, and that's remembered (checked after the reload
+  // below, on the title card). A dev-menu jump further on doesn't count.
+  L.furthest = await page.evaluate(() => {
+    const G = window.G;
+    localStorage.removeItem('landed-furthest');
+    G.progress.furthest = null;
+    G.zones.lap = 1;
+    G.zones.sinceZone = 0;
+    G.zones.enter(0);
+    for (let k = 0; k < 3; k++) G.zones.onObjectiveComplete();
+    const saved = localStorage.getItem('landed-furthest');
+    G.devmenu.enterZone(9);
+    return { zone: G.zones.index, saved, afterJump: localStorage.getItem('landed-furthest') };
+  });
   report.lives = L;
 
+  // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
+  // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
+  // after the jump, so this doesn't depend on whether the reload wins the race.
+  const jump0 = await page.evaluate(() => {
+    const G = window.G, dm = G.devmenu, update = dm.update.bind(dm);
+    window.framesSeen = 0;
+    dm.update = () => { window.framesSeen++; update(); }; // frame() calls it once a frame, paused or not
+    return { paused: G.paused, time: G.time, perf: performance.now() };
+  });
   // Found secrets survive a reload. The reload pretends it's April 1, so the boot-time date check runs too.
   await page.clock.setFixedTime(new Date('2026-04-01T10:00:00'));
+  L.clockJump = await page.evaluate(async (j) => {
+    const G = window.G, p = G.player;
+    window.framesSeen = 0;
+    for (let k = 0; k < 200 && window.framesSeen < 3; k++) await new Promise((r) => setTimeout(r, 20));
+    return { ...j, frames: window.framesSeen, perfAfter: performance.now(), timeAfter: G.time, speed: p.speed, finite: [p.speed, p.pos.x, p.pos.y, p.pos.z, G.time].every(Number.isFinite) };
+  }, jump0);
   await page.reload();
   await page.waitForFunction(() => window.G && window.G.secrets, null, { timeout: 30000 });
   S.reloaded = await page.evaluate(() => ({
     found: window.G.secrets.found.size, holiday: window.G.secrets.holiday, logo: document.getElementById('logo').textContent,
     rank: window.G.progress.rank, count: document.getElementById('secrets-count').textContent,
   }));
+  L.furthestTitle = await page.evaluate(async () => ({ text: document.getElementById('furthest').textContent, name: (await import('./src/zones.js')).ZONES[1].name, shown: document.getElementById('furthest').checkVisibility() }));
 
   // Desktop (Electron) build: a fake window.landedDesktop bridge, injected before the game boots, shows Quit and
   // Fullscreen on the title and pause cards, and they call the bridge. A second, short-lived context.
@@ -1445,7 +2006,7 @@ try {
 
   const checks = [
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
-    [report.musicPlaying && report.engineGain < 0.01, 'calm music plays and the engine stays quiet'],
+    [report.musicPlaying && report.engineGain <= 0.015, 'calm music plays and the engine stays quiet'],
     [report.musicSection && report.musicSection.mood === 'day' && report.musicSection.texture, 'the music is in a section (music.section shows mood, progression, texture, root)'],
     [report.music.missing.length === 0 && report.music.moods >= 8 && report.music.bad.length === 0, 'every zone\'s mood exists; sections vary progression, texture and key (small steps, back home)'],
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
@@ -1454,6 +2015,16 @@ try {
     [report.tactics.leftovers.length === 0 && report.tactics.clean, 'persuasion reset() removes every tactic\'s meshes, HUD lines, camera peek and wind'],
     [report.tactics.peeked && report.tactics.hudLine, 'the cinematic look turns the camera and hot & cold / offers show on the objective card'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
+    [(({ firstHoop: f }) => f.length === 20 && f.every((h) => h.deg <= 20.1 && h.dist >= 299 && h.dist <= 451))(report.guide), `guidance: a run's first hoop is within 20° of straight ahead and 300-450 m away (${JSON.stringify(report.guide.firstHoop.map((h) => h.deg))})`],
+    [report.guide.markerSeen >= 19, `guidance: the first hoop's marker is on screen at the start (${report.guide.markerSeen}/20, 1024×640)`],
+    [F.portraitMarker >= 19, `guidance: the first hoop's marker is on screen at the start on a portrait phone too (${F.portraitMarker}/20, 390×844)`],
+    [(({ arrow: [a0, a1, a2] }) => a0.shown && a0.faint && !a0.big && a0.label === '' && a1.shown && !a1.faint && !a1.big && a2.shown && !a2.faint && a2.big)(report.guide), 'guidance: an off-screen objective gets a faint unlabelled arrow before persuasion; its arrow steps make it normal, then big'],
+    [(({ feeFree: a, feeFree2: b, feePaid: c }) => [a, b].every((r) => r.gain === 100 && r.lines[1] === 'Hints on the house' && !/fee/i.test(r.lines.join())) && c.gain === 76 && c.lines[1] === 'Hint fee -24')(report.guide), 'hint fee: none for the first 3 objectives ("Hints on the house"), charged from the 4th'],
+    [(({ par: p }) => p.hoop === 12 && p.card === '⏱ Par 12 s · beat it for +60' && p.cardAfter === '' && p.at10.gain === 160 && p.at10.lines[1].includes('Speed bonus +60 (under par!)') && p.at14.gain === 100 && !/Speed bonus/.test(p.at14.lines.join()) && p.timed === 17)(report.guide), 'par: the hoop card shows "Par 12 s"; done in 10 s earns the speed bonus, in 14 s not; timed objectives get 60% of their clock'],
+    [(({ four: f }) => f.lines.length === 4 && /^\+3 more world changes/.test(f.lines[3]) && f.lines[2] === 'The trees are blue now.' && f.showAt3s && !f.showAt36s)(report.guide) && report.bannerMaxLines >= 2 && report.bannerMaxLines <= 4, 'banner: at most 4 lines (4 world changes show one and "+3 more"), gone within 3.6 s'],
+    [report.zoneBanner.length === 2 && /^New zone: /.test(report.zoneBanner[1]), `banner: a zone change shows the points and "New zone" only (${JSON.stringify(report.zoneBanner)})`],
+    [report.guide.loopTasticHoops === 0 && report.guide.loopTasticLoops > 0 && report.guide.loopTasticLoops < 30, 'banner: "LOOP-TASTIC!" is only for the loop objective (200 hoops never), and not every time'],
+    [(({ spare: s }) => s.from2.lives === 3 && s.from2.detail.includes('Spare plane +1 ❤️') && s.from5.lives === 5 && s.from5.detail.includes('Hangar full (5 planes)') && s.big.lives === 1e6 && s.forced.lives === 2 && s.from2.par === 25 && s.hearts4 === '❤️❤️❤️❤️')(report.guide), 'spare plane: beating a boss adds a life up to 5 (never removes any, not when forced); 4 lives show 4 hearts'],
     [report.bossDefeated, 'boss can be defeated'],
     [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
     [report.chunks > 20, 'terrain is loaded'],
@@ -1520,6 +2091,31 @@ try {
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
+    [F.dive.dead && F.dive.lead >= 1.0, `pull up: diving at flat ground shows PULL UP! at least 1 s before the crash (${F.dive.lead} s)`],
+    [!F.level.shown && !F.level.dead, 'pull up: level flight 100 m up for 10 s never warns'],
+    [report.landing.pullUps === 0, 'pull up: a landing approach never warns'],
+    [F.rise.dead && F.rise.reason?.startsWith('ground') && F.rise.lead >= 1.0, `pull up: level flight 15 m up into a 0.6 rise shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.rise)})`],
+    [F.approachWall.approach && F.approachWall.dead && F.approachWall.reason?.startsWith('ground') && F.approachWall.lead >= 1.0, `pull up: on approach, a steep rise behind a landable strip shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.approachWall)})`],
+    [F.seaGlide.dead &&F.seaGlide.reason?.startsWith('water') && F.seaGlide.lead >= 1.0, `pull up: a gentle glide onto the sea shows PULL UP! at least 1 s before the splash (${JSON.stringify(F.seaGlide)})`],
+    [!F.seaLevel.shown && !F.seaLevel.dead, `pull up: level flight 6 m over the sea for 8 s never warns (${JSON.stringify(F.seaLevel)})`],
+    [(({ shave1: a }) => a.shown && !a.dead && a.off && a.min >= 3 && a.min < 7 && a.points === 25 && a.notes.length === 1 && / \+25$/.test(a.notes[0]))(F), `pull up: pulling out 3-7 m above the ground pays a close shave, +25 (${JSON.stringify(F.shave1)})`],
+    [(({ shave2: b }) => b.shown && !b.dead && b.points === 0 && b.notes.length === 0)(F), 'pull up: a second close shave inside 15 s pays nothing'],
+    [(({ shaveRelax: r }) => r.shown && r.points === 0 && /Bragging rights only/.test(r.notes[0]))(F), 'pull up: Relax Mode still warns, and a close shave is bragging rights only'],
+    [!F.godShown && !F.ghostShown, 'pull up: never in god mode or Ghost Mode'],
+    [F.bulletHit.tick >= 1 && F.bulletHit.hit === 0 && F.bulletHit.hp < 100 && F.partHit.tick >= 1 && F.partHit.hit === 0 && F.shake.hit === 1, 'feel: your bullets hitting a body or a part go tick, being hit goes hit'],
+    [F.partHit.broken && F.partHit.pops.includes('+10'), 'feel: breaking off a part pops +10'],
+    [F.kill.dead && F.kill.pops.includes(`+${F.kill.score}`) && F.kill.after === 0, 'feel: a kill pops its points, gone within 1.2 s'],
+    [F.popMax === 6 && F.popGone === 0, 'feel: at most 6 score pop-ups at once'],
+    [F.shake.off > 0 && F.reduced.on && F.reduced.off === 0, 'feel: damage shakes the camera; not with reduced motion'],
+    [F.peekLook < 0.9 && F.reduced.look > 0.999, 'comfort: the cinematic look turns the camera, but not with reduced motion'],
+    [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the PULL UP! throb and the marker spin'],
+    [F.dive.flashPeak > 0 && F.dive.flashPeak <= 0.5, `feel: the crash flash peaks at 0.5 at most (${F.dive.flashPeak})`],
+    [F.reduced.flash > 0 && F.reduced.flash <= 0.25, `comfort: under reduced motion the crash flash peaks at 0.25 at most (${F.reduced.flash})`],
+    [F.boost.whooshes === 1, 'feel: pressing boost goes whoosh once while held'],
+    [Math.abs(F.boost.drain - 4) <= 0.2 && Math.abs(F.boost.regen - 5) <= 0.2, `boost: a full tank lasts 4 s and refills in 5 s (${F.boost.drain} s, ${F.boost.regen} s)`],
+    [Math.abs(F.level.fov - 70) <= 1 && Math.abs(F.portraitFov - 95) <= 1, `camera: 70° cruising on a landscape screen, 95° on a portrait phone (${F.level.fov}, ${F.portraitFov})`],
+    [(({ settingsDefault: d, settings: s }) => !d.invert && !d.muted && d.stored === null && s.before.invert && s.before.muted && s.invert && s.music === false && s.muted && s.master === 0 && /Remembered/.test(s.note))(F) && F.settingsCleared, 'settings: I, N and M survive a reload, with a "Remembered" note at take-off'],
+    [F.junk.length === 3 && F.junk.every((j) => !j.invert && !j.muted && j.furthest === null && j.text === '' && !j.shown) && !F.junkErrors.length && F.junkCleared, `storage: junk settings and furthest-zone data boot with the defaults, no errors, no "Furthest" line (${JSON.stringify(F.junk)} ${F.junkErrors})`],
     [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
     [(({ levelUp: u }) => u.health === u.max && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) repairs the hull, and says so'],
     [(({ regen: r }) => r.at9s === 50 && r.at12s > 50 && r.at12s <= 50 + r.rate * 2.2)(L.run), 'hull: no repairs for 10 s after a hit, then slowly (stats.regen hp/s)'],
@@ -1528,11 +2124,20 @@ try {
     [(({ last: l, over: o }) => l.lives === 0 && l.hearts === '🖤🖤🖤' && !l.overAtOnce && o.gameOver && o.paused && o.shown && o.cardScore === String(o.score) && o.cardText.includes(`Level ${o.level}`) && /New best/.test(o.cardText) && o.saved === o.score)(L.run), 'lives: the third crash shows the Game Over card (after the explosion) with score, level and a saved best'],
     [L.frozen, 'lives: the game is paused behind the Game Over card'],
     [L.keyLocked, 'lives: Space / Enter in the first second of the Game Over card do not skip it'],
+    [L.noContinueAtZone0, 'continue: a Game Over in zone 1, lap 1 shows no Continue button'],
+    [(({ continueCard: c, zone4: z }) => z.zone === 4 && c.over && c.shown && c.label === `CONTINUE FROM ${z.name.toUpperCase()}` && !/Continued from/.test(c.lines))(L), 'continue: a Game Over in zone 5 shows "CONTINUE FROM <zone>"'],
     [[L.again, L.againByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && a.health === 100 && a.regen === 1 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 0) && L.overByKey, 'lives: Fly again (click, or Enter) starts a fresh run: 3 lives, score 0, level 1, base hull'],
+    [[L.continued, L.continuedByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 4), 'continue: clicking (or C) starts a fresh run in the same zone: 3 lives, score 0, level 1, no perks'],
+    [L.continuedCard.over && L.continuedCard.lines.includes(`Continued from ${L.zone4.name}`) && L.continueKeyLocked, 'continue: a continued run\'s Game Over card says so, and C in its first second does not skip it'],
+    [(({ furthest: f, furthestTitle: t }) => f.zone === 9 && JSON.parse(f.saved).index === 1 && f.afterJump === f.saved && t.shown && t.text.includes(t.name) && /\(zone 2 of \d+\)/.test(t.text))(L), 'furthest zone: flying on into zone 2 is saved and shown on the title card after a reload; a dev-menu jump does not count'],
+    [(({ clockJump: c }) => !c.paused && c.frames >= 3 && c.perfAfter < c.perf && c.timeAfter >= c.time && c.finite)(L), `clock: a backwards clock jump mid-flight never runs game time backwards; speed and position stay finite (${JSON.stringify(L.clockJump)})`],
     [(({ up: s }) => s.name === 'Immelmann' && s.back < -0.9 && s.upright > 0.9 && s.climb > 15)(report.stunts), 'double-tap up: Immelmann turns you back and up'],
     [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],
     [(({ touchLeft: s, touchUp: u }) => s.name === 'Barrel roll' && s.side < -18 && u.name === 'Immelmann')(report.stunts), 'two touch flicks trigger stunts'],
+    [report.flicks.quick90 === 1 && report.flicks.steer75 === 0 && report.flicks.push70 === 0 && report.flicks.slow90 === 0, `touch flicks: two quick 90 px pushes are a stunt; steering to 75 px and back, two 70 px pushes, or two slow 90 px pushes are not (${JSON.stringify(report.flicks)})`],
+    [Object.values(report.phone).every((p) => p.rows.touch && !p.rows.keys) && desktopTitleRows.keys && !desktopTitleRows.touch, 'title card: a touch phone shows the touch rows (not the keyboard rows); a desktop the keyboard rows'],
+    [Object.values(report.phone).every((p) => p.sized && p.enraged && p.notes >= 2 && p.pu >= 1 && p.banner && p.overlaps.length === 0), `phone HUD (390×844, 360×640): score, objective, boss bar, hull bars and touch buttons don't overlap; nor does the success card (${JSON.stringify(Object.values(report.phone).map((p) => p.overlaps))})`],
     [!report.stunts.lowSplitS.name && !report.stunts.slowTaps.name, 'no Split-S near the ground, and slow taps are not a double tap'],
     [!report.stunts.heldThenTap.name && !report.stunts.otherKeyBetween.name, 'a held key then a tap, or W D W, is not a double tap'],
     [!report.devmenu.shortHold.open && !report.devmenu.shortHold.paused, 'dev menu: a 1 s hold of 1 + 0 does nothing'],
