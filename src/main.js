@@ -272,7 +272,8 @@ addEventListener('resize', () => {
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  // At most 0.05 s a frame, and never negative: a clock that jumps back (a test's fake clock) mustn't run time backwards.
+  const dt = THREE.MathUtils.clamp(clock.getDelta(), 0, 0.05);
   G.devmenu.update();
   if (G.paused) {
     if (!G.started) titleCamera(dt);

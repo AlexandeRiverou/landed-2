@@ -1582,6 +1582,48 @@ try {
     place(100, 0);
     reason = null;
     out.level = { shown: live(300), dead: p.dead, reason, fov: +G.camera.fov.toFixed(1) };
+    settle();
+    // Level flight (which looks like a landing approach) still warns when the ground ahead isn't landable. Seconds
+    // from the chip to the crash, and the crash reason; null lead: it never showed.
+    const lead = (frames) => {
+      let t = 0, at = null;
+      reason = null;
+      for (let k = 0; k < frames && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (at === null && chip()) at = t; }
+      return { dead: p.dead, reason, lead: at === null ? null : +(t - at).toFixed(2) };
+    };
+    // 15 m up, level, toward a rise of 0.6 m per metre starting 150 m ahead (laid over the flat land, for this check
+    // only: the crash and the warning both read G.terrain.surfaceHeight).
+    place(15, 0);
+    {
+      const sh = G.terrain.surfaceHeight, o = p.pos.clone(), f = new V(p.forward.x, 0, p.forward.z).normalize();
+      G.terrain.surfaceHeight = function (x, z, y) { return sh.call(this, x, z, y) + Math.max(0, (x - o.x) * f.x + (z - o.z) * f.z - 150) * 0.6; };
+      out.rise = lead(300);
+      G.terrain.surfaceHeight = sh;
+    }
+    settle();
+    // On approach (wings level, nose -0.06, 4 m up) over flat, landable ground with a steep rise (2 m per metre)
+    // 75 m ahead: the near probes touch the landable strip, a later one hits the rise, and that one still warns.
+    place(4, -0.06);
+    {
+      const sh = G.terrain.surfaceHeight, o = p.pos.clone(), f = new V(p.forward.x, 0, p.forward.z).normalize();
+      G.terrain.surfaceHeight = function (x, z, y) { return sh.call(this, x, z, y) + Math.max(0, (x - o.x) * f.x + (z - o.z) * f.z - 75) * 2; };
+      out.approachWall = { approach: U.approach(), ...lead(300) };
+      G.terrain.surfaceHeight = sh;
+    }
+    settle();
+    // The sea is never landable: a gentle glide (wings level, nose -0.08) from 30 m onto it warns; level 6 m over it doesn't.
+    place(30, -0.08);
+    G.world.seaLevel = ground() + 5; // the flat land is under the sea now
+    p.pos.y = G.world.seaLevel + 30; p.prevPos.copy(p.pos);
+    out.seaGlide = lead(600);
+    settle();
+    place(6, 0);
+    G.world.seaLevel = ground() + 5;
+    p.pos.y = G.world.seaLevel + 6; p.prevPos.copy(p.pos);
+    reason = null;
+    out.seaLevel = { shown: live(240), dead: p.dead, reason };
+    G.world.seaLevel = -400;
+    settle();
     // Pulling out low: dive steeply from 10 m (faster than any slope here falls away) to under 5 m, then climb away. Exactly +25 and a "Close shave!" note; a second
     // one straight after pays nothing (15 s cooldown); in Relax Mode the warning still shows, for no points.
     const pullOut = () => {
@@ -1761,6 +1803,29 @@ try {
     F.settingsCleared = await sp.evaluate(() => localStorage.getItem('landed-settings') === null);
     await ctx.close();
   }
+  // Junk in storage (hand-edited, or from another build): the game boots with the defaults, no page errors, and no
+  // "Furthest" line for a zone the list doesn't have or an absurd lap. Cleared afterwards.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    const jp = await guard(await ctx.newPage());
+    await jp.goto(origin + '/');
+    await jp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    const errors0 = errors.length;
+    F.junk = [];
+    for (const [settings, furthest] of [['{bad', '{"index":99,"lap":1}'], ['5', '{"index":0,"lap":1e21}'], ['{"invert":"yes"}', '{"index":0,"lap":1e21}']]) {
+      await jp.evaluate(([s, f]) => { localStorage.setItem('landed-settings', s); localStorage.setItem('landed-furthest', f); }, [settings, furthest]);
+      await jp.reload();
+      await jp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+      F.junk.push(await jp.evaluate(() => {
+        const G = window.G, el = document.getElementById('furthest');
+        return { invert: G.input.invert, muted: G.audio.muted, furthest: G.progress.furthest, text: el.textContent, shown: el.checkVisibility() };
+      }));
+    }
+    F.junkErrors = errors.slice(errors0);
+    await jp.evaluate(() => { localStorage.removeItem('landed-settings'); localStorage.removeItem('landed-furthest'); });
+    F.junkCleared = await jp.evaluate(() => localStorage.getItem('landed-settings') === null && localStorage.getItem('landed-furthest') === null);
+    await ctx.close();
+  }
   report.feel = F;
 
   // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
@@ -1887,8 +1952,23 @@ try {
   });
   report.lives = L;
 
+  // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
+  // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
+  // after the jump, so this doesn't depend on whether the reload wins the race.
+  const jump0 = await page.evaluate(() => {
+    const G = window.G, dm = G.devmenu, update = dm.update.bind(dm);
+    window.framesSeen = 0;
+    dm.update = () => { window.framesSeen++; update(); }; // frame() calls it once a frame, paused or not
+    return { paused: G.paused, time: G.time, perf: performance.now() };
+  });
   // Found secrets survive a reload. The reload pretends it's April 1, so the boot-time date check runs too.
   await page.clock.setFixedTime(new Date('2026-04-01T10:00:00'));
+  L.clockJump = await page.evaluate(async (j) => {
+    const G = window.G, p = G.player;
+    window.framesSeen = 0;
+    for (let k = 0; k < 200 && window.framesSeen < 3; k++) await new Promise((r) => setTimeout(r, 20));
+    return { ...j, frames: window.framesSeen, perfAfter: performance.now(), timeAfter: G.time, speed: p.speed, finite: [p.speed, p.pos.x, p.pos.y, p.pos.z, G.time].every(Number.isFinite) };
+  }, jump0);
   await page.reload();
   await page.waitForFunction(() => window.G && window.G.secrets, null, { timeout: 30000 });
   S.reloaded = await page.evaluate(() => ({
@@ -2014,6 +2094,10 @@ try {
     [F.dive.dead && F.dive.lead >= 1.0, `pull up: diving at flat ground shows PULL UP! at least 1 s before the crash (${F.dive.lead} s)`],
     [!F.level.shown && !F.level.dead, 'pull up: level flight 100 m up for 10 s never warns'],
     [report.landing.pullUps === 0, 'pull up: a landing approach never warns'],
+    [F.rise.dead && F.rise.reason?.startsWith('ground') && F.rise.lead >= 1.0, `pull up: level flight 15 m up into a 0.6 rise shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.rise)})`],
+    [F.approachWall.approach && F.approachWall.dead && F.approachWall.reason?.startsWith('ground') && F.approachWall.lead >= 1.0, `pull up: on approach, a steep rise behind a landable strip shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.approachWall)})`],
+    [F.seaGlide.dead &&F.seaGlide.reason?.startsWith('water') && F.seaGlide.lead >= 1.0, `pull up: a gentle glide onto the sea shows PULL UP! at least 1 s before the splash (${JSON.stringify(F.seaGlide)})`],
+    [!F.seaLevel.shown && !F.seaLevel.dead, `pull up: level flight 6 m over the sea for 8 s never warns (${JSON.stringify(F.seaLevel)})`],
     [(({ shave1: a }) => a.shown && !a.dead && a.off && a.min >= 3 && a.min < 7 && a.points === 25 && a.notes.length === 1 && / \+25$/.test(a.notes[0]))(F), `pull up: pulling out 3-7 m above the ground pays a close shave, +25 (${JSON.stringify(F.shave1)})`],
     [(({ shave2: b }) => b.shown && !b.dead && b.points === 0 && b.notes.length === 0)(F), 'pull up: a second close shave inside 15 s pays nothing'],
     [(({ shaveRelax: r }) => r.shown && r.points === 0 && /Bragging rights only/.test(r.notes[0]))(F), 'pull up: Relax Mode still warns, and a close shave is bragging rights only'],
@@ -2031,6 +2115,7 @@ try {
     [Math.abs(F.boost.drain - 4) <= 0.2 && Math.abs(F.boost.regen - 5) <= 0.2, `boost: a full tank lasts 4 s and refills in 5 s (${F.boost.drain} s, ${F.boost.regen} s)`],
     [Math.abs(F.level.fov - 70) <= 1 && Math.abs(F.portraitFov - 95) <= 1, `camera: 70° cruising on a landscape screen, 95° on a portrait phone (${F.level.fov}, ${F.portraitFov})`],
     [(({ settingsDefault: d, settings: s }) => !d.invert && !d.muted && d.stored === null && s.before.invert && s.before.muted && s.invert && s.music === false && s.muted && s.master === 0 && /Remembered/.test(s.note))(F) && F.settingsCleared, 'settings: I, N and M survive a reload, with a "Remembered" note at take-off'],
+    [F.junk.length === 3 && F.junk.every((j) => !j.invert && !j.muted && j.furthest === null && j.text === '' && !j.shown) && !F.junkErrors.length && F.junkCleared, `storage: junk settings and furthest-zone data boot with the defaults, no errors, no "Furthest" line (${JSON.stringify(F.junk)} ${F.junkErrors})`],
     [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
     [(({ levelUp: u }) => u.health === u.max && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) repairs the hull, and says so'],
     [(({ regen: r }) => r.at9s === 50 && r.at12s > 50 && r.at12s <= 50 + r.rate * 2.2)(L.run), 'hull: no repairs for 10 s after a hit, then slowly (stats.regen hp/s)'],
@@ -2045,6 +2130,7 @@ try {
     [[L.continued, L.continuedByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 4), 'continue: clicking (or C) starts a fresh run in the same zone: 3 lives, score 0, level 1, no perks'],
     [L.continuedCard.over && L.continuedCard.lines.includes(`Continued from ${L.zone4.name}`) && L.continueKeyLocked, 'continue: a continued run\'s Game Over card says so, and C in its first second does not skip it'],
     [(({ furthest: f, furthestTitle: t }) => f.zone === 9 && JSON.parse(f.saved).index === 1 && f.afterJump === f.saved && t.shown && t.text.includes(t.name) && /\(zone 2 of \d+\)/.test(t.text))(L), 'furthest zone: flying on into zone 2 is saved and shown on the title card after a reload; a dev-menu jump does not count'],
+    [(({ clockJump: c }) => !c.paused && c.frames >= 3 && c.perfAfter < c.perf && c.timeAfter >= c.time && c.finite)(L), `clock: a backwards clock jump mid-flight never runs game time backwards; speed and position stay finite (${JSON.stringify(L.clockJump)})`],
     [(({ up: s }) => s.name === 'Immelmann' && s.back < -0.9 && s.upright > 0.9 && s.climb > 15)(report.stunts), 'double-tap up: Immelmann turns you back and up'],
     [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],

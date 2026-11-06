@@ -289,6 +289,12 @@ export class Player {
     return Math.max(Math.abs(h(4, 0) - h(-4, 0)), Math.abs(h(0, 4) - h(0, -4))) / 8;
   }
 
+  // Could you land on the ground g at (x, z), asked at height y? Dry and flat enough, never the seabed.
+  // canLand and the pull-up warning (pullup.js) both ask this, so they can't disagree.
+  landableAt(x, z, y, g) {
+    return !this.G.world.underwater && g > waterLine() && this.slopeAt(x, z, y) < LAND.slope;
+  }
+
   // Reaching the ground gently, wings level and nose up enough, on dry and flat-enough ground: that's a landing.
   // Not mid-stunt, and never on the seabed. The ground under the last position must be close too (no wall in the way).
   canLand(ground, dt) {
@@ -296,7 +302,7 @@ export class Player {
     if (this.maneuver || G.world.underwater || ground <= waterLine()) return false;
     const sink = (q.y - p.y) / dt;
     return sink < LAND.sink && Math.abs(this.bank()) < LAND.bank && this.forward.y > LAND.noseDown && this.up.y > LAND.upright
-      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.slopeAt(p.x, p.z, p.y) < LAND.slope;
+      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.landableAt(p.x, p.z, p.y, ground);
   }
 
   touchdown(ground, dt) {

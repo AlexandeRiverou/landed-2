@@ -46,7 +46,7 @@ export class Sfx {
     this.eng2.frequency.setTargetAtTime(25 + ratio * 15, t, 0.3);
     this.engFilter.frequency.setTargetAtTime(120 + ratio * 160, t, 0.3);
     this.engGain.gain.setTargetAtTime(on ? 0.015 : 0, t, 0.4); // quiet: no droning
-    this.windGain.gain.setTargetAtTime(on ? 0.06 * wind01 : 0, t, 0.3);
+    this.windGain.gain.setTargetAtTime(on ? 0.09 * wind01 : 0, t, 0.3);
   }
 
   tone(freq, dur, { type = 'sine', vol = 0.2, slide = 0, delay = 0, pan = 0 } = {}) {
@@ -96,7 +96,7 @@ export class Sfx {
   // The pull-up warning (pullup.js): a two-note beep, a touch higher when it's urgent.
   pullUp(urgent = false) {
     const k = urgent ? 1.2 : 1;
-    this.tone(988 * k, 0.07, { type: 'square', vol: 0.05 }); this.tone(740 * k, 0.07, { type: 'square', vol: 0.05, delay: 0.07 });
+    this.tone(988 * k, 0.07, { type: 'square', vol: 0.08 }); this.tone(740 * k, 0.07, { type: 'square', vol: 0.08, delay: 0.07 });
   }
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }

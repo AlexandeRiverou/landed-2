@@ -640,7 +640,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
 // ---------- manager ----------
 
 // Par times (s): finish under par for the speed bonus. Timed objectives get 60% of their clock; the rest (bosses too) 25 s.
-const PAR = { hoop: 12, tiny: 14, shrink: 14, moving: 15, altitude: 12, searchlight: 18, chain: 20, tour: 30, photo: 30, delivery: 40, bomb: 40, stars: 50 };
+const PAR = { hoop: 12, tiny: 14, shrink: 14, moving: 15, altitude: 12, searchlight: 18, chain: 25, loop: 10, roll: 8, bullseye: 8, tour: 30, photo: 30, delivery: 40, bomb: 40, stars: 50 };
 const parFor = (obj, type) => PAR[type] ?? (obj.timeLimit ? Math.round(0.6 * obj.timeLimit) : 25);
 const FREE_HINTS = 3; // the first objectives of a run charge no hint fee
 

@@ -217,7 +217,7 @@ html, body {
 }
 #edge-arrow span { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 2px 0 var(--ink); }
 /* No arrow unlocked yet (persuasion level 0): a small, faint white one still points the way. */
-#edge-arrow.faint { opacity: 0.5; transform: translate(-50%, -50%) scale(0.7); }
+#edge-arrow.faint { opacity: 0.65; filter: drop-shadow(0 0 2px rgba(0,0,0,.55)); transform: translate(-50%, -50%) scale(0.7); }
 #edge-arrow.faint .tri { border-left-color: #fff; }
 #edge-arrow.big .tri { border-top-width: 30px; border-bottom-width: 30px; border-left-width: 56px; border-left-color: #ff4dc4; animation: throb 0.6s ease-in-out infinite alternate; }
 @keyframes throb { to { transform: scale(1.3); } }
@@ -317,11 +317,11 @@ body.touch #touch-controls { display: flex; }
 .card .tag { margin: 4px 0 14px; font-size: 17px; }
 .controls { font-size: 15px; line-height: 1.7; background: #f4f0ff; border-radius: 12px; padding: 8px; }
 .touch-hint { font-size: 13px; opacity: 0.7; }
-/* Title card: phones and tablets get touch instructions instead of the keyboard rows. */
+/* Phones and tablets get touch instructions instead of the keyboard rows and key hints. */
 .touch-rows { display: none; }
 @media (pointer: coarse) {
   .touch-rows { display: block; }
-  .key-rows { display: none; }
+  .key-rows, .key-hint { display: none; }
 }
 .small { font-size: 12px; opacity: 0.6; margin-bottom: 0; }
 button {

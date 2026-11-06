@@ -178,7 +178,7 @@ export class DevMenu {
   // Per frame: only the hint pill. Opening and closing run on the timer from arm().
   update() {
     if (this.since === null) return;
-    const t = Math.min(HOLD_MS, performance.now() - this.since);
+    const t = Math.min(HOLD_MS, Math.max(0, performance.now() - this.since));
     this.hint.classList.remove('hidden');
     this.hintText.textContent = `${this.isOpen ? 'Closing' : 'Developer menu'}… ${Math.ceil((HOLD_MS - t) / 1000)}s`;
     this.hintFill.style.width = `${(t / HOLD_MS) * 100}%`;

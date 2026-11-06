@@ -32,7 +32,7 @@ export class PullUp {
     return !G.world.underwater && G.world.seaLevel > g ? G.world.seaLevel : g;
   }
 
-  // Gliding in to land (wings level, nose up enough, sinking gently): the ground is the point, so no warning.
+  // Gliding in to land (wings level, nose up enough, sinking gently). Only counts where the ground is landable (update).
   approach() {
     const p = this.G.player, sink = -(p.forward.y * p.speed + p.wind.y);
     return Math.abs(p.bank()) < LAND.bank && p.up.y > LAND.upright && p.forward.y > LAND.noseDown && sink < LAND.sink * 1.5;
@@ -41,13 +41,17 @@ export class PullUp {
   update(dt) {
     const G = this.G, p = G.player;
     if (p.dead || p.landed || p.god || G.powerups.has('ghost') || p.grace > 0 || p.invuln > 0) { this.set(false); this.minClear = Infinity; return; }
+    // The first probe that hits sets the time to impact. On approach, hits on ground you could land on (flat, dry)
+    // don't count: the ground is the point. A slope, a wall or the sea still warns, even behind a landable strip.
     let tti = Infinity;
-    if (!this.approach()) {
-      const vx = p.forward.x * p.speed + p.wind.x, vy = p.forward.y * p.speed + p.wind.y, vz = p.forward.z * p.speed + p.wind.z;
-      for (const t of PROBE) {
-        const x = p.pos.x + vx * t, y = p.pos.y + vy * t, z = p.pos.z + vz * t;
-        if (y < this.floor(x, y, z) + CLEARANCE) { tti = t; break; }
-      }
+    const approach = this.approach();
+    const vx = p.forward.x * p.speed + p.wind.x, vy = p.forward.y * p.speed + p.wind.y, vz = p.forward.z * p.speed + p.wind.z;
+    for (const t of PROBE) {
+      const x = p.pos.x + vx * t, y = p.pos.y + vy * t, z = p.pos.z + vz * t;
+      if (y >= this.floor(x, y, z) + CLEARANCE) continue;
+      if (approach && p.landableAt(x, z, y, G.terrain.surfaceHeight(x, z, y))) continue; // keep looking past it
+      tti = t;
+      break;
     }
     this.tti = tti;
     if (this.on) {
