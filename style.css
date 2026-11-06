@@ -256,27 +256,20 @@ body.relax #topleft, body.relax #bars, body.relax #powerups { opacity: 0.3; }
 /* Mood vignette (guilt trips, sad rain): tints only the screen edges so the view ahead stays clear. */
 #tint { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s; }
 #flash { position: absolute; inset: 0; opacity: 0; }
-/* PULL UP! (pullup.js): a red glow along the bottom edge and a throbbing chip (1 Hz) while the ground is coming. */
+/* Pull-up warning (pullup.js): a soft red glow along the bottom edge while the ground is coming. No pulsing: pullup.js
+   raises its opacity (inline) as impact nears, and clearing that lets it fade back to 0. */
 #pullup-glow {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 22vh; pointer-events: none;
-  background: linear-gradient(to top, rgba(255, 40, 40, 0.45), transparent); opacity: 0; transition: opacity 0.15s;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12vh; pointer-events: none;
+  background: linear-gradient(to top, rgba(255, 70, 50, 0.30), transparent); opacity: 0; transition: opacity 0.25s;
 }
 #pullup-glow.on { opacity: 1; }
-#pullup-chip {
-  position: absolute; left: 50%; top: 64%; transform: translate(-50%, -50%); display: none; pointer-events: none;
-  font-size: 30px; font-weight: 800; letter-spacing: 2px; color: #ff2a2a; white-space: nowrap;
-  text-shadow: 0 2px 0 var(--ink), 0 -2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 0 6px var(--ink);
-  animation: pullup-throb 0.5s ease-in-out infinite alternate;
-}
-#pullup-chip.on { display: block; }
-@keyframes pullup-throb { from { opacity: 1; } to { opacity: 0.75; } }
 /* Score pop-ups (fx.js popText): positioned from JS, rising and fading as they go. */
 .pop-score {
   position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
   font-size: 22px; font-weight: 800; color: #ffe14a; text-shadow: 0 2px 0 var(--ink), 0 -1px 0 var(--ink), 1px 0 0 var(--ink), -1px 0 0 var(--ink);
 }
 @media (prefers-reduced-motion: reduce) {
-  #marker .diamond, #edge-arrow.big .tri, #pullup-chip { animation: none; }
+  #marker .diamond, #edge-arrow.big .tri { animation: none; }
 }
 
 #touch-controls { display: none; position: absolute; right: 16px; bottom: 16px; gap: 14px; flex-direction: column; pointer-events: auto; }
