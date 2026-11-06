@@ -93,10 +93,10 @@ export class Sfx {
     this.tone(1800, 0.05, { type: 'triangle', vol: 0.05 }); this.tone(2400, 0.04, { type: 'sine', vol: 0.03, delay: 0.02 });
   }
   whoosh() { this.noise(0.45, { vol: 0.14, freq: 1600 }); this.tone(300, 0.45, { type: 'triangle', vol: 0.04, slide: 300 }); }
-  // The pull-up warning (pullup.js): a two-note beep, a touch higher when it's urgent.
+  // The pull-up warning (pullup.js): a soft two-note beep, a touch higher when it's urgent.
   pullUp(urgent = false) {
     const k = urgent ? 1.2 : 1;
-    this.tone(988 * k, 0.07, { type: 'square', vol: 0.08 }); this.tone(740 * k, 0.07, { type: 'square', vol: 0.08, delay: 0.07 });
+    this.tone(988 * k, 0.07, { type: 'triangle', vol: 0.05 }); this.tone(740 * k, 0.07, { type: 'triangle', vol: 0.05, delay: 0.07 });
   }
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }
