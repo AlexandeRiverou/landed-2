@@ -758,6 +758,82 @@ export function makeStorm(hat) {
   return g;
 }
 
+// A drone hiding behind an umbrella (+Z, its front). Bullets from the front bounce off (enemies.js guarded), so the
+// drone's eye isn't a weak point here: the glowing battery on its back is.
+export function makeUmbrella(hat) {
+  const g = makeDrone(hat);
+  for (const part of g.userData.parts.filter((x) => x.glow)) part.obj.remove(part.glow);
+  g.userData.parts = g.userData.parts.filter((x) => !x.glow);
+  add(g, Cone(7.5, 2.2, 8), lam('#3d6fd1'), { z: 5.2, rx: PI / 2 });
+  add(g, Sph(0.6, 5, 4), lam(C.white), { z: 6.6 });
+  add(g, Cyl(0.18, 0.18, 4.5, 5), lam('#333333'), { z: 3.4, rx: PI / 2 });
+  weak(g, add(g, Box(2, 1.6, 1.2), basic('#ffd23a'), { z: -3.2, y: 0.4 }), 1.4, 2);
+  return g;
+}
+
+const BALLOON_COLORS = ['#ff4d6a', '#4dc4ff', '#7aff5a', '#ffd23a', '#c86aff'];
+const shiny = (color) => new THREE.MeshPhongMaterial({ color, shininess: 90, specular: '#ffffff' });
+
+// A balloon-animal dog: three balloons (body, head, tail) on tube legs.
+export function makeBalloonDog(hat) {
+  const g = new THREE.Group(), m = shiny(pick(BALLOON_COLORS));
+  add(g, Sph(3.2, 10, 8), m, { s: [0.9, 0.9, 1.7] });
+  add(g, Sph(2.4, 10, 8), m, { y: 3, z: 5, s: [1, 1, 1.3] });
+  add(g, Sph(1.6, 8, 6), m, { y: 3.2, z: -5.4, s: [0.7, 1.6, 0.7], rx: -0.5 });
+  for (const s of [-1, 1]) add(g, Sph(0.9, 6, 4), m, { x: s * 1.4, y: 5.2, z: 4.4, s: [0.8, 1.8, 0.8] }); // ears
+  for (const [x, z] of [[1.6, 2.6], [-1.6, 2.6], [1.6, -2.6], [-1.6, -2.6]]) add(g, Cyl(0.9, 0.9, 4.5, 8), m, { x, y: -3.4, z });
+  for (const x of [-0.8, 0.8]) add(g, Sph(0.35, 5, 4), basic('#1d1d22'), { x, y: 3.6, z: 7.6 });
+  if (hat) partyHat(g, 6.4);
+  return g;
+}
+
+// One of the smaller, angrier balloons a Balloon Animal pops into.
+export function makeBalloonBit() {
+  const g = new THREE.Group(), color = pick(BALLOON_COLORS);
+  add(g, Sph(2, 8, 6), shiny(color), { s: [1, 1.2, 1] });
+  add(g, Cone(0.5, 0.8, 5), lam(color), { y: -2.6, rx: PI });
+  add(g, Box(0.8, 0.25, 0.25), basic('#1d1d22'), { y: 0.8, z: 1.8, rz: 0.3 }); // an angry brow
+  return g;
+}
+
+// The pigeon, recoloured as a brown owl (yellow eyes), with a telescope.
+export function makeOwl(hat) {
+  const g = makePigeon(hat), RECOLOR = { '7a84a0': '#8a5a32', '5a6a8a': '#6a4426', '6a7490': '#7a4e2a', ff2020: '#ffd23a' };
+  g.traverse((o) => { const to = o.material && RECOLOR[o.material.color.getHexString()]; if (to) o.material.color.set(to); });
+  add(g, Cyl(0.45, 0.6, 4, 8), lam('#c8a040'), { x: 1.2, y: 1.6, z: 4.4, rx: PI / 2 });
+  add(g, Cyl(0.5, 0.5, 0.2, 8), basic('#ff3a3a'), { x: 1.2, y: 1.6, z: 6.45, rx: PI / 2 });
+  return g;
+}
+
+// A kite (it faces +Z) with a bow-tied tail hanging below.
+export function makeKite(hat) {
+  const g = new THREE.Group(), color = pick(['#ff4d6a', '#ffd23a', '#4dc4ff', '#7aff5a']);
+  add(g, Oct(4), lam(color), { s: [0.8, 1.3, 0.12] });
+  add(g, Box(0.2, 10, 0.2), lam(C.white), { z: 0.3 });
+  add(g, Box(6.4, 0.2, 0.2), lam(C.white), { z: 0.3 });
+  for (let k = 0; k < 4; k++) add(g, Box(1.4, 0.5, 0.2), lam(k % 2 ? C.white : color), { y: -6 - k * 2, rz: k % 2 ? 0.4 : -0.4 });
+  add(g, Box(0.12, 8, 0.12), basic(C.white), { y: -9 });
+  if (hat) partyHat(g, 6);
+  return g;
+}
+
+// A moth: a round body and two flat triangle wings that flap (userData.wings).
+export function makeMoth(hat) {
+  const g = new THREE.Group(), wingMat = lam('#d8c8a0', { side: THREE.DoubleSide });
+  add(g, Sph(1.2, 8, 6), lam('#8a7a60'), { s: [1, 1, 1.8] });
+  for (const x of [-0.5, 0.5]) {
+    add(g, Sph(0.4, 5, 4), basic('#1d1d22'), { x, y: 0.4, z: 1.9 });
+    add(g, Box(0.1, 0.1, 1.8), lam('#5a4a3a'), { x: x * 1.4, y: 1, z: 2.4, rx: -0.6 });
+  }
+  const l = new THREE.Group(), r = new THREE.Group();
+  add(l, new THREE.CircleGeometry(3.4, 3), wingMat, { x: -3, rx: -PI / 2, rz: PI });
+  add(r, new THREE.CircleGeometry(3.4, 3), wingMat, { x: 3, rx: -PI / 2 });
+  g.add(l, r);
+  g.userData.wings = [l, r];
+  if (hat) partyHat(g, 1.6);
+  return g;
+}
+
 // Lead bosses fly ahead of you, facing back (+Z points at the player).
 export function makeOctopus() {
   const g = new THREE.Group();

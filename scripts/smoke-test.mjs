@@ -2008,6 +2008,243 @@ try {
     p.god = god;
     return out;
   }, FLAT);
+
+  // Hold The Line ("The Rush": four waves, a clock that slips back when you're shot down) and the five newer regular
+  // enemies (Umbrella Goon, Balloon Animal, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
+  // world changes for completing an objective are held back, and score, lives and god mode are put back afterwards.
+  const RUSH = await page.evaluate(async () => {
+    const G = window.G, p = G.player, E = G.enemies, out = {};
+    const { CEILING } = await import('./src/enemies.js');
+    const V = p.pos.constructor, UP = new V(0, 1, 0);
+    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify };
+    G.mutations.celebrate = () => [];
+    if (G.relax) G.setRelax(false);
+    const notes = [];
+    G.ui.notify = (t, ...a) => { notes.push(t); return saved.notify.call(G.ui, t, ...a); };
+    const clear = () => { E.list.slice().forEach((e) => E.removeEnemy(e)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); E.calmTimer = 0; };
+    const quiet = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); G.ui.setObjective(null); };
+    quiet();
+    clear();
+    G.objectives.cooldown = 1e9;
+    G.powerups.active.clear();
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+    G.input.mouseFire = false;
+    p.god = false;
+    p.lives = 1e6;
+    // safe: no damage (grace always: the ground pushes the plane up instead of crashing it).
+    const step = (n, safe = true) => { for (let k = 0; k < n; k++) { if (safe) p.invuln = 99; p.grace = 99; G.step(1 / 30); } };
+    const regulars = () => E.list.filter((e) => !e.quest).length;
+    const clock = () => { const m = /🛡 (\d+) \/ (\d+)s · WAVE (\d)\/4/.exec(G.objectives.current?.progress || ''); return m && { t: +m[1], need: +m[2], wave: +m[3] }; };
+
+    // Hold The Line: waves 1-4 in the progress text, never more than CEILING regulars, a death knocks 15 s off the
+    // clock, the second one makes it easier, and at the end everything pops (no points) within a second.
+    G.score = 800;
+    G.objectives.startType('survive');
+    const obj = G.objectives.current;
+    const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward });
+    const track = () => { const c = clock(); if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave); htl.maxRegulars = Math.max(htl.maxRegulars, regulars()); };
+    for (let k = 0; k < 30 * 22; k++) { step(1); track(); }
+    htl.progress = obj.progress;
+    const before = clock();
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    htl.slip = { before: before.t, after: clock().t, dead: p.dead, toast: notes.some((t) => /clock slipped back 15 seconds/.test(t)) };
+    step(30 * 3);
+    const easier0 = E.frenzy.easier, need0 = clock().need;
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    htl.second = { easier: E.frenzy.easier - easier0, need0, need: clock().need, toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
+    let addedAtEnd = null, scorePrev = G.score;
+    const complete = G.objectives.complete;
+    G.objectives.complete = function (f) { addedAtEnd = G.score - scorePrev; return complete.call(this, f); };
+    for (let k = 0; k < 30 * 60 && G.objectives.current === obj; k++) { scorePrev = G.score; step(1); track(); }
+    G.objectives.complete = complete;
+    htl.done = G.objectives.current !== obj;
+    htl.addedAtEnd = addedAtEnd;
+    htl.held = notes.includes('THE LINE HELD!');
+    step(30);
+    htl.after1s = regulars();
+    htl.frenzyAfter = E.frenzy;
+    htl.ceiling = CEILING;
+    // Relax Mode: no spawns, even with a frenzy set.
+    G.objectives.startType('survive');
+    step(60);
+    G.setRelax(true);
+    E.frenzy = { wave: 4, easier: 0, burst: true, score: 0 };
+    E.spawnTimer = 0;
+    step(150);
+    out.relax = { regulars: regulars(), objective: !!G.objectives.current };
+    E.frenzy = null;
+    G.setRelax(false);
+    quiet();
+    clear();
+
+    // The new regular enemies. Each spawns with its intro (once), and a scripted aim pilot shoots it down within 15 s:
+    // it flies at the nearest, firing (round the back of an Umbrella Goon; barrel-rolling off a moth).
+    E.spawnTimer = 1e9;
+    const fresh = () => { clear(); p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z)); p.invuln = 0; G.powerups.active.clear(); };
+    const ahead = (m, up = 0) => p.pos.clone().addScaledVector(p.forward, m).add(new V(0, up, 0));
+    const near = (list) => list.sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos))[0];
+    G.score = 5000;
+    out.types = {};
+    for (const type of ['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth']) {
+      fresh();
+      E.introduced.delete(type);
+      const n0 = notes.length;
+      E.spawnGroup(type, 'front');
+      const spawned = E.list.filter((e) => e.type === type).length;
+      const extra = E.spawn(type, ahead(600, 40)); // a second one (pair) of the same type: no second intro
+      const res = (out.types[type] = { spawned, intro: notes.slice(n0).filter((t) => t === extra.def.intro).length, extra: !!extra, t: null });
+      // The hunt: one (pair) 250 m ahead.
+      clear();
+      E.spawn(type, ahead(250, 10));
+      const mine = E.list.filter((e) => e.type === type), k0 = G.stats.kills;
+      let pass = null;
+      for (let i = 0; i < 30 * 15; i++) {
+        const alive = mine.filter((e) => !e.dead && e.state !== 'falling');
+        if (!alive.length) { res.t = +(i / 30).toFixed(1); break; }
+        const e = near(alive), d = e.pos.distanceTo(p.pos);
+        // Aimed where it will be when the bullets get there (enemies move at 0.85 pace, bullets ~340 m/s).
+        const at = e.pos.clone().addScaledVector(e.vel, (0.85 * d) / 340);
+        // An umbrella facing you (within 65°): boost past it, 35 m to the side, to a spot 100 m behind it, then turn and shoot.
+        const off = p.pos.clone().sub(e.pos);
+        if (pass && (--pass.t <= 0 || p.pos.distanceTo(pass.at) < 30)) pass = null;
+        if (e.face && !pass && off.clone().normalize().dot(e.face) > 0.42) pass = { at: e.pos.clone().addScaledVector(new V().crossVectors(off, UP).normalize(), 35).addScaledVector(off.clone().normalize(), -100), t: 30 * 6 };
+        if (pass) at.copy(pass.at);
+        if (pass && d > 150) G.input.keys.add('ShiftLeft');
+        else G.input.keys.delete('ShiftLeft');
+        if (e.latched) { if (!p.maneuver && p.maneuverCd <= 0) p.startManeuver('left'); }
+        else p.nudgeToward(at, 2.5, 1 / 30);
+        G.input.mouseFire = true;
+        step(1);
+      }
+      G.input.mouseFire = false;
+      G.input.keys.delete('ShiftLeft');
+      res.kills = G.stats.kills - k0;
+    }
+    // They all turn up in the ordinary spawn mix (not the bits), and at most 2 Sniper Owls at a time.
+    fresh();
+    const picks = new Set();
+    for (let k = 0; k < 3000; k++) picks.add(E.pickType());
+    E.spawn('sniperOwl', ahead(400, 40));
+    E.spawn('sniperOwl', ahead(450, 40));
+    let owls = 0;
+    for (let k = 0; k < 2000; k++) if (E.pickType() === 'sniperOwl') owls++;
+    out.picks = { all: [...picks], third: owls };
+
+    // Shooting a bullet into `e` (it arrives this frame, flying the way the plane faces). Returns hp lost, and the damage sent.
+    const shootAt = (e, hp = 100) => {
+      while (p.bullets.length) p.removeBullet(0);
+      p.shootCd = 0;
+      p.fire();
+      let dmg = 0;
+      for (const b of p.bullets) { b.pos.copy(e.pos).addScaledVector(b.vel, -1 / 30); dmg += b.dmg; }
+      e.hp = hp;
+      step(1);
+      return { lost: hp - e.hp, dmg };
+    };
+    const face = (at) => { p.nudgeToward(at, 1e3, 1); p.updateAxes(); };
+    // Umbrella Goon: nothing gets through the front; from behind, full damage.
+    fresh();
+    G.powerups.active.set('freeze', 999); // held still, so the placed bullets are on target
+    const u = E.spawn('umbrella', ahead(80));
+    step(1);
+    face(u.pos);
+    const toU = u.pos.clone().sub(p.pos).normalize();
+    u.face = toU.clone().negate(); // facing you
+    const front = shootAt(u);
+    u.face = toU.clone(); // facing away: you're behind it
+    const back = shootAt(u);
+    out.umbrella = { front, back };
+    // Balloon Animal: pops into 3 bits; a bit doesn't split again.
+    fresh();
+    const dog = E.spawn('balloonDog', ahead(80));
+    step(1);
+    shootAt(dog, 0.5);
+    const bits = E.list.filter((e) => e.type === 'balloonBit');
+    out.dog = { dead: dog.dead, bits: bits.length };
+    step(10);
+    shootAt(bits[0], 0.5);
+    out.dog.afterBit = E.list.filter((e) => e.type === 'balloonBit').length;
+    // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
+    fresh();
+    const owl = E.spawn('sniperOwl', ahead(330, 30));
+    owl.cd = 0.3;
+    let on = null, fired = null;
+    const shots0 = new Set(E.shots);
+    for (let k = 0; k < 30 * 8 && fired === null; k++) {
+      step(1, false);
+      if (on === null && owl.beam?.visible) on = k;
+      if (E.shots.some((s) => !shots0.has(s))) fired = k;
+    }
+    out.owl = { lock: on !== null && fired !== null ? +((fired - on) / 30).toFixed(3) : null, dist: Math.round(owl.pos.distanceTo(p.pos)) };
+    let on2 = null;
+    for (let k = 0; k < 30 * 8 && on2 === null; k++) { step(1, false); if (owl.beam.visible) on2 = k; }
+    step(8, false);
+    const hp1 = p.health, shots1 = new Set(E.shots);
+    p.startManeuver('left');
+    step(1, false);
+    out.owl.broken = on2 !== null && !owl.beam.visible && owl.state !== 'aim';
+    step(30 * 2.5, false);
+    out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
+    out.owl.lost = hp1 - p.health;
+    // Kite Twins: flying through the string hurts (12) and says so; shooting a kite snaps the string.
+    fresh();
+    G.powerups.active.set('freeze', 999);
+    const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
+    step(1);
+    const mid = ka.pos.clone().add(kb.pos).multiplyScalar(0.5);
+    const across = new V().crossVectors(kb.pos.clone().sub(ka.pos), UP).normalize();
+    p.pos.copy(mid).addScaledVector(across, -8);
+    p.prevPos.copy(p.pos);
+    face(mid.clone().addScaledVector(across, 60));
+    p.invuln = 0;
+    p.health = p.maxHealth; // full: no mending in the way
+    const n1 = notes.length;
+    step(12, false);
+    out.kites = { pair: !!pair && kb !== ka, gap: Math.round(ka.pos.distanceTo(kb.pos)), lost: +(p.maxHealth - p.health).toFixed(2), toast: notes.slice(n1).some((t) => /kite string/.test(t)), inScene: !!pair.line.parent };
+    face(ka.pos);
+    shootAt(ka, 0.5);
+    out.kites.snapped = ka.dead && !pair.line.parent && kb.pair === null;
+    // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
+    fresh();
+    const moth = E.spawn('moth', ahead(6));
+    step(1, false);
+    const latched = moth.latched;
+    p.boost = 1;
+    const hp2 = p.health;
+    step(60, false);
+    out.moth = { latched, boost: +p.boost.toFixed(2), lost: +(hp2 - p.health).toFixed(1) };
+    const k1 = G.stats.kills, s1 = G.score;
+    p.startManeuver('left');
+    step(1, false);
+    out.moth.off = !moth.latched && moth.state === 'falling';
+    for (let k = 0; k < 30 * 15 && !moth.dead; k++) step(1);
+    out.moth.paid = { kills: G.stats.kills - k1, score: G.score - s1, dead: moth.dead };
+    // Shot down with a moth on: it drops off.
+    fresh();
+    const moth2 = E.spawn('moth', ahead(6));
+    step(1, false);
+    p.damage(1e4);
+    step(1, false);
+    out.moth.dropped = !moth2.latched;
+
+    clear();
+    quiet();
+    step(30 * 3); // respawned
+    G.powerups.active.clear();
+    Object.assign(G, { score: saved.score });
+    Object.assign(G.objectives, { completed: saved.completed, cooldown: saved.cooldown });
+    G.mutations.celebrate = saved.celebrate;
+    G.ui.notify = saved.notify;
+    E.spawnTimer = 6;
+    p.god = saved.god;
+    p.lives = saved.lives;
+    return out;
+  });
   // A portrait phone gets the wider view.
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -2477,6 +2714,21 @@ try {
     [S.feats.list === 10 && S.feats.all && S.feats.stored === 10, 'secrets: all 10 found and saved in localStorage'],
     [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
+    // ---- Hold The Line ("The Rush") and the newer regular enemies (see the RUSH block)
+    [(({ htl: h }) => [1, 2, 3, 4].every((w) => h.waves.includes(w)) && /· WAVE \d\/4$/.test(h.progress) && h.reward === 250)(RUSH), `Hold The Line: "WAVE n/4" in the progress text, and the waves reach 4 (${JSON.stringify(RUSH.htl.waves)})`],
+    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 8, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
+    [(({ slip: s }) => s.dead && s.toast && Math.abs(s.before - s.after - 15) <= 1)(RUSH.htl), `Hold The Line: getting shot down knocks the clock back 15 s (${JSON.stringify(RUSH.htl.slip)})`],
+    [(({ second: s }) => s.easier === 1 && s.need === s.need0 - 8 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself (${JSON.stringify(RUSH.htl.second)})`],
+    [(({ htl: h }) => h.done && h.held && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined })})`],
+    [RUSH.relax.regulars === 0 && !RUSH.relax.objective, 'Hold The Line: nothing spawns in Relax Mode'],
+    [Object.values(RUSH.types).every((r) => r.spawned >= 1 && r.intro === 1 && r.extra), `new enemies: each one spawns and shows its intro once (${JSON.stringify(RUSH.types)})`],
+    [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
+    [['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('balloonBit') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (balloon bits never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
+    [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
+    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.afterBit === 2, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
+    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
+    [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
     [desk.pauseShown && desk.pauseCalls === 'fs,quit,quit', 'desktop: with the bridge, the pause card has Quit too'],
