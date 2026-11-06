@@ -1,14 +1,14 @@
 // Tiny WebAudio synth: no audio files, just beeps with ambition (plus a calm soundtrack, see music.js).
 import { Music } from './music.js';
 export class Sfx {
-  constructor() { this.ctx = null; this.muted = false; this.nextThump = 0; }
+  constructor() { this.ctx = null; this.muted = false; this.nextThump = 0; this.nextTick = 0; }
 
   init() {
     if (this.ctx) { this.ctx.resume?.(); return; }
     try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { this.ctx = null; return; }
     const c = this.ctx;
     this.master = c.createGain();
-    this.master.gain.value = 0.5;
+    this.master.gain.value = this.muted ? 0 : 0.5; // a saved "sound off" holds from the first frame
     this.master.connect(c.destination);
 
     this.engFilter = c.createBiquadFilter();
@@ -26,18 +26,27 @@ export class Sfx {
     this.noiseBuf = c.createBuffer(1, len, c.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    // Wind: looping noise through a soft bandpass, louder the faster you go (see setEngine).
+    this.windGain = c.createGain();
+    this.windGain.gain.value = 0;
+    const wind = c.createBufferSource(); wind.buffer = this.noiseBuf; wind.loop = true;
+    const wf = c.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 900; wf.Q.value = 0.7;
+    wind.connect(wf); wf.connect(this.windGain); this.windGain.connect(this.master);
+    wind.start();
     this.music = new Music(c, this.master);
   }
 
   update() { this.music?.update(); }
 
-  setEngine(ratio, on) {
+  // wind01: 0 at cruise, 1 at full boost (main.js step).
+  setEngine(ratio, on, wind01 = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.eng.frequency.setTargetAtTime(50 + ratio * 30, t, 0.3);
     this.eng2.frequency.setTargetAtTime(25 + ratio * 15, t, 0.3);
     this.engFilter.frequency.setTargetAtTime(120 + ratio * 160, t, 0.3);
-    this.engGain.gain.setTargetAtTime(on ? 0.006 : 0, t, 0.4); // barely there: no droning
+    this.engGain.gain.setTargetAtTime(on ? 0.015 : 0, t, 0.4); // quiet: no droning
+    this.windGain.gain.setTargetAtTime(on ? 0.06 * wind01 : 0, t, 0.3);
   }
 
   tone(freq, dur, { type = 'sine', vol = 0.2, slide = 0, delay = 0, pan = 0 } = {}) {
@@ -76,6 +85,18 @@ export class Sfx {
     if (!this.ctx || this.ctx.currentTime < this.nextThump) return;
     this.nextThump = this.ctx.currentTime + 0.07;
     this.noise(0.18, { vol: 0.12, freq: 500 }); this.tone(110, 0.16, { type: 'sine', vol: 0.12, slide: -60 });
+  }
+  // Your bullet hitting an enemy: a bright little tick, so hitting sounds nothing like being hit. At most one per 60 ms.
+  tick() {
+    if (!this.ctx || this.ctx.currentTime < this.nextTick) return;
+    this.nextTick = this.ctx.currentTime + 0.06;
+    this.tone(1800, 0.05, { type: 'triangle', vol: 0.05 }); this.tone(2400, 0.04, { type: 'sine', vol: 0.03, delay: 0.02 });
+  }
+  whoosh() { this.noise(0.45, { vol: 0.14, freq: 1600 }); this.tone(300, 0.45, { type: 'triangle', vol: 0.04, slide: 300 }); }
+  // The pull-up warning (pullup.js): a two-note beep, a touch higher when it's urgent.
+  pullUp(urgent = false) {
+    const k = urgent ? 1.2 : 1;
+    this.tone(988 * k, 0.07, { type: 'square', vol: 0.05 }); this.tone(740 * k, 0.07, { type: 'square', vol: 0.05, delay: 0.07 });
   }
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }

@@ -453,8 +453,9 @@ try {
           for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; p.quat.copy(q); p.updateAxes(); G.step(1 / 30); }
         };
         const free = (frames, until = () => false) => { for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); } }; // hands off the stick
+        const pullUps = G.pullup.shows; // a landing approach is not a reason to PULL UP!
         fly(at(85, 4.5), glide, 150, () => p.landed);
-        const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding };
+        const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding, pullUps: G.pullup.shows - pullUps };
         free(150, () => G.objectives.current !== run);
         Object.assign(L, { done: G.objectives.current !== run && G.objectives.completed === done0 + 1, rollSpeed: Math.round(p.speed), stillLanded: !!p.landed });
         G.objectives.cooldown = 1e9; // completing it re-armed the cooldown: nothing new (a boss!) starts mid-check
@@ -1488,6 +1489,236 @@ try {
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
     return out;
   });
+  // Feel: the PULL UP! warning and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
+  // the boost tank's timing, the crash flash, the portrait FOV, reduced motion and saved settings. Over calmed,
+  // drained land (as for the forts), with no enemies, objectives or power-ups, and no safety net where it matters.
+  const F = await page.evaluate(() => {
+    const G = window.G, p = G.player, out = {}, U = G.pullup;
+    const V = p.pos.constructor, Q = p.quat.constructor, UP = new V(0, 1, 0), XA = new V(1, 0, 0);
+    const god = p.god, { amp, seaLevel } = G.world;
+    p.god = false;
+    if (G.relax) G.setRelax(false);
+    G.enemies.spawnTimer = 1e9;
+    G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e));
+    G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.persuasion.reset(null);
+    G.objectives.cooldown = 1e9;
+    G.powerups.active.clear();
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+    G.powerups.timer = 1e9;
+    Object.assign(G.world, { amp: 0.15, seaLevel: -400 });
+    G.terrain.rebuildAll();
+    G.terrain.update(p.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+    for (let k = 0; k < 30; k++) { p.invuln = 99; G.step(1 / 30); }
+    const notes = [], notify = G.ui.notify.bind(G.ui);
+    G.ui.notify = (text, ...a) => { notes.push(text); return notify(text, ...a); };
+    let flashPeak = 0;
+    const flash = G.ui.flash.bind(G.ui);
+    G.ui.flash = (...a) => { flash(...a); flashPeak = Math.max(flashPeak, G.ui.flashA); };
+    let reason = null;
+    const crash = p.crash.bind(p);
+    p.crash = (r) => { reason = `${r} at ${Math.round(p.pos.y - ground())} m, hp ${Math.round(p.health)}, zone ${G.zones.index}, tunnels ${!!G.world.tunnels}`; crash(r); };
+    const ground = () => G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y);
+    const nose = (pitch) => { const yaw = Math.atan2(-p.forward.x, -p.forward.z); return new Q().setFromAxisAngle(UP, yaw).multiply(new Q().setFromAxisAngle(XA, pitch)); };
+    // A fresh plane `above` m over the ground, nose at `pitch` rad, cruising, no boost, no safety net. Where the next
+    // 250 m ahead are flat (calm land can still hold an old crater or bullet pit), so the terrain roll never matters.
+    const place = (above, pitch) => {
+      const f = new V(p.forward.x, 0, p.forward.z).normalize(), at = p.pos.clone();
+      for (let k = 0; k < 60; k++, at.addScaledVector(f, 300)) {
+        let lo = Infinity, hi = -Infinity;
+        for (let d = -20; d <= 250; d += 5) { const g = G.terrain.surfaceHeight(at.x + f.x * d, at.z + f.z * d); lo = Math.min(lo, g); hi = Math.max(hi, g); }
+        if (hi - lo < 3) break;
+      }
+      if (at.distanceTo(p.pos) > 1) G.terrain.update(at, 999); // moved on: build the ground there before reading it
+      p.pos.copy(at);
+      p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z));
+      p.quat.copy(nose(pitch)); p.updateAxes();
+      p.pos.y = ground() + above; p.prevPos.copy(p.pos);
+      p.invuln = 0; p.grace = 0; p.freeBoost = 0; p.wind.set(0, 0, 0);
+    };
+    const chip = () => U.on && getComputedStyle(U.chip).display === 'block' && U.glow.classList.contains('on');
+    // Fly `frames` steps (or until something returns true / the plane crashes); was the chip ever on screen?
+    const live = (frames, each = () => {}) => {
+      let shown = false;
+      for (let k = 0; k < frames && !p.dead; k++) { if (each(k)) break; p.invuln = 0; p.grace = 0; G.step(1 / 30); shown ||= chip(); }
+      return shown;
+    };
+    const settle = () => { for (let k = 0; k < 120 && p.dead; k++) G.step(1 / 30); for (let k = 0; k < 100; k++) { p.invuln = 99; G.step(1 / 30); } };
+
+    // Diving at the ground: the warning shows over a second before the crash. The crash flash peaks at 0.5.
+    place(60, -Math.PI / 6);
+    let t = 0, shownAt = null;
+    for (let k = 0; k < 300 && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (shownAt === null && chip()) shownAt = t; }
+    out.dive = { dead: p.dead, lead: shownAt === null ? null : +(t - shownAt).toFixed(2), flashPeak };
+    settle();
+    // Level at 100 m for 10 s: never. And cruising on a landscape screen keeps the 70° view.
+    place(100, 0);
+    reason = null;
+    out.level = { shown: live(300), dead: p.dead, reason, fov: +G.camera.fov.toFixed(1) };
+    // Pulling out low: dive steeply from 10 m (faster than any slope here falls away) to under 5 m, then climb away. Exactly +25 and a "Close shave!" note; a second
+    // one straight after pays nothing (15 s cooldown); in Relax Mode the warning still shows, for no points.
+    const pullOut = () => {
+      const s0 = G.score, n0 = notes.length;
+      reason = null;
+      place(10, -0.5);
+      let shown = live(60, () => p.pos.y - ground() < 5);
+      const up = nose(0.35);
+      shown = live(60, () => { p.quat.copy(up); p.updateAxes(); }) || shown;
+      return { shown, dead: p.dead, reason, min: +U.minClear.toFixed(1), off: !U.on, points: G.score - s0, notes: notes.slice(n0).filter((n) => /^Close shave!/.test(n)) };
+    };
+    out.shave1 = pullOut();
+    out.shave2 = pullOut();
+    U.lastShave = -Infinity; // past the cooldown
+    G.setRelax(true);
+    out.shaveRelax = pullOut();
+    G.setRelax(false);
+    G.enemies.spawnTimer = 1e9;
+    // Developer god mode and Ghost Mode can't hit the ground: no warning.
+    p.god = true; place(60, -Math.PI / 6); out.godShown = live(90); p.god = false;
+    G.powerups.active.set('ghost', 10); place(60, -Math.PI / 6); out.ghostShown = live(90); G.powerups.active.clear();
+    p.crash = crash;
+    place(150, 0);
+    settle();
+
+    // Hitting sounds like a tick, being hit like a hit. Kills and broken parts pop their points; at most 6 at once.
+    const calls = { tick: 0, hit: 0, whoosh: 0 };
+    for (const name of Object.keys(calls)) { const f = G.audio[name].bind(G.audio); G.audio[name] = (...a) => { calls[name]++; return f(...a); }; }
+    const step = (n) => { for (let k = 0; k < n; k++) { p.invuln = 99; G.step(1 / 30); } };
+    const pops = () => [...document.querySelectorAll('.pop-score')].map((el) => el.textContent);
+    const shoot = (at) => { while (p.bullets.length) p.removeBullet(0); p.shootCd = 0; p.fire(); for (const b of p.bullets) { b.pos.copy(at); b.vel.set(0, 0, 0); } step(1); };
+    const ahead = () => p.pos.clone().addScaledVector(p.forward, 120).setY(p.pos.y + 20);
+    G.powerups.active.set('freeze', 999); // hold them still so a placed bullet stays on target
+    const mine = G.enemies.spawn('mine', ahead()); // no weak points or parts: a body hit
+    mine.hp = 100;
+    step(1);
+    shoot(mine.pos);
+    out.bulletHit = { ...calls, hp: mine.hp };
+    const drone = G.enemies.spawn('drone', ahead().addScaledVector(p.right, 60)); // a rotor: a breakable part, not a weak point
+    drone.hp = 100;
+    step(1);
+    const rotor = drone.mesh.userData.parts.find((x) => x.name === 'rotor');
+    const ticks = calls.tick;
+    shoot(rotor.obj.getWorldPosition(new V()));
+    out.partHit = { tick: calls.tick - ticks, hit: calls.hit, broken: rotor.broken, pops: pops() };
+    G.enemies.removeEnemy(drone);
+    step(36);
+    mine.hp = 0.1;
+    shoot(mine.pos);
+    out.kill = { dead: mine.dead, pops: pops(), score: mine.def.score };
+    step(36);
+    out.kill.after = pops().length;
+    G.powerups.active.clear();
+    for (let k = 0; k < 10; k++) G.fx.popText(p.pos.clone().addScaledVector(p.forward, 100), `+${k}`);
+    out.popMax = pops().length;
+    step(36);
+    out.popGone = pops().length;
+    // Taking damage goes hit, and shakes the camera.
+    const hits = calls.hit;
+    p.invuln = 0;
+    p.damage(5);
+    p.health = p.maxHealth;
+    step(1);
+    out.shake = { hit: calls.hit - hits, off: +G.camShake.off.length().toFixed(3) };
+    step(30);
+    // The cinematic look (G.camPeek) turns the view; the reduced-motion check below shows it doesn't there.
+    const look = () => { const d = new V(); G.camera.getWorldDirection(d); return +d.dot(p.pos.clone().addScaledVector(p.forward, 30).sub(G.camera.position).normalize()).toFixed(3); };
+    G.camPeek = { at: p.pos.clone().addScaledVector(p.right, 300), w: 1 };
+    step(1);
+    out.peekLook = look();
+    G.camPeek = null;
+    step(1);
+    // Boost, at base stats: pressing it from full goes whoosh once while held; a full tank lasts 4 s, refills in 5 s.
+    const stats = { ...p.stats };
+    Object.assign(p.stats, { boostDrain: 1, boostRegen: 1 });
+    p.boost = 1;
+    const w0 = calls.whoosh;
+    G.input.keys.add('ShiftLeft');
+    step(60);
+    out.boost = { whooshes: calls.whoosh - w0 };
+    let frames = 60;
+    while (p.boosting && frames < 30 * 8) { step(1); frames++; }
+    out.boost.drain = +(frames / 30).toFixed(2);
+    G.input.keys.delete('ShiftLeft');
+    p.boost = 0;
+    frames = 0;
+    while (p.boost < 1 && frames < 30 * 8) { step(1); frames++; }
+    out.boost.regen = +(frames / 30).toFixed(2);
+    Object.assign(p.stats, stats);
+    for (const name of Object.keys(calls)) delete G.audio[name];
+    G.ui.notify = notify;
+    G.ui.flash = flash;
+    Object.assign(G.world, { amp, seaLevel });
+    G.terrain.rebuildAll();
+    step(30);
+    p.god = god;
+    return out;
+  });
+  // A portrait phone gets the wider view.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const pp = await guard(await ctx.newPage());
+    await pp.goto(origin + '/');
+    await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await pp.click('#start');
+    F.portraitFov = await pp.evaluate(() => { const G = window.G; for (let k = 0; k < 120; k++) { G.player.invuln = 99; G.step(1 / 30); } return +G.camera.fov.toFixed(1); });
+    await ctx.close();
+  }
+  // Reduced motion: no shake, no cinematic look, and the CSS throbs and spins stop.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 }, reducedMotion: 'reduce' });
+    const rp = await guard(await ctx.newPage());
+    await rp.goto(origin + '/');
+    await rp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await rp.click('#start');
+    F.reduced = await rp.evaluate(() => {
+      const G = window.G, p = G.player, V = p.pos.constructor;
+      const step = (n) => { for (let k = 0; k < n; k++) { p.invuln = 99; G.step(1 / 30); } };
+      step(30);
+      p.invuln = 0;
+      p.damage(5);
+      step(1);
+      const off = G.camShake.off.length();
+      G.camPeek = { at: p.pos.clone().addScaledVector(p.right, 300), w: 1 };
+      step(1);
+      const d = new V();
+      G.camera.getWorldDirection(d);
+      const look = +d.dot(p.pos.clone().addScaledVector(p.forward, 30).sub(G.camera.position).normalize()).toFixed(3);
+      G.camPeek = null;
+      G.pullup.chip.classList.add('on');
+      const anim = ['#pullup-chip', '#marker .diamond'].map((s) => getComputedStyle(document.querySelector(s)).animationName);
+      G.pullup.chip.classList.remove('on');
+      p.invuln = 0;
+      p.crash('ground');
+      const flash = G.ui.flashA; // the crash flash's peak (halved under reduced motion by ui.js flash())
+      return { on: G.comfort.reducedMotion, off, look, anim, flash };
+    });
+    await ctx.close();
+  }
+  // Settings: I, N and M are remembered across a reload (and said so at take-off). Cleared afterwards.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    const sp = await guard(await ctx.newPage());
+    await sp.goto(origin + '/');
+    await sp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    F.settingsDefault = await sp.evaluate(() => ({ invert: window.G.input.invert, muted: window.G.audio.muted, stored: localStorage.getItem('landed-settings') }));
+    await sp.click('#start');
+    for (const k of ['KeyI', 'KeyN', 'KeyM']) await sp.keyboard.press(k);
+    await sp.reload();
+    await sp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    const before = await sp.evaluate(() => ({ invert: window.G.input.invert, muted: window.G.audio.muted }));
+    await sp.click('#start');
+    F.settings = await sp.evaluate((before) => {
+      const G = window.G;
+      const notes = [...G.ui.notes, ...G.ui.queue].map((n) => n.text);
+      return { before, invert: G.input.invert, music: G.audio.music?.enabled, muted: G.audio.muted, master: G.audio.master?.gain.value, note: notes.find((n) => /Remembered/.test(n)) || null };
+    }, before);
+    await sp.evaluate(() => localStorage.removeItem('landed-settings'));
+    F.settingsCleared = await sp.evaluate(() => localStorage.getItem('landed-settings') === null);
+    await ctx.close();
+  }
+  report.feel = F;
+
   // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
   // mends slowly (nothing in the first 10 s after a hit), a promotion repairs it, and losing the last life shows the
   // Game Over card and freezes the game. "Fly again" (a real click, then Enter) starts a fresh run in place.
@@ -1651,7 +1882,7 @@ try {
 
   const checks = [
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
-    [report.musicPlaying && report.engineGain < 0.01, 'calm music plays and the engine stays quiet'],
+    [report.musicPlaying && report.engineGain <= 0.015, 'calm music plays and the engine stays quiet'],
     [report.musicSection && report.musicSection.mood === 'day' && report.musicSection.texture, 'the music is in a section (music.section shows mood, progression, texture, root)'],
     [report.music.missing.length === 0 && report.music.moods >= 8 && report.music.bad.length === 0, 'every zone\'s mood exists; sections vary progression, texture and key (small steps, back home)'],
     [report.persuasionStages >= 10, 'persuasion escalated through its stages'],
@@ -1735,6 +1966,25 @@ try {
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
+    [F.dive.dead && F.dive.lead >= 1.0, `pull up: diving at flat ground shows PULL UP! at least 1 s before the crash (${F.dive.lead} s)`],
+    [!F.level.shown && !F.level.dead, 'pull up: level flight 100 m up for 10 s never warns'],
+    [report.landing.pullUps === 0, 'pull up: a landing approach never warns'],
+    [(({ shave1: a }) => a.shown && !a.dead && a.off && a.min >= 3 && a.min < 7 && a.points === 25 && a.notes.length === 1 && / \+25$/.test(a.notes[0]))(F), `pull up: pulling out 3-7 m above the ground pays a close shave, +25 (${JSON.stringify(F.shave1)})`],
+    [(({ shave2: b }) => b.shown && !b.dead && b.points === 0 && b.notes.length === 0)(F), 'pull up: a second close shave inside 15 s pays nothing'],
+    [(({ shaveRelax: r }) => r.shown && r.points === 0 && /Bragging rights only/.test(r.notes[0]))(F), 'pull up: Relax Mode still warns, and a close shave is bragging rights only'],
+    [!F.godShown && !F.ghostShown, 'pull up: never in god mode or Ghost Mode'],
+    [F.bulletHit.tick >= 1 && F.bulletHit.hit === 0 && F.bulletHit.hp < 100 && F.partHit.tick >= 1 && F.partHit.hit === 0 && F.shake.hit === 1, 'feel: your bullets hitting a body or a part go tick, being hit goes hit'],
+    [F.partHit.broken && F.partHit.pops.includes('+10'), 'feel: breaking off a part pops +10'],
+    [F.kill.dead && F.kill.pops.includes(`+${F.kill.score}`) && F.kill.after === 0, 'feel: a kill pops its points, gone within 1.2 s'],
+    [F.popMax === 6 && F.popGone === 0, 'feel: at most 6 score pop-ups at once'],
+    [F.shake.off > 0 && F.reduced.on && F.reduced.off === 0, 'feel: damage shakes the camera; not with reduced motion'],
+    [F.peekLook < 0.9 && F.reduced.look > 0.999, 'comfort: the cinematic look turns the camera, but not with reduced motion'],
+    [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the PULL UP! throb and the marker spin'],
+    [F.dive.flashPeak > 0 && F.dive.flashPeak <= 0.5, `feel: the crash flash peaks at 0.5 at most (${F.dive.flashPeak})`],
+    [F.boost.whooshes === 1, 'feel: pressing boost goes whoosh once while held'],
+    [Math.abs(F.boost.drain - 4) <= 0.2 && Math.abs(F.boost.regen - 5) <= 0.2, `boost: a full tank lasts 4 s and refills in 5 s (${F.boost.drain} s, ${F.boost.regen} s)`],
+    [Math.abs(F.level.fov - 70) <= 1 && Math.abs(F.portraitFov - 95) <= 1, `camera: 70° cruising on a landscape screen, 95° on a portrait phone (${F.level.fov}, ${F.portraitFov})`],
+    [(({ settingsDefault: d, settings: s }) => !d.invert && !d.muted && d.stored === null && s.before.invert && s.before.muted && s.invert && s.music === false && s.muted && s.master === 0 && /Remembered/.test(s.note))(F) && F.settingsCleared, 'settings: I, N and M survive a reload, with a "Remembered" note at take-off'],
     [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
     [(({ levelUp: u }) => u.health === u.max && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) repairs the hull, and says so'],
     [(({ regen: r }) => r.at9s === 50 && r.at12s > 50 && r.at12s <= 50 + r.rate * 2.2)(L.run), 'hull: no repairs for 10 s after a hit, then slowly (stats.regen hp/s)'],

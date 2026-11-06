@@ -1,6 +1,7 @@
 // Pooled particle bursts (explosions, fireworks, confetti, sparkles) + short-lived meshes.
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
+import { curveDrop } from './curve.js';
 
 const VERT = `
 attribute float size;
@@ -25,6 +26,11 @@ void main() {
 // Bursts (explosions, confetti, sparkles...) spawn this share of their particles, so effects read clearly without
 // filling the screen. Small counts round randomly, so one-particle trails still appear at a matching rate.
 const BURST_DENSITY = 0.5;
+
+// Score pop-ups ("+40" where a part broke off): at most this many at once (the oldest is reused), each rising
+// POP_RISE px while it fades over POP_LIFE s.
+const POP_MAX = 6, POP_LIFE = 0.9, POP_RISE = 40;
+const _pv = new THREE.Vector3(), _pw = new THREE.Vector3();
 
 const FIREWORK_COLORS = ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff', '#ff9a3a', '#ffffff'];
 
@@ -53,6 +59,34 @@ export class FX {
     G.scene.add(this.points);
     this.timed = [];
     this._c = new THREE.Color();
+    this.pops = [];    // on screen: { el, pos, t }
+    this.popPool = []; // off screen, ready for reuse
+  }
+
+  // A score number floating up from a point in the world. Skipped if that point is behind the camera.
+  popText(pos, text) {
+    if (_pv.copy(pos).applyMatrix4(this.G.camera.matrixWorldInverse).z > 0) return;
+    let pop = this.pops.length >= POP_MAX ? this.pops.shift() : this.popPool.pop();
+    if (!pop) { const el = document.createElement('div'); el.className = 'pop-score'; pop = { el, pos: new THREE.Vector3() }; }
+    pop.el.textContent = text;
+    pop.pos.copy(pos);
+    pop.t = 0;
+    this.pops.push(pop);
+    if (!pop.el.isConnected) document.getElementById('ui').append(pop.el);
+    this.placePop(pop);
+  }
+
+  placePop(pop) {
+    const cam = this.G.camera, k = pop.t / POP_LIFE;
+    _pv.copy(pop.pos);
+    _pv.y -= curveDrop(_pv.x, _pv.z, cam.position); // drawn where a curved world draws it
+    const behind = _pw.copy(_pv).applyMatrix4(cam.matrixWorldInverse).z > 0;
+    pop.el.style.visibility = behind ? 'hidden' : '';
+    if (behind) return;
+    _pv.project(cam);
+    const x = ((_pv.x + 1) / 2) * innerWidth, y = ((1 - _pv.y) / 2) * innerHeight - POP_RISE * k;
+    pop.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+    pop.el.style.opacity = (1 - k).toFixed(3);
   }
 
   resize() { this.uniforms.uScale.value = innerHeight * 0.6; }
@@ -132,6 +166,15 @@ export class FX {
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.pcolor.needsUpdate = true;
     this.geo.attributes.size.needsUpdate = true;
+
+    for (let i = this.pops.length - 1; i >= 0; i--) {
+      const pop = this.pops[i];
+      pop.t += dt;
+      if (pop.t < POP_LIFE) { this.placePop(pop); continue; }
+      pop.el.remove();
+      this.pops.splice(i, 1);
+      this.popPool.push(pop);
+    }
 
     for (let i = this.timed.length - 1; i >= 0; i--) {
       const t = this.timed[i];

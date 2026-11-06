@@ -21,12 +21,14 @@ const MANEUVERS = {
   left: { name: 'Barrel roll', text: 'Barrel roll! Nothing can hit you mid-roll.', steps: [{ axis: Z, angle: 2 * PI, dur: 0.7 }], slide: -1, dodge: true },
   right: { name: 'Barrel roll', text: 'Barrel roll! Nothing can hit you mid-roll.', steps: [{ axis: Z, angle: -2 * PI, dur: 0.7 }], slide: 1, dodge: true },
 };
+// Boost tank (0..1) per second, before perks: a full tank lasts 4 s and refills in 5 s.
+const BOOST_DRAIN = 0.25, BOOST_REGEN = 0.2, WHOOSH_GAP = 0.6;
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 
 // Landing. A touchdown is a landing (not a crash) when the sink rate (m/s), bank (rad), nose (forward.y) and
 // wings (up.y) are within these, on dry ground whose slope (rise per metre) is gentle enough.
-const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
+export const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
 const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels down, on a runway's asphalt (times Mega / Tiny Plane's scale)
 // On the ground: roll out to taxi speed (m/s), braking/accelerating at these m/s², turning at TAXI_TURN rad/s.
 // Pulling up takes off once you're at LIFTOFF × cruise speed. Bonus points need this long in the air first (s).
@@ -79,6 +81,8 @@ export class Player {
     this.dodging = false;    // mid barrel roll: shots and bumps miss
     this.god = false;        // developer menu: no damage, and the ground can't hurt you
     this.shootCd = 0;
+    this.pressedBoost = false; // boost held (by you, not Turbo / free boost) last frame
+    this.whooshAt = -99;
     this.bullets = [];
     this.ceilingWarned = 0;
     this.surfaceWarned = -99;
@@ -263,12 +267,16 @@ export class Player {
   }
 
   // Boost: drains while held (Turbo and free boost cost nothing), recharges otherwise. Returns whether it's on.
+  // Pressing it yourself goes whoosh (at most every WHOOSH_GAP s); Turbo and free boost stay quiet.
   throttle(dt, input) {
-    const turbo = this.G.powerups.has('turbo');
-    const boosting = turbo || this.freeBoost > 0 || (input.boost && this.boost > 0.02);
+    const G = this.G, turbo = G.powerups.has('turbo');
+    const pressed = !turbo && this.freeBoost <= 0 && input.boost && this.boost > 0.02;
+    const boosting = turbo || this.freeBoost > 0 || pressed;
+    if (pressed && !this.pressedBoost && G.time - this.whooshAt >= WHOOSH_GAP) { this.whooshAt = G.time; G.audio.whoosh(); }
+    this.pressedBoost = pressed;
     if (this.freeBoost > 0) this.freeBoost -= dt;
-    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * 0.35 * this.stats.boostDrain);
-    else this.boost = Math.min(1, this.boost + dt * 0.15 * this.stats.boostRegen);
+    else if (boosting && !turbo) this.boost = Math.max(0, this.boost - dt * BOOST_DRAIN * this.stats.boostDrain);
+    else this.boost = Math.min(1, this.boost + dt * BOOST_REGEN * this.stats.boostRegen);
     this.boosting = boosting;
     return boosting;
   }
@@ -505,6 +513,7 @@ export class Player {
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);
     G.audio.hit();
+    G.shake?.(0.6, 0.15);
     if (Math.random() < 0.2) G.ui.notify(pick(T.hurt), 'bad', 2, 0);
     if (this.health <= 0) this.crash('enemy');
   }
@@ -526,7 +535,8 @@ export class Player {
       if (reason === 'ground') G.terrain.deform(this.pos.x, this.pos.z, 12, 6); // you left a mark
     }
     G.audio.explode();
-    G.ui.flash('#ffffff', 0.7);
+    G.ui.flash('#ffffff', 0.5);
+    G.shake?.(1.5, 0.35);
     G.ui.notify(pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
     if (free) return;
     G.ui.livesLost();

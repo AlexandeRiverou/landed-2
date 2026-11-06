@@ -104,6 +104,13 @@ export const T = {
     "Lithobraking is not an approved maneuver.",
     "The ground says hi. Very firmly.",
   ],
+  // Pulling out of a PULL UP! warning very low (pullup.js).
+  closeShave: [
+    "Close shave! The grass felt that.",
+    "Close shave! You owe that hill an apology.",
+    "Close shave! Mountain 0, you 1.",
+    "Close shave! Your landing gear got a haircut.",
+  ],
   // Landing grades (see LANDING_GRADES in player.js), softest first.
   landButter: [
     "Smooth as butter. The passengers didn't even wake up.",
