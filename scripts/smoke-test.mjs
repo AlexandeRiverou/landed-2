@@ -48,6 +48,12 @@ try {
   // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
   const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
   const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
+  // Title card rows: keyboard rows with a mouse, touch rows on a phone (the phone side is in the phone HUD context below).
+  const titleRows = () => ({
+    touch: document.querySelector('#title .touch-rows').getClientRects().length > 0,
+    keys: [...document.querySelectorAll('#title .controls > div')].some((d) => d.textContent.includes('W / ↑') && d.getClientRects().length > 0),
+  });
+  const desktopTitleRows = await page.evaluate(titleRows);
   // Secrets, part 1 (the rest is at the end): click the title 7 times before take-off. Six isn't enough.
   const secretsReport = {};
   await page.evaluate(() => window.G.secrets.reset()); // a clean slate, whatever today's date found at boot
@@ -167,11 +173,92 @@ try {
       G.objectives.current = null;
     }
 
+    // Guidance and the success card: the first hoop sits ahead, a faint arrow points at an off-screen objective, the
+    // first objectives charge no hint fee, par times, the 4-line banner, and a spare plane for beating a boss.
+    {
+      const O = G.objectives, p = G.player, celebrate = G.mutations.celebrate, has = G.powerups.has, cooldown = O.cooldown;
+      const res = (out.guide = { firstHoop: [], markerSeen: 0 });
+      const drop = () => { if (O.current) { O.current.dispose(G); O.current = null; } G.persuasion.reset(null); };
+      const start = (type, completed = 1) => { drop(); O.completed = completed; O.startType(type); return O.current; };
+      const lines = () => [...document.querySelectorAll('#banner li')].map((l) => l.textContent);
+      const finish = (obj, { t = 30, stage = 0, completed = O.completed, forced = false } = {}) => {
+        obj.t = t; G.persuasion.stage = stage; O.completed = completed; G.zones.sinceZone = 1;
+        const s0 = G.score;
+        O.complete(forced);
+        return { gain: G.score - s0, lines: lines(), title: document.querySelector('#banner h1').textContent };
+      };
+      O.cooldown = 1e9;
+      G.mutations.celebrate = () => []; // no world changes (and no zone change) unless a check asks for them
+      // 20 first hoops: within 20° of straight ahead, 300-450 m away, and on screen.
+      for (let k = 0; k < 20; k++) {
+        const ring = start('hoop', 0).target();
+        const f = p.forward.clone().setY(0).normalize(), d = ring.clone().sub(p.pos).setY(0);
+        res.firstHoop.push({ deg: +(f.angleTo(d) * 180 / Math.PI).toFixed(1), dist: Math.round(d.length()) });
+        G.step(1 / 30);
+        if (document.getElementById('marker').style.display === 'block') res.markerSeen++;
+      }
+      // Off screen behind the plane with no arrow unlocked: a faint arrow, no label. Persuasion steps make it normal, then big.
+      G.powerups.has = () => false; // no Objective Radar arrow
+      const arrowAt = (level) => {
+        G.ui.edgeArrow = level; G.ui.showDistance = true;
+        O.current.target().copy(p.pos).addScaledVector(p.forward, -300);
+        p.invuln = 99; G.step(1 / 30);
+        const a = document.getElementById('edge-arrow');
+        return { shown: a.style.display === 'block', faint: a.classList.contains('faint'), big: a.classList.contains('big'), label: a.querySelector('span').textContent };
+      };
+      start('hoop');
+      res.arrow = [0, 1, 2].map(arrowAt);
+      G.ui.edgeArrow = 0; G.ui.showDistance = false;
+      G.powerups.has = has;
+      // Hint fee: waived for the first 3 objectives of a run, charged from then on.
+      res.feeFree = finish(start('hoop'), { stage: 2, completed: 0 });
+      res.feeFree2 = finish(start('hoop'), { stage: 2, completed: 2 });
+      res.feePaid = finish(start('hoop'), { stage: 2, completed: 3 });
+      // Par: the hoop's card shows "Par 12 s" until 12 s pass; done at 10 s earns the bonus, at 14 s not.
+      let obj = start('hoop');
+      G.step(1 / 30);
+      res.par = { card: document.getElementById('obj-par').textContent, hoop: obj.par };
+      obj.t = 12.5; G.step(1 / 30);
+      res.par.cardAfter = document.getElementById('obj-par').textContent;
+      res.par.at10 = finish(obj, { t: 10 });
+      res.par.at14 = finish(start('hoop'), { t: 14 });
+      res.par.timed = start('timed').par;
+      // The banner: 4 world changes show the first and "+3 more", and it leaves within 3.6 s (still up at 3 s).
+      G.mutations.celebrate = () => ['The trees are blue now.', 'Gravity is optional.', 'Clouds got bigger.', 'Sheep learned to fly.'];
+      res.four = finish(start('hoop'));
+      for (let i = 0; i < 90; i++) { p.invuln = 99; G.step(1 / 30); }
+      res.four.showAt3s = document.getElementById('banner').classList.contains('show');
+      for (let i = 0; i < 18; i++) { p.invuln = 99; G.step(1 / 30); }
+      res.four.showAt36s = document.getElementById('banner').classList.contains('show');
+      G.mutations.celebrate = () => [];
+      // 200 hoops never say LOOP-TASTIC!; the loop objective does, about half the time.
+      res.loopTasticHoops = 0; res.loopTasticLoops = 0;
+      for (let k = 0; k < 200; k++) if (finish(start('hoop')).title === 'LOOP-TASTIC!') res.loopTasticHoops++;
+      for (let k = 0; k < 30; k++) if (finish(start('loop')).title === 'LOOP-TASTIC!') res.loopTasticLoops++;
+      // Spare plane: beating a boss adds a life, up to 5; never lowers a big stack; not for a forced finish.
+      const level = O.bossLevel;
+      const boss = (lives, forced = false) => {
+        drop(); p.lives = lives;
+        O.start(O.makeBoss('kingDrone'), 'boss');
+        const par = O.current.par, r = finish(O.current, { forced });
+        return { lives: p.lives, par, detail: r.lines[1] || '' };
+      };
+      res.spare = { from2: boss(2), from5: boss(5), big: boss(1e6), forced: boss(2, true) };
+      O.bossLevel = level;
+      p.lives = 4; G.ui.renderLives();
+      res.spare.hearts4 = document.getElementById('lives').textContent;
+      p.lives = 1e6;
+      G.mutations.celebrate = celebrate;
+      O.completed = 1;
+      O.cooldown = cooldown;
+    }
+
     // Every objective type once, run for a bit, then completed normally (each triggers world mutations).
     // Stay in the first zone: space zones don't offer the ground objectives.
     const { OBJECTIVE_TYPES: types, BOSS_GAP } = window.OBJ_FOR_TEST;
     out.objectiveTypes = types.length;
     out.noHerd = !types.includes('herd') && types.includes('treasure');
+    out.bannerMaxLines = 0;
     for (const t of types) {
       step(60);
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
@@ -182,6 +269,7 @@ try {
       if (G.objectives.current.type !== t) throw new Error(`expected objective ${t}, got ${G.objectives.current.type}`);
       step(90);
       G.objectives.complete(false);
+      out.bannerMaxLines = Math.max(out.bannerMaxLines, document.querySelectorAll('#banner li').length);
     }
     step(150);
 
@@ -818,6 +906,7 @@ try {
     G.objectives.next();
     G.objectives.complete(false);
     out.zoneAdvanced = G.zones.index === zone0 + 1;
+    out.zoneBanner = [...document.querySelectorAll('#banner li')].map((l) => l.textContent);
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
     const { CURVE, AXIS_CURVE, CURVE_AXIS } = await import('./src/curve.js');
@@ -1190,12 +1279,85 @@ try {
   await setUp(200); await keyTwice('ArrowRight'); report.stunts.right = await measure();
   await setUp(200); await flick(-90, 0); report.stunts.touchLeft = await measure();
   await setUp(200); await flick(0, -90); report.stunts.touchUp = await measure();
+  // Flicks in real time: each touch is a list of [dx px, ms to get there] stick moves (each ramped in ~10 px steps).
+  // Returns how many gestures fired. A flick must pass 80 px within 220 ms of leaving the centre.
+  const timedFlicks = (touches) => page.evaluate(async (touches) => {
+    const G = window.G, c = document.getElementById('game'), g = G.input.gestures;
+    let n = 0;
+    g.push = (...a) => { n += a.length; return Array.prototype.push.apply(g, a); };
+    const ev = (type, x) => {
+      const t = new Touch({ identifier: 8, target: c, clientX: 150 + x, clientY: 400 });
+      c.dispatchEvent(new TouchEvent(type, { changedTouches: [t], touches: type === 'touchend' ? [] : [t], bubbles: true, cancelable: true }));
+    };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const moves of touches) {
+      let x = 0;
+      ev('touchstart', 0);
+      for (const [to, ms] of moves) {
+        const k = Math.max(1, Math.round(Math.abs(to - x) / 10)), from = x;
+        for (let i = 1; i <= k; i++) { if (ms) await wait(ms / k); x = from + ((to - from) * i) / k; ev('touchmove', x); }
+      }
+      ev('touchend', x);
+    }
+    delete g.push;
+    g.length = 0;
+    return n;
+  }, touches);
+  report.flicks = {};
+  await setUp(200); report.flicks.quick90 = await timedFlicks([[[45, 0], [90, 20], [0, 0], [45, 0], [90, 20]]]);
+  await setUp(200); report.flicks.steer75 = await timedFlicks([[[75, 300], [0, 50], [75, 100]]]);
+  await setUp(200); report.flicks.push70 = await timedFlicks([[[70, 0]], [[70, 0]]]);
+  // Slow: from the edge of the centre (20 px) it takes 280 ms to reach 70 px, then 90. The old rule (55 px, no clock) made this a stunt.
+  await setUp(200); report.flicks.slow90 = await timedFlicks([[[20, 0], [70, 280], [90, 0], [0, 0], [20, 0], [70, 280], [90, 0]]]);
   await setUp(20); await keyTwice('ArrowDown'); report.stunts.lowSplitS = await measure();
   await setUp(200); await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500); await page.keyboard.press('ArrowLeft'); report.stunts.slowTaps = await measure();
   // Holding a key to steer (300 ms: past KEY_TAP_HOLD_MS, inside the old 350 ms window), then pressing it again, is not
   // a double tap; nor is W, D, W.
   await setUp(200); await page.keyboard.down('ArrowUp'); await page.waitForTimeout(300); await page.keyboard.up('ArrowUp'); await page.keyboard.press('ArrowUp'); report.stunts.heldThenTap = await measure();
   await setUp(200); await page.keyboard.press('KeyW'); await page.keyboard.press('KeyD'); await page.keyboard.press('KeyW'); report.stunts.otherKeyBetween = await measure();
+
+  // Phone HUD (a touch phone context per size): the title card shows the touch rows, and with the objective card, an
+  // enraged boss bar, two notes, a power-up and the touch buttons up, no HUD panel overlaps another; nor does the success card.
+  report.phone = {};
+  for (const [w, h] of [[390, 844], [360, 640]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
+    const pp = await guard(await ctx.newPage());
+    await pp.goto(origin + '/');
+    await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    const rows = await pp.evaluate(titleRows);
+    await pp.evaluate(() => document.getElementById('start').click());
+    const hud = await pp.evaluate(async () => {
+      const G = window.G, p = G.player, c = document.getElementById('game');
+      const t = new Touch({ identifier: 1, target: c, clientX: 100, clientY: 500 });
+      c.dispatchEvent(new TouchEvent('touchstart', { changedTouches: [t], touches: [t], bubbles: true, cancelable: true }));
+      c.dispatchEvent(new TouchEvent('touchend', { changedTouches: [t], touches: [], bubbles: true, cancelable: true }));
+      p.lives = 1e6; p.god = true;
+      G.enemies.spawnTimer = 1e9;
+      for (let i = 0; i < 30; i++) { p.invuln = 99; G.step(1 / 30); }
+      if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+      G.objectives.cooldown = 1e9;
+      G.objectives.start(G.objectives.makeBoss('kingDrone'), 'boss');
+      for (const e of G.enemies.list) if (e.boss) e.enraged = true;
+      G.powerups.activate('radar');
+      G.ui.notify('A first note, long enough to wrap onto a second line on a phone.', 'info', 4, 2);
+      G.ui.notify('A second note, also rather chatty.', 'warn', 4, 2);
+      p.invuln = 99; G.step(1 / 30);
+      await new Promise((r) => setTimeout(r, 1300)); // the card's pop animation settles
+      const ids = ['topleft', 'objective', 'boss-bar', 'bars', 't-boost', 't-fire'];
+      const rect = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { id, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+      const out = { rects: ids.map(rect), name: document.getElementById('boss-name').textContent, notes: document.querySelectorAll('.note').length, pu: document.querySelectorAll('.pu').length };
+      G.objectives.complete(false); // the success card, with real lines
+      await new Promise((r) => setTimeout(r, 600)); // it slides in
+      out.banner = { ...rect('banner'), show: document.getElementById('banner').classList.contains('show') };
+      return out;
+    });
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const overlaps = [];
+    hud.rects.forEach((a, i) => hud.rects.slice(i + 1).forEach((b) => { if (hit(a, b)) overlaps.push(`${a.id}/${b.id}`); }));
+    hud.rects.filter((a) => a.id !== 'boss-bar').forEach((a) => { if (hit(a, hud.banner)) overlaps.push(`banner/${a.id}`); });
+    report.phone[`${w}x${h}`] = { rows, overlaps, enraged: /ENRAGED/.test(hud.name), notes: hud.notes, pu: hud.pu, banner: hud.banner.show, sized: hud.rects.every((r) => r.right > r.left && r.bottom > r.top) };
+    await ctx.close();
+  }
 
   // Developer menu: hold 1 + 0 for 3 s of real time. It pauses the game and swallows gameplay keys.
   const menu = () => page.evaluate(() => ({
@@ -1498,6 +1660,15 @@ try {
     [report.tactics.leftovers.length === 0 && report.tactics.clean, 'persuasion reset() removes every tactic\'s meshes, HUD lines, camera peek and wind'],
     [report.tactics.peeked && report.tactics.hudLine, 'the cinematic look turns the camera and hot & cold / offers show on the objective card'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
+    [(({ firstHoop: f }) => f.length === 20 && f.every((h) => h.deg <= 20.1 && h.dist >= 299 && h.dist <= 451))(report.guide), `guidance: a run's first hoop is within 20° of straight ahead and 300-450 m away (${JSON.stringify(report.guide.firstHoop.map((h) => h.deg))})`],
+    [report.guide.markerSeen >= 19, `guidance: the first hoop's marker is on screen at the start (${report.guide.markerSeen}/20, 1024×640)`],
+    [(({ arrow: [a0, a1, a2] }) => a0.shown && a0.faint && !a0.big && a0.label === '' && a1.shown && !a1.faint && !a1.big && a2.shown && !a2.faint && a2.big)(report.guide), 'guidance: an off-screen objective gets a faint unlabelled arrow before persuasion; its arrow steps make it normal, then big'],
+    [(({ feeFree: a, feeFree2: b, feePaid: c }) => [a, b].every((r) => r.gain === 100 && r.lines[1] === 'Hints on the house' && !/fee/i.test(r.lines.join())) && c.gain === 76 && c.lines[1] === 'Hint fee -24')(report.guide), 'hint fee: none for the first 3 objectives ("Hints on the house"), charged from the 4th'],
+    [(({ par: p }) => p.hoop === 12 && p.card === '⏱ Par 12 s · beat it for +60' && p.cardAfter === '' && p.at10.gain === 160 && p.at10.lines[1].includes('Speed bonus +60 (under par!)') && p.at14.gain === 100 && !/Speed bonus/.test(p.at14.lines.join()) && p.timed === 17)(report.guide), 'par: the hoop card shows "Par 12 s"; done in 10 s earns the speed bonus, in 14 s not; timed objectives get 60% of their clock'],
+    [(({ four: f }) => f.lines.length === 4 && /^\+3 more world changes/.test(f.lines[3]) && f.lines[2] === 'The trees are blue now.' && f.showAt3s && !f.showAt36s)(report.guide) && report.bannerMaxLines >= 2 && report.bannerMaxLines <= 4, 'banner: at most 4 lines (4 world changes show one and "+3 more"), gone within 3.6 s'],
+    [report.zoneBanner.length === 2 && /^New zone: /.test(report.zoneBanner[1]), `banner: a zone change shows the points and "New zone" only (${JSON.stringify(report.zoneBanner)})`],
+    [report.guide.loopTasticHoops === 0 && report.guide.loopTasticLoops > 0 && report.guide.loopTasticLoops < 30, 'banner: "LOOP-TASTIC!" is only for the loop objective (200 hoops never), and not every time'],
+    [(({ spare: s }) => s.from2.lives === 3 && s.from2.detail.includes('Spare plane +1 ❤️') && s.from5.lives === 5 && s.from5.detail.includes('Hangar full (5 planes)') && s.big.lives === 1e6 && s.forced.lives === 2 && s.from2.par === 25 && s.hearts4 === '❤️❤️❤️❤️')(report.guide), 'spare plane: beating a boss adds a life up to 5 (never removes any, not when forced); 4 lives show 4 hearts'],
     [report.bossDefeated, 'boss can be defeated'],
     [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
     [report.chunks > 20, 'terrain is loaded'],
@@ -1582,6 +1753,9 @@ try {
     [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],
     [(({ touchLeft: s, touchUp: u }) => s.name === 'Barrel roll' && s.side < -18 && u.name === 'Immelmann')(report.stunts), 'two touch flicks trigger stunts'],
+    [report.flicks.quick90 === 1 && report.flicks.steer75 === 0 && report.flicks.push70 === 0 && report.flicks.slow90 === 0, `touch flicks: two quick 90 px pushes are a stunt; steering to 75 px and back, two 70 px pushes, or two slow 90 px pushes are not (${JSON.stringify(report.flicks)})`],
+    [Object.values(report.phone).every((p) => p.rows.touch && !p.rows.keys) && desktopTitleRows.keys && !desktopTitleRows.touch, 'title card: a touch phone shows the touch rows (not the keyboard rows); a desktop the keyboard rows'],
+    [Object.values(report.phone).every((p) => p.sized && p.enraged && p.notes >= 2 && p.pu >= 1 && p.banner && p.overlaps.length === 0), `phone HUD (390×844, 360×640): score, objective, boss bar, hull bars and touch buttons don't overlap; nor does the success card (${JSON.stringify(Object.values(report.phone).map((p) => p.overlaps))})`],
     [!report.stunts.lowSplitS.name && !report.stunts.slowTaps.name, 'no Split-S near the ground, and slow taps are not a double tap'],
     [!report.stunts.heldThenTap.name && !report.stunts.otherKeyBetween.name, 'a held key then a tap, or W D W, is not a double tap'],
     [!report.devmenu.shortHold.open && !report.devmenu.shortHold.paused, 'dev menu: a 1 s hold of 1 + 0 does nothing'],

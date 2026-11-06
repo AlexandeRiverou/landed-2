@@ -43,7 +43,7 @@ export const TACTICS = [
     id: 'edgeArrow', tier: 1, need: 'target', repeat: 2,
     can: () => true,
     apply: (G) => { G.ui.edgeArrow = Math.min(2, G.ui.edgeArrow + 1); },
-    texts: ['Arrow added to your screen. Follow it. It\'s pointy for a reason.', 'The arrow is now BIGGER and PINKER. Like, way bigger.', 'Screen arrow deployed. It has one job.'],
+    texts: ['The little arrow got promoted. Follow it. It\'s pointy for a reason.', 'The arrow is now BIGGER and PINKER. Like, way bigger.', 'Screen arrow deployed. It has one job.'],
   },
   {
     id: 'ping', tier: 1, need: 'target',

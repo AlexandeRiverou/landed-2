@@ -9,7 +9,8 @@ const KEY_DIR = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', Ke
 const DOUBLE_TAP_MS = 350;   // touch: two flicks the same way within this make a gesture
 const KEY_TAP_HOLD_MS = 200; // keyboard: a press held longer than this is steering, not a tap
 const KEY_DOUBLE_TAP_MS = 250; // keyboard: the second press must start within this of the first tap's release
-const FLICK_OUT = 55, FLICK_BACK = 22; // px: a flick pushes the stick past FLICK_OUT; it re-arms once back inside FLICK_BACK
+const FLICK_OUT = 80, FLICK_BACK = 22; // px: a flick pushes the stick past FLICK_OUT; it re-arms once back inside FLICK_BACK
+const FLICK_MS = 220; // ...and gets there within this of leaving FLICK_BACK (a slow, wide steer is not a flick)
 
 export class Input {
   constructor(canvas) {
@@ -25,6 +26,7 @@ export class Input {
     this.keyDownAt = {}; // keyboard: dir → when its key went down
     this.keyTap = null;  // keyboard: { dir, t } of the last short tap, waiting for a second press
     this.flickArmed = true;
+    this.armedAt = 0;   // touch: when the stick was last inside FLICK_BACK
     this.lock = null; // a Set of codes: while set (developer menu open), only these keys are tracked, and no handlers run
 
     addEventListener('keydown', (e) => {
@@ -44,7 +46,7 @@ export class Input {
     canvas.addEventListener('touchstart', (e) => {
       document.body.classList.add('touch');
       for (const t of e.changedTouches) {
-        if (this.stick.id === null) { Object.assign(this.stick, { id: t.identifier, sx: t.clientX, sy: t.clientY, dx: 0, dy: 0 }); this.flickArmed = true; }
+        if (this.stick.id === null) { Object.assign(this.stick, { id: t.identifier, sx: t.clientX, sy: t.clientY, dx: 0, dy: 0 }); this.flickArmed = true; this.armedAt = performance.now(); }
       }
       e.preventDefault();
     }, { passive: false });
@@ -93,12 +95,13 @@ export class Input {
     else this.lastTap[dir] = now;
   }
 
-  // Touch: each push of the stick out past FLICK_OUT counts as one tap of that direction.
+  // Touch: each quick push of the stick out past FLICK_OUT (within FLICK_MS) counts as one tap of that direction.
   flick() {
-    const { dx, dy } = this.stick, d = Math.hypot(dx, dy);
-    if (d < FLICK_BACK) { this.flickArmed = true; return; }
+    const { dx, dy } = this.stick, d = Math.hypot(dx, dy), now = performance.now();
+    if (d < FLICK_BACK) { this.flickArmed = true; this.armedAt = now; return; }
     if (!this.flickArmed || d < FLICK_OUT) return;
     this.flickArmed = false;
+    if (now - this.armedAt > FLICK_MS) return;
     this.tap(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy < 0 ? 'up' : 'down'));
   }
 

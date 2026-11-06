@@ -87,7 +87,7 @@ export const T = {
     "That was... adjacent to success.",
   ],
   successTitle: [
-    "NAILED IT!", "LOOP-TASTIC!", "SKY LEGEND!", "OBJECTIVE OBLITERATED!", "WOW, ACTUAL SKILL!",
+    "NAILED IT!", "TEXTBOOK!", "SKY LEGEND!", "OBJECTIVE OBLITERATED!", "WOW, ACTUAL SKILL!",
     "CERTIFIED PILOT MOMENT!", "THE CROWD GOES MILD!", "MAGNIFICENT!", "BIG PLANE ENERGY!", "AERODYNAMIC GENIUS!",
   ],
   worldChange: [

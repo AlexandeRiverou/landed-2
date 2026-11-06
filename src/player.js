@@ -43,6 +43,7 @@ const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
 // Lives and hull. Every crash costs a life (not in Relax Mode or god mode); the last one ends the run (main.js
 // endRun). The hull mends itself only after REGEN_DELAY s without a hit, at stats.regen hp/s; levelling up mends it fully.
 export const LIVES = 3;
+export const MAX_LIVES = 5; // beating a boss gives a spare plane, up to this many (objectives.js complete)
 const REGEN_DELAY = 10;
 // Breather (every boss alive has lost you, see enemies.js): repairs start sooner and run faster.
 const BREATHER_DELAY = 3, BREATHER_REGEN = 3;
