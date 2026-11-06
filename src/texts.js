@@ -173,6 +173,10 @@ export const T = {
     "New day, new planes. The factory forgives you. Mostly.",
     "Back to Level 1. The sky remembers nothing.",
   ],
+  continueRun: [
+    "Back where you left off. The scenery missed you.",
+    "Fresh planes, same view. The factory sent a sticky note: 'please'.",
+  ],
   kill: [
     "Bonk!",
     "Enemy converted to confetti.",

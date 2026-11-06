@@ -85,6 +85,11 @@ html, body {
 #go-score { font-size: 44px; font-weight: 700; line-height: 1; color: #7a4cff; }
 #gameover .go-label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; margin-bottom: 4px; }
 #go-best { margin: 10px 0 0; font-weight: 600; color: #7a4cff; }
+/* Continue from the zone you reached (main.js continueRun), above FLY AGAIN; and the title card's furthest zone. */
+#continue.secondary { font-size: 17px; padding: 8px 22px; background: #f4f0ff; }
+#continue.secondary:hover { background: #e9dbff; }
+#furthest { margin: 4px 0 0; font-weight: 600; color: #7a4cff; }
+#furthest:empty { display: none; }
 #build-info { font-family: ui-monospace, Menlo, monospace; }
 
 /* Active power-ups, stacked above the hull/boost bars. */

@@ -1402,9 +1402,52 @@ try {
   await page.keyboard.press('Space'); // a shot just as the card appears doesn't skip it...
   await page.keyboard.press('Enter');
   L.keyLocked = await page.evaluate(() => window.G.gameOver && !document.getElementById('gameover').classList.contains('hidden'));
+  // A Game Over back in zone 1 (lap 1) has nothing to continue from: no Continue button.
+  L.noContinueAtZone0 = await page.evaluate(() => window.G.zones.index === 0 && window.G.zones.lap === 1 && !document.getElementById('continue').checkVisibility());
   await page.waitForTimeout(1100); // ...but after a second, Enter flies again
   await page.keyboard.press('Enter');
   L.againByKey = await fresh();
+  // Continue: a Game Over in zone 5 (index 4) offers to continue from it. Clicking starts the same fresh run as Fly
+  // again, but in that zone; that run's Game Over card says where it continued from, and C (after the key lock) works too.
+  const zoneOver = () => page.evaluate(() => {
+    const G = window.G, p = G.player;
+    G.score = 321;
+    G.devmenu.levelUp();
+    G.objectives.completed = 2;
+    p.lives = 1; p.invuln = 0; p.crash('ground');
+    for (let i = 0; i < 90 && !G.gameOver; i++) G.step(1 / 30);
+    const btn = document.getElementById('continue');
+    return { over: G.gameOver, shown: btn.checkVisibility(), label: btn.textContent, lines: document.getElementById('go-lines').textContent };
+  });
+  L.zone4 = await page.evaluate(async () => {
+    const { ZONES } = await import('./src/zones.js');
+    window.G.zones.enter(4);
+    window.G.step(1 / 30);
+    return { name: ZONES[4].name, zone: window.G.zones.index };
+  });
+  L.continueCard = await zoneOver();
+  await page.click('#continue');
+  L.continued = await fresh();
+  L.continuedCard = await zoneOver();
+  await page.keyboard.press('KeyC');
+  L.continueKeyLocked = await page.evaluate(() => window.G.gameOver);
+  await page.waitForTimeout(1100);
+  await page.keyboard.press('KeyC');
+  L.continuedByKey = await fresh();
+  // Furthest zone: three objectives in zone 1 fly on into zone 2, and that's remembered (checked after the reload
+  // below, on the title card). A dev-menu jump further on doesn't count.
+  L.furthest = await page.evaluate(() => {
+    const G = window.G;
+    localStorage.removeItem('landed-furthest');
+    G.progress.furthest = null;
+    G.zones.lap = 1;
+    G.zones.sinceZone = 0;
+    G.zones.enter(0);
+    for (let k = 0; k < 3; k++) G.zones.onObjectiveComplete();
+    const saved = localStorage.getItem('landed-furthest');
+    G.devmenu.enterZone(9);
+    return { zone: G.zones.index, saved, afterJump: localStorage.getItem('landed-furthest') };
+  });
   report.lives = L;
 
   // Found secrets survive a reload. The reload pretends it's April 1, so the boot-time date check runs too.
@@ -1415,6 +1458,7 @@ try {
     found: window.G.secrets.found.size, holiday: window.G.secrets.holiday, logo: document.getElementById('logo').textContent,
     rank: window.G.progress.rank, count: document.getElementById('secrets-count').textContent,
   }));
+  L.furthestTitle = await page.evaluate(async () => ({ text: document.getElementById('furthest').textContent, name: (await import('./src/zones.js')).ZONES[1].name, shown: document.getElementById('furthest').checkVisibility() }));
 
   // Desktop (Electron) build: a fake window.landedDesktop bridge, injected before the game boots, shows Quit and
   // Fullscreen on the title and pause cards, and they call the bridge. A second, short-lived context.
@@ -1528,7 +1572,12 @@ try {
     [(({ last: l, over: o }) => l.lives === 0 && l.hearts === '🖤🖤🖤' && !l.overAtOnce && o.gameOver && o.paused && o.shown && o.cardScore === String(o.score) && o.cardText.includes(`Level ${o.level}`) && /New best/.test(o.cardText) && o.saved === o.score)(L.run), 'lives: the third crash shows the Game Over card (after the explosion) with score, level and a saved best'],
     [L.frozen, 'lives: the game is paused behind the Game Over card'],
     [L.keyLocked, 'lives: Space / Enter in the first second of the Game Over card do not skip it'],
+    [L.noContinueAtZone0, 'continue: a Game Over in zone 1, lap 1 shows no Continue button'],
+    [(({ continueCard: c, zone4: z }) => z.zone === 4 && c.over && c.shown && c.label === `CONTINUE FROM ${z.name.toUpperCase()}` && !/Continued from/.test(c.lines))(L), 'continue: a Game Over in zone 5 shows "CONTINUE FROM <zone>"'],
     [[L.again, L.againByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && a.health === 100 && a.regen === 1 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 0) && L.overByKey, 'lives: Fly again (click, or Enter) starts a fresh run: 3 lives, score 0, level 1, base hull'],
+    [[L.continued, L.continuedByKey].every((a) => a.lives === 3 && a.hearts === '❤️❤️❤️' && a.score === 0 && a.level === 1 && a.perks === 0 && a.maxHealth === 100 && !a.over && !a.paused && !a.dead && a.hidden && a.completed === 0 && a.zone === 4), 'continue: clicking (or C) starts a fresh run in the same zone: 3 lives, score 0, level 1, no perks'],
+    [L.continuedCard.over && L.continuedCard.lines.includes(`Continued from ${L.zone4.name}`) && L.continueKeyLocked, 'continue: a continued run\'s Game Over card says so, and C in its first second does not skip it'],
+    [(({ furthest: f, furthestTitle: t }) => f.zone === 9 && JSON.parse(f.saved).index === 1 && f.afterJump === f.saved && t.shown && t.text.includes(t.name) && /\(zone 2 of \d+\)/.test(t.text))(L), 'furthest zone: flying on into zone 2 is saved and shown on the title card after a reload; a dev-menu jump does not count'],
     [(({ up: s }) => s.name === 'Immelmann' && s.back < -0.9 && s.upright > 0.9 && s.climb > 15)(report.stunts), 'double-tap up: Immelmann turns you back and up'],
     [(({ down: s }) => s.name === 'Split-S' && s.back < -0.9 && s.upright > 0.9 && s.climb < -15)(report.stunts), 'double-tap down: Split-S turns you back and down'],
     [(({ right: s }) => s.name === 'Barrel roll' && s.back > 0.95 && s.upright > 0.9 && s.side > 18 && s.dodgedMidway === true)(report.stunts), 'double-tap right: barrel roll slides right, dodging hits'],

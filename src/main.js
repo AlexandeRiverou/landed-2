@@ -145,6 +145,7 @@ function setRelax(on) {
 // mustn't skip it. The FLY AGAIN button works at once.
 const KEY_LOCK_MS = 1000;
 let overAt = -Infinity;
+let continuedFrom = null; // the zone name a continued run started in (the Game Over card says so), null for a fresh run
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Out of lives (Player.update calls this once the last crash's explosion has played): the run is over. The game
@@ -161,17 +162,22 @@ function endRun() {
   $('go-lines').replaceChildren(...[
     `Level ${p.level} · ${p.rank}`,
     `✔ ${plural(G.objectives.completed, 'objective')} · 🎯 ${plural(G.stats.kills, 'kill')}`,
+    ...(continuedFrom ? [`Continued from ${continuedFrom}`] : []),
   ].map((t) => { const d = document.createElement('div'); d.textContent = t; return d; }));
   $('go-best').textContent = best ? '🏆 New best run!' : `Your best: ${p.best.score} points · Level ${p.best.level}`;
+  $('go-continue').classList.toggle('hidden', !canContinue());
+  $('continue').textContent = `CONTINUE FROM ${G.zones.current.name.toUpperCase()}`;
   $('gameover').classList.remove('hidden');
   G.audio.setEngine(0, false);
   G.audio.music?.duck(true);
 }
 
 // "Fly again": a fresh run in place, no reload. Lives, score, level and perks, power-ups, enemies, the objective and
-// the journey all start over from zone 1 (a new landscape, as on every boot).
-function flyAgain() {
+// the journey all start over from zone 1 (a new landscape, as on every boot). With `keepZone` ("Continue") it's the
+// same fresh run, but the journey stays in the zone and lap it reached.
+function flyAgain(keepZone = false) {
   if (!G.gameOver) return;
+  continuedFrom = keepZone ? G.zones.current.name : null;
   G.score = 0;
   G.stats.crashes = G.stats.kills = 0;
   G.player.resetRun();
@@ -180,9 +186,9 @@ function flyAgain() {
   G.objectives.resetRun();
   G.enemies.clearAll();
   Object.assign(G.enemies, { spawnTimer: 6, calmTimer: 0, frenzy: false, hats: false }); // as on boot (hats: a mutation)
-  G.zones.lap = 1;
+  if (!keepZone) G.zones.lap = 1;
   G.zones.sinceZone = 0;
-  G.zones.enter(0);
+  G.zones.enter(keepZone ? G.zones.index : 0);
   G.player.spawn(G.player.pos.x, G.player.pos.z, Math.random() * Math.PI * 2);
   G.ui.resetRun();
   G.gameOver = false;
@@ -191,8 +197,12 @@ function flyAgain() {
   document.activeElement?.blur(); // Space must shoot, not click the button again
   G.audio.music?.duck(false);
   updateCamera(0, true);
-  G.ui.notify(pick(T.flyAgain), 'info', 4, 2);
+  G.ui.notify(pick(keepZone ? T.continueRun : T.flyAgain), 'info', 4, 2);
 }
+
+// "Continue": only once the journey got past zone 1. Back in Meadowlands on lap 1 it would just be Fly again.
+const canContinue = () => G.zones.index > 0 || G.zones.lap > 1;
+function continueRun() { if (canContinue()) flyAgain(true); }
 
 function setPaused(v) {
   if (!G.started || G.gameOver) return;
@@ -205,13 +215,15 @@ function setPaused(v) {
 
 $('start').addEventListener('click', start);
 $('resume').addEventListener('click', () => setPaused(false));
-$('again').addEventListener('click', flyAgain);
+$('again').addEventListener('click', () => flyAgain());
+$('continue').addEventListener('click', continueRun);
 $('relax-btn').addEventListener('click', (e) => { setRelax(!G.relax); e.currentTarget.blur(); }); // blur: Space must keep shooting, not re-click
 installDesktop(); // desktop (Electron) build only: Quit and Fullscreen buttons on the title and pause cards
 G.input.on('KeyR', () => setRelax(!G.relax));
 const flyAgainKey = () => { if (performance.now() - overAt >= KEY_LOCK_MS) flyAgain(); }; // flyAgain: only on the Game Over card
 G.input.on('Enter', () => { if (!G.started) start(); else flyAgainKey(); });
 G.input.on('Space', flyAgainKey);
+G.input.on('KeyC', () => { if (performance.now() - overAt >= KEY_LOCK_MS) continueRun(); }); // the same key lock
 G.input.on('KeyP', () => setPaused(!G.paused));
 G.input.on('Escape', () => setPaused(!G.paused));
 G.input.on('KeyM', () => G.ui.notify(G.audio.toggleMute() ? 'Muted. The engine is now imaginary.' : 'Sound on. Vroom.', 'info', 2));
