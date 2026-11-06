@@ -38,7 +38,7 @@ npx playwright install chromium   # once
 npm test          # boots dist/ in headless Chromium and plays through objectives, persuasion,
                   # world mutations, every objective, every boss, landing, taxiing
                   # and take-off, relax mode, lives, Game Over and Continue, the
-                  # PULL UP! warning, par times, saved settings, the developer
+                  # pull-up warning, par times, saved settings, the developer
                   # menu and the secrets;
                   # fails on any error
 ```
@@ -117,9 +117,10 @@ and streets are fair game, and landing works in Relax Mode, so you can park some
 Ghost Mode skims the ground instead of landing. The first time you're low, slow and level over good ground (or nearly
 land but crash), the game gives you a one-time tip.
 
-**PULL UP!** (`src/pullup.js`): the game looks 0.5–2 s ahead along your straight flight path. If the ground or the
-sea is less than 1.5 s away, a red glow lights the bottom of the screen, a **PULL UP!** chip appears and it beeps
-(faster under 0.8 s). It stays quiet while you glide in to land on ground you could land on (the same flat, dry rule
+**Pull-up warning** (`src/pullup.js`): the game looks 0.5–2 s ahead along your straight flight path. If the ground or
+the sea is less than 1.5 s away, a soft red glow lights the bottom edge of the screen and a quiet beep sounds (faster
+and a little higher under 0.8 s). No text, no flashing: the glow starts faint and grows to full strength as impact
+gets to 0.5 s away. It stays quiet while you glide in to land on ground you could land on (the same flat, dry rule
 the landing uses), but a slope, a wall or the sea behind that strip still warns. Level flight into a hillside and
 a glide onto the sea warn too. It's off on the ground, while dead, in god mode and Ghost Mode, for the 3 s after a
 respawn, and for the grace moment after the world changes (the terrain lifts you then anyway). Pull out with
@@ -383,7 +384,7 @@ found secrets are remembered between flights. The full spoiler list is in [`docs
 **Settings and comfort** (`src/main.js`): pitch invert (`I`), music (`N`) and mute (`M`) are saved in the browser
 (`localStorage['landed-settings']`), and take-off reminds you of any that aren't the default ("Remembered: pitch
 inverted, music off. (I / N / M to change)"). If your system asks for reduced motion, the game drops the camera shake
-and the persuasion engine's cinematic camera turn, stops the HUD marker, the big edge arrow and the PULL UP! chip from
+and the persuasion engine's cinematic camera turn, stops the HUD marker and the big edge arrow from
 throbbing, and halves every screen flash. The crash flash is softer for everyone.
 
 **Phones and tablets** (`style.css`, `src/main.js`): in portrait the camera widens its view (up to 95° vertical), so
@@ -439,8 +440,8 @@ limits) and `Player.landableAt(x, z, y, ground)`, the "could you land here" test
 share. `PAR` (par times per type) and `FREE_HINTS` sit above `TYPES` in `src/objectives.js`; each objective gets
 `par` when it starts.
 
-`G.pullup` is the PULL UP! warning: `on`, `tti` (seconds to impact, `Infinity` when clear) and `shows` (warnings so
-far); the look-ahead (`PROBE`, `WARN`, `URGENT`) and the close-shave rule (`SHAVE`) sit at the top of
+`G.pullup` is the pull-up warning: `on`, `tti` (seconds to impact, `Infinity` when clear), `shows` (warnings so
+far) and `glow` (the bottom-edge element; its inline `style.opacity`, 0.35–1, shows the urgency); the look-ahead (`PROBE`, `WARN`, `URGENT`) and the close-shave rule (`SHAVE`) sit at the top of
 `src/pullup.js`. `G.shake(amp, dur)` jolts the camera (metres, seconds; a bigger jolt already running wins) and
 `G.camShake` holds the running one. `G.comfort.reducedMotion` mirrors the system setting; set it by hand to turn off the shake,
 the camera peek and the strong flashes (the CSS animations follow only the system setting).

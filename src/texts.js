@@ -104,7 +104,7 @@ export const T = {
     "Lithobraking is not an approved maneuver.",
     "The ground says hi. Very firmly.",
   ],
-  // Pulling out of a PULL UP! warning very low (pullup.js).
+  // Pulling out of a pull-up warning (the red ground glow) very low (pullup.js).
   closeShave: [
     "Close shave! The grass felt that.",
     "Close shave! You owe that hill an apology.",

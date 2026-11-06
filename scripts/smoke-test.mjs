@@ -1504,7 +1504,7 @@ try {
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
     return out;
   });
-  // Feel: the PULL UP! warning and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
+  // Feel: the pull-up warning (ground glow) and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
   // the boost tank's timing, the crash flash, the portrait FOV, reduced motion and saved settings. Over calmed,
   // drained land (as for the forts), with no enemies, objectives or power-ups, and no safety net where it matters.
   const F = await page.evaluate((FLAT) => {
@@ -1563,20 +1563,28 @@ try {
       p.pos.y = ground() + above; p.prevPos.copy(p.pos);
       p.invuln = 0; p.grace = 0; p.freeBoost = 0; p.wind.set(0, 0, 0);
     };
-    const chip = () => U.on && getComputedStyle(U.chip).display === 'block' && U.glow.classList.contains('on');
-    // Fly `frames` steps (or until something returns true / the plane crashes); was the chip ever on screen?
+    const warned = () => U.on && U.glow.classList.contains('on') && +U.glow.style.opacity > 0;
+    // Fly `frames` steps (or until something returns true / the plane crashes); was the glow ever on screen?
     const live = (frames, each = () => {}) => {
       let shown = false;
-      for (let k = 0; k < frames && !p.dead; k++) { if (each(k)) break; p.invuln = 0; p.grace = 0; G.step(1 / 30); shown ||= chip(); }
+      for (let k = 0; k < frames && !p.dead; k++) { if (each(k)) break; p.invuln = 0; p.grace = 0; G.step(1 / 30); shown ||= warned(); }
       return shown;
     };
     const settle = () => { for (let k = 0; k < 120 && p.dead; k++) G.step(1 / 30); for (let k = 0; k < 100; k++) { p.invuln = 99; G.step(1 / 30); } };
 
-    // Diving at the ground: the warning shows over a second before the crash. The crash flash peaks at 0.5.
+    // Diving at the ground: the warning shows over a second before the crash, and the glow grows stronger as the
+    // ground nears. No "PULL UP!" text anywhere while it's on. The crash flash peaks at 0.5.
     place(60, -Math.PI / 6);
-    let t = 0, shownAt = null;
-    for (let k = 0; k < 300 && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (shownAt === null && chip()) shownAt = t; }
-    out.dive = { dead: p.dead, lead: shownAt === null ? null : +(t - shownAt).toFixed(2), flashPeak };
+    let t = 0, shownAt = null, glowFirst = null, glowNear = null, text = null;
+    const pullUpText = () => [...document.querySelectorAll('body *')].some((e) => e.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+      && [...e.childNodes].some((n) => n.nodeType === 3 && /PULL UP/i.test(n.textContent)));
+    for (let k = 0; k < 300 && !p.dead; k++) {
+      p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30;
+      if (shownAt === null && warned()) { shownAt = t; glowFirst = +U.glow.style.opacity; }
+      if (U.on && U.tti <= 0.6) glowNear = Math.max(glowNear ?? 0, +U.glow.style.opacity);
+      if (U.on && text === null) text = pullUpText();
+    }
+    out.dive = { dead: p.dead, lead: shownAt === null ? null : +(t - shownAt).toFixed(2), flashPeak, glowFirst, glowNear, text, chipEl: document.querySelector('#pullup-chip') };
     settle();
     // Level at 100 m for 10 s: never. And cruising on a landscape screen keeps the 70° view.
     place(100, 0);
@@ -1584,11 +1592,11 @@ try {
     out.level = { shown: live(300), dead: p.dead, reason, fov: +G.camera.fov.toFixed(1) };
     settle();
     // Level flight (which looks like a landing approach) still warns when the ground ahead isn't landable. Seconds
-    // from the chip to the crash, and the crash reason; null lead: it never showed.
+    // from the warning to the crash, and the crash reason; null lead: it never showed.
     const lead = (frames) => {
       let t = 0, at = null;
       reason = null;
-      for (let k = 0; k < frames && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (at === null && chip()) at = t; }
+      for (let k = 0; k < frames && !p.dead; k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); t += 1 / 30; if (at === null && warned()) at = t; }
       return { dead: p.dead, reason, lead: at === null ? null : +(t - at).toFixed(2) };
     };
     // 15 m up, level, toward a rise of 0.6 m per metre starting 150 m ahead (laid over the flat land, for this check
@@ -1771,9 +1779,9 @@ try {
       G.camera.getWorldDirection(d);
       const look = +d.dot(p.pos.clone().addScaledVector(p.forward, 30).sub(G.camera.position).normalize()).toFixed(3);
       G.camPeek = null;
-      G.pullup.chip.classList.add('on');
-      const anim = ['#pullup-chip', '#marker .diamond'].map((s) => getComputedStyle(document.querySelector(s)).animationName);
-      G.pullup.chip.classList.remove('on');
+      G.pullup.glow.classList.add('on');
+      const anim = ['#pullup-glow', '#marker .diamond'].map((s) => getComputedStyle(document.querySelector(s)).animationName);
+      G.pullup.glow.classList.remove('on');
       p.invuln = 0;
       p.crash('ground');
       const flash = G.ui.flashA; // the crash flash's peak (halved under reduced motion by ui.js flash())
@@ -2091,12 +2099,14 @@ try {
     [report.zones.filter((z) => /Orbit|Meteor/.test(z.name)).every((z) => z.ground < -500), 'space zones put the ground far below'],
     [report.zones.find((z) => z.name === 'Meteor Belt').asteroids >= 30 && report.asteroidSplit, 'the meteor belt is full of asteroids that split when shot'],
     [report.level >= 5 && report.perks === report.level - 1, 'levelling up grants a perk per level'],
-    [F.dive.dead && F.dive.lead >= 1.0, `pull up: diving at flat ground shows PULL UP! at least 1 s before the crash (${F.dive.lead} s)`],
+    [F.dive.dead && F.dive.lead >= 1.0, `pull up: diving at flat ground warns at least 1 s before the crash (${F.dive.lead} s)`],
+    [F.dive.chipEl === null && F.dive.text === false, `pull up: no PULL UP! chip, and no visible "PULL UP" text while warning (${F.dive.text})`],
+    [F.dive.glowFirst > 0 && F.dive.glowNear > F.dive.glowFirst, `pull up: the glow is stronger near impact than at the first warning (${F.dive.glowFirst} -> ${F.dive.glowNear})`],
     [!F.level.shown && !F.level.dead, 'pull up: level flight 100 m up for 10 s never warns'],
     [report.landing.pullUps === 0, 'pull up: a landing approach never warns'],
-    [F.rise.dead && F.rise.reason?.startsWith('ground') && F.rise.lead >= 1.0, `pull up: level flight 15 m up into a 0.6 rise shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.rise)})`],
-    [F.approachWall.approach && F.approachWall.dead && F.approachWall.reason?.startsWith('ground') && F.approachWall.lead >= 1.0, `pull up: on approach, a steep rise behind a landable strip shows PULL UP! at least 1 s before the crash (${JSON.stringify(F.approachWall)})`],
-    [F.seaGlide.dead &&F.seaGlide.reason?.startsWith('water') && F.seaGlide.lead >= 1.0, `pull up: a gentle glide onto the sea shows PULL UP! at least 1 s before the splash (${JSON.stringify(F.seaGlide)})`],
+    [F.rise.dead && F.rise.reason?.startsWith('ground') && F.rise.lead >= 1.0, `pull up: level flight 15 m up into a 0.6 rise warns at least 1 s before the crash (${JSON.stringify(F.rise)})`],
+    [F.approachWall.approach && F.approachWall.dead && F.approachWall.reason?.startsWith('ground') && F.approachWall.lead >= 1.0, `pull up: on approach, a steep rise behind a landable strip warns at least 1 s before the crash (${JSON.stringify(F.approachWall)})`],
+    [F.seaGlide.dead &&F.seaGlide.reason?.startsWith('water') && F.seaGlide.lead >= 1.0, `pull up: a gentle glide onto the sea warns at least 1 s before the splash (${JSON.stringify(F.seaGlide)})`],
     [!F.seaLevel.shown && !F.seaLevel.dead, `pull up: level flight 6 m over the sea for 8 s never warns (${JSON.stringify(F.seaLevel)})`],
     [(({ shave1: a }) => a.shown && !a.dead && a.off && a.min >= 3 && a.min < 7 && a.points === 25 && a.notes.length === 1 && / \+25$/.test(a.notes[0]))(F), `pull up: pulling out 3-7 m above the ground pays a close shave, +25 (${JSON.stringify(F.shave1)})`],
     [(({ shave2: b }) => b.shown && !b.dead && b.points === 0 && b.notes.length === 0)(F), 'pull up: a second close shave inside 15 s pays nothing'],
@@ -2108,7 +2118,7 @@ try {
     [F.popMax === 6 && F.popGone === 0, 'feel: at most 6 score pop-ups at once'],
     [F.shake.off > 0 && F.reduced.on && F.reduced.off === 0, 'feel: damage shakes the camera; not with reduced motion'],
     [F.peekLook < 0.9 && F.reduced.look > 0.999, 'comfort: the cinematic look turns the camera, but not with reduced motion'],
-    [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the PULL UP! throb and the marker spin'],
+    [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the marker spin, and the pull-up glow never throbs'],
     [F.dive.flashPeak > 0 && F.dive.flashPeak <= 0.5, `feel: the crash flash peaks at 0.5 at most (${F.dive.flashPeak})`],
     [F.reduced.flash > 0 && F.reduced.flash <= 0.25, `comfort: under reduced motion the crash flash peaks at 0.25 at most (${F.reduced.flash})`],
     [F.boost.whooshes === 1, 'feel: pressing boost goes whoosh once while held'],
