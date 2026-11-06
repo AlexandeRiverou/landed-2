@@ -697,6 +697,10 @@ try {
         G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
         const pair = startBoss('kingDrone', { mod: null, duo: true });
         engage(pair);
+        // Passes on the way in may have set off a breakaway (and its toast, which rate-limits the next one), as may the
+        // King Drone's repeats above: start this one fresh, and count from here.
+        pair.forEach((e) => { e.breaks = 0; });
+        G.enemies.shookAt = G.enemies.backAt = -99;
         const t0 = toasts.length, mid = pair[0].pos.clone().lerp(pair[1].pos, 0.5);
         G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(mid.x - G.player.pos.x, mid.z - G.player.pos.z));
         let both = false;
@@ -1233,7 +1237,17 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
-  // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick.
+  // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick. Over flat land (no
+  // mountains, hills, cliffs, canyons or pinnacles): 200 m up over a mountain range, grace would lift the plane over a
+  // peak mid-stunt. Not drained: a drained sea carves its canyons 400 m deep, and the plane would start in one.
+  const FLAT = { amp: 0, roughness: 0, hillBase: 0, terrace: 0, mesa: 0, canyon: 0, spikes: 0 };
+  const land = await page.evaluate((FLAT) => {
+    const G = window.G, was = Object.fromEntries(Object.keys(FLAT).map((k) => [k, G.world[k]]));
+    Object.assign(G.world, FLAT);
+    G.terrain.rebuildAll();
+    G.terrain.update(G.player.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+    return was;
+  }, FLAT);
   const setUp = (above) => page.evaluate((above) => {
     const G = window.G, p = G.player;
     G.enemies.spawnTimer = 1e9;
@@ -1316,6 +1330,7 @@ try {
   // a double tap; nor is W, D, W.
   await setUp(200); await page.keyboard.down('ArrowUp'); await page.waitForTimeout(300); await page.keyboard.up('ArrowUp'); await page.keyboard.press('ArrowUp'); report.stunts.heldThenTap = await measure();
   await setUp(200); await page.keyboard.press('KeyW'); await page.keyboard.press('KeyD'); await page.keyboard.press('KeyW'); report.stunts.otherKeyBetween = await measure();
+  await page.evaluate((land) => { const G = window.G; Object.assign(G.world, land); G.terrain.rebuildAll(); G.terrain.update(G.player.pos, 999); }, land);
 
   // Phone HUD (a touch phone context per size): the title card shows the touch rows, and with the objective card, an
   // enraged boss bar, two notes, a power-up and the touch buttons up, no HUD panel overlaps another; nor does the success card.
@@ -1492,10 +1507,10 @@ try {
   // Feel: the PULL UP! warning and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
   // the boost tank's timing, the crash flash, the portrait FOV, reduced motion and saved settings. Over calmed,
   // drained land (as for the forts), with no enemies, objectives or power-ups, and no safety net where it matters.
-  const F = await page.evaluate(() => {
+  const F = await page.evaluate((FLAT) => {
     const G = window.G, p = G.player, out = {}, U = G.pullup;
     const V = p.pos.constructor, Q = p.quat.constructor, UP = new V(0, 1, 0), XA = new V(1, 0, 0);
-    const god = p.god, { amp, seaLevel } = G.world;
+    const god = p.god, land = Object.fromEntries([...Object.keys(FLAT), 'seaLevel'].map((k) => [k, G.world[k]]));
     p.god = false;
     if (G.relax) G.setRelax(false);
     G.enemies.spawnTimer = 1e9;
@@ -1507,7 +1522,7 @@ try {
     G.powerups.active.clear();
     G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
     G.powerups.timer = 1e9;
-    Object.assign(G.world, { amp: 0.15, seaLevel: -400 });
+    Object.assign(G.world, FLAT, { seaLevel: -400 }); // flat (see the stunts) and drained: canyons are off, so no 400 m gorges
     G.terrain.rebuildAll();
     G.terrain.update(p.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
     for (let k = 0; k < 30; k++) { p.invuln = 99; G.step(1 / 30); }
@@ -1521,16 +1536,27 @@ try {
     p.crash = (r) => { reason = `${r} at ${Math.round(p.pos.y - ground())} m, hp ${Math.round(p.health)}, zone ${G.zones.index}, tunnels ${!!G.world.tunnels}`; crash(r); };
     const ground = () => G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y);
     const nose = (pitch) => { const yaw = Math.atan2(-p.forward.x, -p.forward.z); return new Q().setFromAxisAngle(UP, yaw).multiply(new Q().setFromAxisAngle(XA, pitch)); };
-    // A fresh plane `above` m over the ground, nose at `pitch` rad, cruising, no boost, no safety net. Where the next
-    // 250 m ahead are flat (calm land can still hold an old crater or bullet pit), so the terrain roll never matters.
+    // A fresh plane `above` m over the ground, nose at `pitch` rad, cruising, no boost, no safety net. Where the whole
+    // corridor it flies (600 m ahead, 10 m either side) is flat: flat land still has sea basins and old craters or
+    // bullet pits, so the terrain roll never matters. Pending crater rebuilds land first, or the scan would read the
+    // ground from before them and the hole (or its rim) would open under the plane mid-dive. No flat corridor: throw.
+    const flush = (at) => {
+      G.terrain.update(at, 999);
+      for (let n = 0; n < 99 && G.terrain.dirty.size; n++) { G.terrain.nextDirtyBuild = 0; G.terrain.update(at, 0); }
+    };
     const place = (above, pitch) => {
       const f = new V(p.forward.x, 0, p.forward.z).normalize(), at = p.pos.clone();
-      for (let k = 0; k < 60; k++, at.addScaledVector(f, 300)) {
+      let flat = false;
+      for (let k = 0; k < 60 && !flat; k++) {
+        if (k) at.addScaledVector(f, 300);
+        flush(at); // the ground the scan reads is the ground the plane will meet
         let lo = Infinity, hi = -Infinity;
-        for (let d = -20; d <= 250; d += 5) { const g = G.terrain.surfaceHeight(at.x + f.x * d, at.z + f.z * d); lo = Math.min(lo, g); hi = Math.max(hi, g); }
-        if (hi - lo < 3) break;
+        for (let d = -20; d <= 600; d += 5) {
+          for (const s of [-10, 0, 10]) { const g = G.terrain.surfaceHeight(at.x + f.x * d - f.z * s, at.z + f.z * d + f.x * s); lo = Math.min(lo, g); hi = Math.max(hi, g); }
+        }
+        flat = hi - lo < 3;
       }
-      if (at.distanceTo(p.pos) > 1) G.terrain.update(at, 999); // moved on: build the ground there before reading it
+      if (!flat) throw new Error('feel: no flat corridor found to place the plane');
       p.pos.copy(at);
       p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z));
       p.quat.copy(nose(pitch)); p.updateAxes();
@@ -1648,12 +1674,12 @@ try {
     for (const name of Object.keys(calls)) delete G.audio[name];
     G.ui.notify = notify;
     G.ui.flash = flash;
-    Object.assign(G.world, { amp, seaLevel });
+    Object.assign(G.world, land);
     G.terrain.rebuildAll();
     step(30);
     p.god = god;
     return out;
-  });
+  }, FLAT);
   // A portrait phone gets the wider view.
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -1662,6 +1688,24 @@ try {
     await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
     await pp.click('#start');
     F.portraitFov = await pp.evaluate(() => { const G = window.G; for (let k = 0; k < 120; k++) { G.player.invuln = 99; G.step(1 / 30); } return +G.camera.fov.toFixed(1); });
+    // At that wider view, a fresh run's first hoop is on screen too (20 first hoops, from fresh headings).
+    F.portraitMarker = await pp.evaluate(() => {
+      const G = window.G, O = G.objectives, p = G.player;
+      O.cooldown = 1e9;
+      G.enemies.spawnTimer = 1e9;
+      let seen = 0;
+      for (let k = 0; k < 20; k++) {
+        if (O.current) { O.current.dispose(G); O.current = null; }
+        G.persuasion.reset(null);
+        p.spawn(p.pos.x, p.pos.z, Math.random() * Math.PI * 2);
+        for (let i = 0; i < 30; i++) { p.invuln = 99; G.step(1 / 30); } // the camera swings round behind the new heading
+        O.completed = 0;
+        O.startType('hoop');
+        p.invuln = 99; G.step(1 / 30);
+        if (document.getElementById('marker').style.display === 'block') seen++;
+      }
+      return seen;
+    });
     await ctx.close();
   }
   // Reduced motion: no shake, no cinematic look, and the CSS throbs and spins stop.
@@ -1893,6 +1937,7 @@ try {
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [(({ firstHoop: f }) => f.length === 20 && f.every((h) => h.deg <= 20.1 && h.dist >= 299 && h.dist <= 451))(report.guide), `guidance: a run's first hoop is within 20° of straight ahead and 300-450 m away (${JSON.stringify(report.guide.firstHoop.map((h) => h.deg))})`],
     [report.guide.markerSeen >= 19, `guidance: the first hoop's marker is on screen at the start (${report.guide.markerSeen}/20, 1024×640)`],
+    [F.portraitMarker >= 19, `guidance: the first hoop's marker is on screen at the start on a portrait phone too (${F.portraitMarker}/20, 390×844)`],
     [(({ arrow: [a0, a1, a2] }) => a0.shown && a0.faint && !a0.big && a0.label === '' && a1.shown && !a1.faint && !a1.big && a2.shown && !a2.faint && a2.big)(report.guide), 'guidance: an off-screen objective gets a faint unlabelled arrow before persuasion; its arrow steps make it normal, then big'],
     [(({ feeFree: a, feeFree2: b, feePaid: c }) => [a, b].every((r) => r.gain === 100 && r.lines[1] === 'Hints on the house' && !/fee/i.test(r.lines.join())) && c.gain === 76 && c.lines[1] === 'Hint fee -24')(report.guide), 'hint fee: none for the first 3 objectives ("Hints on the house"), charged from the 4th'],
     [(({ par: p }) => p.hoop === 12 && p.card === '⏱ Par 12 s · beat it for +60' && p.cardAfter === '' && p.at10.gain === 160 && p.at10.lines[1].includes('Speed bonus +60 (under par!)') && p.at14.gain === 100 && !/Speed bonus/.test(p.at14.lines.join()) && p.timed === 17)(report.guide), 'par: the hoop card shows "Par 12 s"; done in 10 s earns the speed bonus, in 14 s not; timed objectives get 60% of their clock'],
@@ -1981,6 +2026,7 @@ try {
     [F.peekLook < 0.9 && F.reduced.look > 0.999, 'comfort: the cinematic look turns the camera, but not with reduced motion'],
     [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the PULL UP! throb and the marker spin'],
     [F.dive.flashPeak > 0 && F.dive.flashPeak <= 0.5, `feel: the crash flash peaks at 0.5 at most (${F.dive.flashPeak})`],
+    [F.reduced.flash > 0 && F.reduced.flash <= 0.25, `comfort: under reduced motion the crash flash peaks at 0.25 at most (${F.reduced.flash})`],
     [F.boost.whooshes === 1, 'feel: pressing boost goes whoosh once while held'],
     [Math.abs(F.boost.drain - 4) <= 0.2 && Math.abs(F.boost.regen - 5) <= 0.2, `boost: a full tank lasts 4 s and refills in 5 s (${F.boost.drain} s, ${F.boost.regen} s)`],
     [Math.abs(F.level.fov - 70) <= 1 && Math.abs(F.portraitFov - 95) <= 1, `camera: 70° cruising on a landscape screen, 95° on a portrait phone (${F.level.fov}, ${F.portraitFov})`],
