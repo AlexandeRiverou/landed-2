@@ -192,6 +192,7 @@ html, body {
   transition: opacity 0.4s;
 }
 #boss-name { font-size: 15px; color: #c8202e; transition: color 0.4s; }
+#boss-name .chase-note { white-space: nowrap; }
 #boss-bar .track { height: 14px; margin-top: 4px; transition: opacity 0.4s; }
 #boss-bar.away .track { opacity: 0.45; }
 #boss-bar.away #boss-name { color: #9a5560; }

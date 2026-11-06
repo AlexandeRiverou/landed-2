@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
-import { BOSSES, BOSS_MODS } from './enemies.js';
+import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
@@ -605,7 +605,9 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
   const bar = () => {
     let hp = 0, maxHp = 0;
     for (const e of list) { maxHp += e.maxHp; if (!e.dead) hp += Math.max(0, e.hp); }
-    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged), away: alive().length > 0 && alive().every((e) => e.chase === 'loose') }; // it lost you: bar dims
+    const all = (chase) => alive().length > 0 && alive().every((e) => e.chase === chase);
+    // Lost you: the bar dims. Coming back: nothing. Waiting at the standoff: it's your move.
+    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged), away: all('loose'), note: all('loose') ? 'lost you' : all('wait') ? 'your move' : '' };
   };
   G.ui.bossBar(bar());
   G.ui.notify(`⚠ BOSS INCOMING: ${name}!${M ? ` ${M.text}` : ''}${duo ? ' There are TWO of them.' : ''}`, 'bad', 5);
@@ -631,7 +633,14 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
       return alive().length ? null : 'done';
     },
     grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } },
-    approach(G, f) { for (const e of alive()) e.pos.lerp(G.player.pos, f * 0.6); },
+    // A boss on a break isn't pulled at all, an engaged one never closer than its standoff (the dug-in fort: as ever).
+    approach(G, f) {
+      for (const e of alive()) {
+        if (e.chase) continue;
+        const d = e.pos.distanceTo(G.player.pos);
+        e.pos.lerp(G.player.pos, e.def.ground ? f * 0.6 : Math.min(f * 0.6, Math.max(0, 1 - bossStandoff(e.def) / Math.max(d, 1))));
+      }
+    },
     easier() { for (const e of alive()) e.hp = Math.max(1, Math.ceil(e.hp * 0.7)); return `${lead.short} pulled a muscle. Boss HP -30%. Embarrassing for them, great for you.`; },
     dispose(G) { G.ui.bossBar(null); for (const e of alive()) G.enemies.removeEnemy(e); },
   });

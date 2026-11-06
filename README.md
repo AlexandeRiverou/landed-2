@@ -265,13 +265,20 @@ facing back and weaving side to side, so they're always in your sights. Lead bos
 in front, and hold their fire while they're behind you.
 
 **Breaking away:** once a flying boss has been on you for 4 s, fly away and it lets you go ("Clean getaway! The Goose
-Queen is sulking."). While it's lost you it drifts after you at under half your speed and doesn't attack at all: no
-shots, summons, dashes, bombs, mines or dives. Its minions back off too and spawns pause for 3 s. The boss bar dims
-and says "(lost you)". If every boss in the fight has lost you, your hull starts mending after 3 s instead of 10, at
-three times the rate. The break lasts up to 8 s of flying away, and ends early once you're 480 m out. Then it's back
-for round two, closing in at a steady 55 m/s however hard you boost, and it waits at least 1.5 s after reaching you
-before its first attack. Run off again without hurting it and the next break is shorter (6 s, then 4.5 s, never under
-4 s); land a hit and you get the full 8 s again. Fort Grumpington sits on the ground and never loses you.
+Queen is sulking."). A circling boss can't keep up while you fly off from it: past half its orbit it goes at most 70%
+of your speed and gives up any charge it was making, and after 3 s of that out past its orbit it lets you go. Gary
+Prime and Steven never start a strafing run or a dive from behind a plane that's flying away. While it's lost you
+the boss hovers near the spot where it lost you and doesn't attack at all: no shots, summons, dashes, bombs, mines or
+dives. Its minions back off too and spawns pause for 3 s. The boss bar dims and says "(lost you)". Shoot it while it
+sulks and it fights back at once. While every boss in the fight has lost you or is coming back, your hull starts
+mending after 3 s instead of 10, at three times the rate. The break lasts up to 8 s of flying away, and ends early once
+you're 650 m out. Then it comes back, closing at most 30 m/s faster than you fly away, and stops about 150 m further
+out than it fights from. There it waits ("The Goose Queen is waiting for you. Your move."), and the boss bar says
+"(your move)". Keep flying off and it keeps pace without attacking (and your hull mends at the normal rate). Round two
+starts when you fly back in to about 60 m beyond its fight distance, shoot it, or spend 4 s not flying away. Its
+first attack comes a couple of seconds later (sooner if your shot woke it), and it's never a strafing run or a dive.
+Run off again without hurting it and the next break is shorter (6 s, then 4.5 s, never under 4 s); land a hit and
+you get the full 8 s again. Fort Grumpington sits on the ground and never loses you.
 
 Bosses taunt you (never while they've lost you), and get ENRAGED below half
 health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
@@ -343,7 +350,9 @@ back first.
 when you fly away and barely moves while you close in. The first tactic comes after 20 s of neglect, then one every
 14 s of neglect, and never two within 15 real seconds of each other, so even flying the wrong way gets you some peace.
 The "wrong way" nag comes at most every 25 s, and never during a fight with a flying boss (circling round for a pass
-is a tactic). While every boss has lost you, flying off doesn't speed up neglect and there's no "getting warmer" note. The game escalates through 37 tactics in three tiers:
+is a tactic). In a fight with a flying boss, flying off doesn't speed up neglect, and while every boss has lost you or is
+coming back there's no "getting warmer" note. A persuasion tactic that pulls the boss closer never moves one that's
+on a break, and never pulls one closer than where it would wait for you. The game escalates through 37 tactics in three tiers:
 
 - *Mild:* nagging, guilt trips, pro tips, GPS distance, a promotion for the edge arrow (from the start, a small faint
   white arrow points at any objective that's off screen; the first promotion makes it a normal one, the second big,
@@ -448,9 +457,15 @@ the camera peek and the strong flashes (the CSS animations follow only the syste
 `G.audio.tick()` (your hit), `whoosh()` (boost) and `pullUp(urgent)` are the feedback sounds, and `G.audio.setEngine(ratio, on, wind01)` takes
 the wind level (0 at cruise, 1 at full boost). Touch flicks are tuned by `FLICK_OUT` and `FLICK_MS` in
 `src/input.js`. The render loop clamps each frame's `dt` to 0–0.05 s, so a clock that jumps
-backwards never runs time in reverse. Boss breakaway tuning (`LEASH`, `LOOSE_T`,
-`LOOSE_SHRINK`, `LOOSE_MIN`, `ENGAGED_T`, `CATCH_GAIN`, `CHASE_HOLD`) sits at the top of `src/enemies.js`, and a
-per-boss `leash` overrides `LEASH`. `G.enemies.breather` is true while every boss alive has lost you; each boss has
-`chase` (`null`, `'loose'` or `'catch'`), `looseMax` (this break's length), `breaks` (breakaways in a row without
-damage) and `behind`. The whole `G.secrets` API, and how to add a
+backwards never runs time in reverse. Boss breakaway tuning sits at the top of `src/enemies.js`: when it lets
+you go (`ENGAGED_T`, `PURSUIT`, `BEHIND_T`), how long the break lasts (`LEASH`, `LOOSE_T`, `LOOSE_SHRINK`,
+`LOOSE_MIN`), the loose hover (`LOOSE_SPEED`, `LOOSE_BRAKE`, `LOOSE_BRAKE_T`), the return and the wait (`RETURN_GAIN`,
+`STANDOFF`, `STANDOFF_HOLD`, `WAIT_NEAR`, `WAIT_T`, `WAIT_DRIFT`) and the attack holds (`CHASE_HOLD`, `REENGAGE_CD`,
+`REENGAGE_HIT_CD`). A per-boss `leash` overrides `LEASH`, and `bossStandoff(def)` (exported) gives the distance a boss
+waits at. `G.enemies.breather` is true while every boss alive is `'loose'` or `'catch'` (not while waiting); each boss
+has `chase` (`null` when engaged, `'loose'`, `'catch'` coming back, or `'wait'` at the standoff), `chaseT` (s in that
+state), `home` (where it lost you), `waitT` (s you've spent not fleeing while it waits), `fresh` (its next attack is
+the first after a break: no charge), `looseMax` (this break's length), `breaks` (breakaways in a row without damage),
+`behind` and `behindT` (s you've been flying off from it while engaged). An engaged boss is never sent back for
+being far away (a fresh one can spawn past the leash). The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).
