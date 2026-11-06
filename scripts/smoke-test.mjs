@@ -1504,7 +1504,7 @@ try {
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
     return out;
   });
-  // Feel: the PULL UP! warning and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
+  // Feel: the pull-up warning (ground glow) and close shaves, hit / kill feedback (tick, score pop-ups, camera shake, boost whoosh),
   // the boost tank's timing, the crash flash, the portrait FOV, reduced motion and saved settings. Over calmed,
   // drained land (as for the forts), with no enemies, objectives or power-ups, and no safety net where it matters.
   const F = await page.evaluate((FLAT) => {
