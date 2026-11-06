@@ -602,7 +602,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
   const bar = () => {
     let hp = 0, maxHp = 0;
     for (const e of list) { maxHp += e.maxHp; if (!e.dead) hp += Math.max(0, e.hp); }
-    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged) };
+    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged), away: alive().length > 0 && alive().every((e) => e.chase === 'loose') }; // it lost you: bar dims
   };
   G.ui.bossBar(bar());
   G.ui.notify(`⚠ BOSS INCOMING: ${name}!${M ? ` ${M.text}` : ''}${duo ? ' There are TWO of them.' : ''}`, 'bad', 5);
@@ -614,7 +614,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
     desc: `${duo ? 'Double trouble! Two of them, each a bit smaller. ' : ''}${def.desc} Shoot it with Space / click!`,
     caps: new Set(['grow', 'approach', 'easier']),
     signText: ['BOSS FIGHT', 'THAT WAY →'],
-    hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Your hull repairs itself if you avoid hits for 4 seconds.', 'Glowing parts are weak spots. Knock the crown off for extra damage.'],
+    hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Break away to patch up: fly off and your hull mends faster while the boss can\'t reach you.', 'Glowing parts are weak spots. Knock the crown off for extra damage.'],
     target() {
       let best = null, bd = Infinity;
       for (const e of alive()) { const d = e.pos.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = e; } }

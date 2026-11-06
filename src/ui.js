@@ -104,7 +104,8 @@ export class UI {
     const bar = document.getElementById('boss-bar');
     if (!b) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
-    document.getElementById('boss-name').textContent = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}`;
+    bar.classList.toggle('away', !!b.away); // dimmed while it has lost you
+    document.getElementById('boss-name').textContent = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}${b.away ? ' (lost you)' : ''}`;
     document.getElementById('boss-fill').style.width = `${Math.max(0, (b.hp / b.maxHp) * 100)}%`;
   }
 

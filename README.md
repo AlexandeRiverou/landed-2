@@ -208,7 +208,8 @@ repaired!").
 above HULL and BOOST in the bottom-left. Every crash costs one, whether it's an enemy, the ground or the water, and
 you respawn with a full hull and a note telling you how many are left ("2 lives left…", "Last life!"). Crashes in
 Relax Mode are free. The hull doesn't patch itself quickly: it only starts mending after 10 s without a hit, at 1 hp
-a second (the "Hull repairs twice as fast" perk doubles that). The real fixes are levelling up and the Repair Kit.
+a second (the "Hull repairs twice as fast" perk doubles that). Breaking away from a boss mends it sooner and faster
+(see Bosses). The real fixes are levelling up and the Repair Kit.
 Lose the last plane and, once the explosion clears, the **Game Over** card shows your score, level and rank,
 objectives and kills, and your best run (or "New best run!"). The game is paused behind it. Hit FLY AGAIN (or `Enter`
 / `Space`) for a fresh run right away, no reload: score 0, Level 1 with no perks, three lives, no power-ups, back to
@@ -236,9 +237,19 @@ the first zone on a new landscape. Found secrets stay found.
 
 From the third boss on, they can roll a modifier (Jumbo, Turbo, Furious But Fragile, Shiny for double points). From the
 fourth on, they can show up as twins that share one health bar. Most bosses circle you; lead bosses fly ahead of you,
-facing back and weaving side to side, so they're always in your sights. Fly away from a flying boss and it lets you go
-for a bit (drifting after you at under half your speed, no dives or strafing runs), so you have room to turn around for
-another pass. Once you're about 340 m out, or after 7 s of running, it hurries back to its fight distance. Bosses taunt you, and get ENRAGED below half
+facing back and weaving side to side, so they're always in your sights. Lead bosses won't ram you while swinging back
+in front, and hold their fire while they're behind you.
+
+**Breaking away:** once a flying boss has been on you for 4 s, fly away and it lets you go ("Clean getaway! The Goose
+Queen is sulking."). While it's lost you it drifts after you at under half your speed and doesn't attack at all: no
+shots, summons, dashes, bombs, mines or dives. Its minions back off too and spawns pause for 3 s. The boss bar dims
+and says "(lost you)". If every boss in the fight has lost you, your hull starts mending after 3 s instead of 10, at
+three times the rate. The break lasts up to 8 s of flying away, and ends early once you're 480 m out. Then it's back
+for round two, closing in at a steady 55 m/s however hard you boost, and it waits at least 1.5 s after reaching you
+before its first attack. Run off again without hurting it and the next break is shorter (6 s, then 4.5 s, never under
+4 s); land a hit and you get the full 8 s again. Fort Grumpington sits on the ground and never loses you.
+
+Bosses taunt you (never while they've lost you), and get ENRAGED below half
 health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
 fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points and reshapes the world like any
 other win.
@@ -296,7 +307,8 @@ back first.
 **Persuasion engine** (`src/persuasion.js`): a "neglect" meter fills while you're not making progress. It fills faster
 when you fly away and barely moves while you close in. The first tactic comes after 20 s of neglect, then one every
 14 s of neglect, and never two within 15 real seconds of each other, so even flying the wrong way gets you some peace.
-The "wrong way" nag comes at most every 25 s. The game escalates through 37 tactics in three tiers:
+The "wrong way" nag comes at most every 25 s, and never during a fight with a flying boss (circling round for a pass
+is a tactic). While every boss has lost you, flying off doesn't speed up neglect and there's no "getting warmer" note. The game escalates through 37 tactics in three tiers:
 
 - *Mild:* nagging, guilt trips, pro tips, GPS distance, an on-screen edge arrow, sonar beeps panned toward the target,
   a 900 m light beam, reverse psychology ("Whatever you do, do NOT go to..."), a petition begging you to go (the
@@ -369,6 +381,10 @@ whether the zone allows it, and it doesn't clear the current objective, the menu
 ground, `G.player.lastLanding` holds the latest touchdown (`{ grade, title, sink, bank, points, x, z }`), and the
 player pushes a `'landed'` event on each one. `G.player.lives` is the lives left (set it high, e.g. `1e6`, for a
 script that crashes on purpose; the HUD then shows `❤️ ×N`), `G.gameOver` is true while the Game Over card is up,
-`G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it. `LIVES` and `REGEN_DELAY` sit
-at the top of `src/player.js`. The whole `G.secrets` API, and how to add a
+`G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it. `LIVES`, `REGEN_DELAY`,
+`BREATHER_DELAY` and `BREATHER_REGEN` sit at the top of `src/player.js`. Boss breakaway tuning (`LEASH`, `LOOSE_T`,
+`LOOSE_SHRINK`, `LOOSE_MIN`, `ENGAGED_T`, `CATCH_GAIN`, `CHASE_HOLD`) sits at the top of `src/enemies.js`, and a
+per-boss `leash` overrides `LEASH`. `G.enemies.breather` is true while every boss alive has lost you; each boss has
+`chase` (`null`, `'loose'` or `'catch'`), `looseMax` (this break's length), `breaks` (breakaways in a row without
+damage) and `behind`. The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).

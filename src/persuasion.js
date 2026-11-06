@@ -301,14 +301,16 @@ export class Persuasion {
         else this.awayTime = Math.max(0, this.awayTime - dt * 2);
       }
       this.prevDist = d;
-      if (this.awayTime > 0.5) rate = 1.5;
+      // Breaking away from a boss is a tactic, not neglect; so is circling round during any flying-boss fight.
+      const breather = G.enemies.breather || (obj.type === 'boss' && G.enemies.list.some((e) => e.boss && !e.dead && !e.def.ground));
+      if (this.awayTime > 0.5 && !breather) rate = 1.5;
       if (d < this.bestDist - 25) { this.bestDist = d; rate = 0.15; }
-      if (this.awayTime > 5 && this.time - this.lastWrongWay > WRONG_WAY_GAP) {
+      if (this.awayTime > 5 && !breather && this.time - this.lastWrongWay > WRONG_WAY_GAP) {
         this.lastWrongWay = this.time;
         G.ui.notify(fmt(pick(T.wrongWay), obj.noun), 'warn', 4);
         G.audio.nag();
       }
-      if (d < 220 && !this.closeShown && this.stage >= 1) {
+      if (d < 220 && !this.closeShown && this.stage >= 1 && !G.enemies.breather) {
         this.closeShown = true;
         G.ui.notify(fmt(pick(T.close), obj.noun), 'good', 3, 0);
       }

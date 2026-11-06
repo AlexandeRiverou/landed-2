@@ -359,7 +359,7 @@ export function mkSurvive(G) {
     desc: `Enemies are coming in twice as fast. Survive ${need} seconds without getting shot down. Shooting back is encouraged.`,
     caps: new Set(['easier']),
     signText: ['SURVIVE!', '(GOOD LUCK)'],
-    hints: ['Keep moving: weaving makes you harder to hit.', 'Your hull repairs itself if you avoid hits for 4 seconds.'],
+    hints: ['Keep moving: weaving makes you harder to hit.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
     onUpdate(dt, G) {
       if (G.player.dead) { if (time > 0) G.ui.notify('Shot down! The survival clock starts over.', 'bad', 3); time = 0; }
       else { time += dt; this.progressed = true; }
