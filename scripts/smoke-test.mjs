@@ -602,6 +602,89 @@ try {
       G.objectives.current = null;
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    // Boss signature moves: ~20 s engaged with each boss shows its move at least once (a blink, a dive, a perch...).
+    // Every telegraphed hazard gives at least 1 s of warning, and no hazard or teleport starts while a boss is on a break.
+    out.moves = { kinds: {}, hazards: [], chaseTeleports: 0 };
+    {
+      const M = out.moves, warn = G.enemies.warn, V = G.player.pos.constructor;
+      G.enemies.warn = function (pos, r, color, t, onFire, opts) {
+        const owner = opts?.owner, rec = { kind: owner?.kind, onBreak: !!owner?.chase, at: G.time, fired: -1 };
+        M.hazards.push(rec);
+        return warn.call(this, pos, r, color, t, (h) => { rec.fired = +(G.time - rec.at).toFixed(2); onFire?.(h); }, opts);
+      };
+      const tidy = () => {
+        G.powerups.active.clear();
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      };
+      const end = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } tidy(); };
+      const flat = (v) => v.set(G.player.forward.x, 0, G.player.forward.z).normalize();
+      // Fly level at it (orbiters), or straight on (lead bosses and the Baron, who crosses in front of you).
+      const STRAIGHT = new Set(['octopus', 'crab', 'puffer', 'blimpBaron']);
+      try {
+        for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
+          tidy();
+          G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+          const [e] = startBoss(kind, { mod: null, duo: false });
+          const prev = e.pos.clone(), f = new V(), side = new V(), track = [];
+          const S = { teleport: 0, hazards: 0, run: 0, maxSpeed: 0, blobs: 0, ring: 0, angles: 0, guards: 0, shell: 0, still: 0, diveVy: 0, joust: 0, roll: -1, shields: '', lead: [Infinity, -Infinity], lateral: 0, puffShrink: 0 };
+          const buckets = new Set(), lat = [];
+          let stillN = 0, fireAt = -1, puff0 = -1, h0 = M.hazards.length;
+          for (let i = 0; i < 30 * 20; i++) {
+            G.player.grace = 1; G.player.health = G.player.maxHealth;
+            e.hp = e.maxHp; // a long look at the move, not a kill (nor rage)
+            if (!STRAIGHT.has(kind)) G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
+            if (kind === 'garyPrime' && i === 30 * 4) { G.input.keys.add('Space'); fireAt = G.time; }
+            step(1);
+            const to = new V().subVectors(e.pos, G.player.pos), dist = to.length(), speed = e.vel.length() * 0.85;
+            flat(f); side.set(-f.z, 0, f.x);
+            const jump = e.pos.distanceTo(prev);
+            if (jump > 80) { S.teleport++; if (e.chase) M.chaseTeleports++; }
+            prev.copy(e.pos);
+            if (i % 15 === 0) track.push(e.pos.clone());
+            S.maxSpeed = Math.max(S.maxSpeed, Math.round(speed));
+            S.blobs = Math.max(S.blobs, G.enemies.shots.filter((s) => s.owner === e).length);
+            const guards = G.enemies.list.filter((x) => x.guard && x.guard.boss === e && !x.guard.pop);
+            const ring = guards.filter((x) => x.guard.kind === 'ring');
+            S.ring = Math.max(S.ring, ring.length);
+            for (const g of ring) buckets.add(Math.floor(((Math.atan2(g.pos.z - e.pos.z, g.pos.x - e.pos.x) + Math.PI) / (Math.PI * 2)) * 12));
+            S.guards = Math.max(S.guards, guards.filter((x) => x.guard.kind === 'royal' && x.pos.distanceTo(e.pos) < 30).length);
+            S.shell = Math.max(S.shell, guards.filter((x) => x.guard.kind === 'shell').length);
+            stillN = e.mv?.sit && speed < 2 ? stillN + 1 : 0;
+            S.still = Math.max(S.still, +(stillN / 30).toFixed(1));
+            S.diveVy = Math.min(S.diveVy, Math.round(e.vel.y));
+            // Closing from in front of your nose: its own speed toward you (real m/s).
+            if (-to.dot(G.player.forward) < -0.5 * dist) S.joust = Math.max(S.joust, Math.round((-e.vel.dot(to) / dist) * 0.85));
+            if (fireAt >= 0 && S.roll < 0 && e.shield === 0) S.roll = +(G.time - fireAt).toFixed(2);
+            const sh = e.shield ?? 1;
+            if (S.shields.at(-1) !== (sh < 1 ? 'd' : 'u')) S.shields += sh < 1 ? 'd' : 'u';
+            if (i >= 180 && !e.chase) { const ahead = to.dot(f); S.lead = [Math.min(S.lead[0], Math.round(ahead)), Math.max(S.lead[1], Math.round(ahead))]; }
+            lat.push(to.dot(side));
+            if (lat.length > 30) lat.shift(); // 1 s
+            if (i >= 180) S.lateral = Math.max(S.lateral, Math.round(Math.max(...lat) - Math.min(...lat)));
+            if (e.puffT > 0 && puff0 < 0) puff0 = dist;
+            if (e.puffT > 0 && puff0 >= 0) S.puffShrink = Math.max(S.puffShrink, Math.round(puff0 - dist));
+            if (!(e.puffT > 0)) puff0 = -1;
+          }
+          G.input.keys.delete('Space');
+          // The longest straight stretch: 8 s of track whose end-to-end distance is ~its path length.
+          for (let a = 0; a + 16 < track.length; a++) {
+            let path = 0;
+            for (let k = a; k < a + 16; k++) path += track[k].distanceTo(track[k + 1]);
+            const span = track[a].distanceTo(track[a + 16]);
+            if (span > path * 0.97) S.run = Math.max(S.run, Math.round(span));
+          }
+          S.angles = buckets.size;
+          S.hazards = M.hazards.length - h0;
+          M.kinds[kind] = S;
+          end();
+        }
+      } finally {
+        G.enemies.warn = warn;
+        G.input.keys.delete('Space');
+      }
+    }
     // Breathing room: fly straight away from a boss (an orbiter and a lead boss) and it lets the gap open well past its
     // fight distance, hovering where it lost you (within 30 m, 8 m/s once it has braked), holding its fire and letting the
     // hull mend faster (50 hp at the breakaway, 70+ 12 s later). Then it comes back, but only to a standoff (fight + 150 m,
@@ -1060,6 +1143,44 @@ try {
     for (let k = 0; k < 3000; k++) G.terrain.deform(far.x + Math.random() * 160, far.z + Math.random() * 160, 13, 4);
     out.pit.cellMax = window.WORLD_FOR_TEST.craterCellMax();
 
+    // Boss moves in a cave (a roof) and in space (no ground): movers that pick spots in the air (Steven's circle, the
+    // Godfeather's perches, the Mothership's blinks, King Drone's thrones) stay inside the gap and keep fighting.
+    {
+      const zone = G.zones.index, { ZONES } = await import('./src/zones.js'), V = G.player.pos.constructor;
+      const tidy = () => {
+        G.powerups.active.clear();
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      };
+      out.moveZones = {};
+      for (const name of ['Crystal Caverns', 'Low Orbit']) {
+        G.zones.enter(ZONES.findIndex((z) => z.name === name));
+        step(60);
+        for (const kind of ['seagullSteven', 'pigeonDon', 'megaUfo', 'kingDrone']) {
+          tidy();
+          G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+          G.objectives.start(G.objectives.makeBoss(kind, { mod: null, duo: false }), 'boss');
+          const e = G.enemies.list.find((x) => x.boss);
+          let outside = 0, sat = false;
+          for (let i = 0; i < 30 * 12; i++) {
+            G.player.grace = 1; G.player.health = G.player.maxHealth; e.hp = e.maxHp;
+            G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
+            step(1);
+            const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y), floor = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
+            if (e.pos.y > roof - e.radius + 1 || e.pos.y < floor) outside++;
+            sat ||= !!e.mv?.sit;
+          }
+          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks };
+          G.objectives.current.dispose(G);
+          G.objectives.current = null;
+          tidy();
+        }
+      }
+      G.zones.enter(zone);
+      step(60);
+    }
     // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
     const zone0 = G.zones.index;
     G.zones.sinceZone = 2; // one objective away from the next zone
@@ -2216,6 +2337,24 @@ try {
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
+    // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
+    ...(() => {
+      const SIG = {
+        megaUfo: (s) => s.teleport >= 1, thunder: (s) => s.hazards >= 1, blimpBaron: (s) => s.run > 300,
+        jellyEmpress: (s) => s.maxSpeed > 35 && s.blobs > 0, mineMother: (s) => s.ring >= 6 && s.angles >= 6,
+        kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
+        seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
+        fortGrump: (s) => /udu/.test(s.shields), octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
+      };
+      const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
+      const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
+      const zones = Object.entries(report.moveZones || {});
+      return [
+        [Object.keys(kinds).length >= 15 && miss.length === 0, `every boss shows its signature move: blink, lightning columns, bombing runs, pulses, mine ring, royal guard, bee shell, perch, dive, joust, wingman roll, duck, jets, lane snaps, puffed approach (missing: ${miss.map((k) => `${k} ${JSON.stringify(kinds[k])}`).join('; ') || 'none'})`],
+        [fired.length >= 10 && fired.every((h) => h.fired >= 1) && hz.every((h) => !h.onBreak) && report.moves.chaseTeleports === 0, `boss hazards give 1 s+ of warning, and none (nor a teleport) starts while a boss is on a break (${hz.length} hazards, quickest ${Math.min(...fired.map((h) => h.fired))} s, on a break ${hz.filter((h) => h.onBreak).length}, teleports on a break ${report.moves?.chaseTeleports})`],
+        [zones.length === 8 && zones.every(([, z]) => z.outside === 0 && z.attacks > 0) && zones.filter(([k, z]) => k.endsWith('pigeonDon') && z.sat).length === 2, `boss moves in a cave and in space: bosses stay between floor and roof, keep attacking, and the Godfeather finds perches (${JSON.stringify(report.moveZones)})`],
+      ];
+    })(),
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap > b.fight + 120 && b.waitIn >= 0 && b.waitIn <= 15 && Math.abs(b.waitDist - 150) <= 30 && b.stayed && b.minWait > 120 && b.reIn >= 0 && b.reIn <= 8))(report.breathing || {}), `bosses let you fly off, come back only to a standoff (fight + 150 ± 30 m) within 15 s, stay past fight + 120 m while you keep fleeing, and re-engage within 8 s of you turning in (${JSON.stringify((report.breathing || {}))})`],
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap >= b.fight + 250 && b.quiet && b.again >= 2.5 && b.again <= 7))(report.breathing || {}), 'boss breakaway: the gap opens 250 m+ past fight distance, no attacks until it re-engages, then its first attack is 2.5 to 7 s later'],
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.homeOff <= 30 && b.braking <= 12 && b.hovering <= 8))(report.breathing || {}), 'boss breakaway: a loose boss hovers within 30 m of where it lost you, at 8 m/s (12 while braking, the first 1.5 s)'],
