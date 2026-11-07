@@ -373,7 +373,7 @@ export function mkSurvive(G) {
     desc: `Enemies come in waves, and they get bigger. Survive ${need} seconds. Every kill patches your hull a little. Shooting back is strongly encouraged.`,
     caps: new Set(['easier']),
     signText: ['SURVIVE!', '(GOOD LUCK)'],
-    hints: ['Keep moving: weaving makes you harder to hit.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
+    hints: ['Keep moving: weaving makes you harder to hit.', 'Kills patch your hull.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
     onUpdate(dt, G) {
       if (G.player.dead) {
         if (!down) {

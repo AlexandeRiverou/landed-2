@@ -27,7 +27,7 @@ const TYPES = {
   balloonBit: { hp: 1, radius: 3, dmg: 10, speed: 48, make: makeBalloonBit, score: 10, minScore: 0, weight: 0, kamikaze: true, quiet: true, name: 'Balloon Bit' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
   kites: { hp: 2, radius: 5, dmg: 12, speed: 26, make: makeKite, score: 50, minScore: 200, weight: 1, kamikaze: false, pair: true, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. Do not fly through the string. Go over. Or under.' },
-  moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Barrel roll to break up with it.' },
+  moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
 };
 const SWARMS = { gull: 4, bee: 6 };
 // Hold The Line ("The Rush"): mkSurvive (challenges.js) sets `frenzy` to { wave: 1..4 } and these take over spawning.
@@ -172,7 +172,7 @@ export const BOSSES = {
     rage: ['She is wobbling at a dangerous frequency.', 'The Empress has gone full jiggle.'],
   },
   garyPrime: {
-    make: makeRivalJet, scale: 4, crownY: 2, crownS: 0.8, radius: 18, hp: 85, speed: 46, orbit: 160, orbitRate: 0.4, dmg: 22, face: 'vel',
+    make: makeRivalJet, scale: 4, crownY: 2, crownS: 0.8, radius: 18, hp: 70, speed: 46, orbit: 160, orbitRate: 0.4, dmg: 22, dashDmg: 10, burstShot: [105, 5, '#ff3ad0', 0.8], face: 'vel',
     name: 'Gary Prime (Gary\'s Dad)', short: 'Gary Prime', noun: 'Gary Prime',
     move: 'wingman',
     desc: 'You kept shooting Gary. His dad flies alongside you, copies your moves, and dodges if you hold the trigger. Short bursts! Shoot the propeller!',
@@ -526,7 +526,7 @@ export class Enemies {
     if (e.burst > 0 && (e.burstT -= dt) <= 0 && !p.dead) {
       e.burst--;
       e.burstT = 0.12;
-      const [speed, dmg, color, size] = e.burstShot || [105, 7, '#ff3ad0', 0.8];
+      const [speed, dmg, color, size] = e.burstShot || e.def.burstShot || [105, 7, '#ff3ad0', 0.8]; // this attack's, the boss's, or the default bolt
       this.fireOrb(e.pos, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(e.pos), speed, dmg, color, size);
     }
     // Sir Puffington stays puffed up (and bulletproof-ish) for a while, then pops a spike nova.
@@ -610,7 +610,7 @@ export class Enemies {
         if (n % 3 === 0 && charge) {
           BOSS_MOVES.wingman.cut(this, e); // across your nose, guns blazing
           G.ui.notify('Gary Prime is cutting across your nose! Get out of the way!', 'warn', 2.5, 1);
-        } else e.burst = e.slow ? 3 : 5;
+        } else e.burst = e.slow ? 2 : 3;
         break;
       case 'hiveQueen':
         cd = 2.6;
@@ -660,7 +660,7 @@ export class Enemies {
       case 'crab': {
         cd = 2.4;
         if (n % 2 === 0 && BOSS_MOVES.lanes.pincers(this, e, true)) {
-          // Pincer shots (enraged: she closes to 90 m and fires a double).
+          // Pincer shots (enraged: she closes to 120 m and fires a double).
         } else {
           e.burst = e.enraged ? 10 : 7;
           e.burstShot = [75, 6, '#bfefff', 1];
@@ -913,7 +913,7 @@ export class Enemies {
         // Mega Plane flattens anything smaller than a boss.
         if (G.powerups.has('mega') && !e.boss) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         e.contactCd = 1.5; // big enemies bump you once, not every frame
-        p.damage(e.def.dmg);
+        p.damage(e.dash > 0 && e.def.dashDmg ? e.def.dashDmg : e.def.dmg); // dashDmg: a glancing bump mid-strafe (Gary's cut)
         if (e.dash > 0 || e.mv?.charge) {
           e.dash = 0;
           if (e.mv) e.mv.charge = false;
@@ -1163,7 +1163,7 @@ export class Enemies {
           if (G.powerups.has('mega')) { this.unlatch(e, true); break; } // too big to cling to: it bounces off for points
           e.latched = true;
           e.tank = p.boost;
-          G.ui.notify('A Clingy Moth latched on! It\'s draining your boost. Barrel roll to shake it off.', 'bad', 3, 1);
+          G.ui.notify('A Clingy Moth latched on! It\'s draining your boost. Do a stunt (barrel roll, loop) to break up with it.', 'bad', 3, 1);
           G.audio.tone(700, 0.25, { type: 'triangle', vol: 0.05, slide: -300 });
         }
         break;

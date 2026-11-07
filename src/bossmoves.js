@@ -332,14 +332,15 @@ export const MOVES = {
   },
 
   // Baron von Blimpenstein: straight 500 m runs across your path, 110 m ahead and 70 m up, with an oval U-turn at each
-  // end. A run's salvo (armed by its attack, with a horn) drops as it crosses over your path.
+  // end. A run's salvo (armed by its attack, with a horn) drops as it crosses over your path, where he eases to 60%
+  // (the middle 120 m): your best shot.
   racetrack: {
     step(en, e, c) {
       const p = c.p, h = heading(e, p, c.dt, 1);
       const m = e.mv ||= { s: -250, dir: e.orbitPhase ? -1 : 1, turn: -1, runs: 0, armed: false, drops: 0, dropT: 0 };
       let s, D = 110;
       if (m.turn < 0) {
-        m.s += m.dir * en.cruise(e) * 1.4 * c.dt;
+        m.s += m.dir * en.cruise(e) * 1.4 * (Math.abs(m.s) < 60 ? 0.6 : 1) * c.dt;
         if (m.s * m.dir >= 250) { m.turn = 0; m.s = 250 * m.dir; }
         s = m.s;
       } else {
@@ -351,8 +352,9 @@ export const MOVES = {
         if (u >= 1) newRun(en, e, m);
       }
       m.side = s;
-      const target = _b.copy(p.pos).addScaledVector(h, D).addScaledVector(sideOf(h, _a), s).setY(p.pos.y + 70);
-      arrive(e, target, p.speed * 1.8 / c.pace + en.cruise(e), c.dt, 2, 3);
+      // 70 m up, but never above 1100 m: you can't climb past the soft ceiling (1150 m, player.js) to reach him.
+      const target = _b.copy(p.pos).addScaledVector(h, D).addScaledVector(sideOf(h, _a), s).setY(Math.min(p.pos.y + 70, 1100));
+      arrive(e, target, p.speed * 1.2 + en.cruise(e), c.dt, 2, 3); // catching up after a U-turn: a bit over your speed
       // Bombs away while over your path (not aimed: they just fall).
       if (m.armed && m.drops > 0 && m.turn < 0 && Math.abs(s) < 120 && (m.dropT -= c.dt) <= 0) {
         m.drops--;
@@ -641,12 +643,13 @@ export const MOVES = {
       }
       return true;
     },
-    // A strafing run across your nose: it ends on your other wing.
+    // A strafing run across your nose: it ends on your other wing. Aimed 140 m ahead and 25 m up, so it crosses in
+    // front of you rather than through you.
     cut(en, e) {
       const p = en.G.player;
       e.dash = 2;
-      e.dashDir.copy(p.pos).addScaledVector(p.forward, 80).sub(e.pos).normalize();
-      e.burst = e.slow ? 3 : 5;
+      e.dashDir.copy(p.pos).addScaledVector(p.forward, 140).add(_c.set(0, 25, 0)).sub(e.pos).normalize();
+      e.burst = e.slow ? 2 : 3;
       if (e.mv) e.mv.side *= -1;
     },
   },
@@ -707,7 +710,7 @@ export const MOVES = {
   },
 
   // Captain Clawdia (lead): snaps between 3 lanes (-90 / 0 / +90 m) every 2 s, with a click before each hop. Enraged,
-  // her pincer shots come as a double from 90 m.
+  // her pincer shots come as a double from 120 m.
   lanes: {
     step(en, e, c) {
       const m = e.mv ||= { lane: 0, t: 0, closeT: 0, pincer2: 0 };
@@ -724,7 +727,7 @@ export const MOVES = {
       m.gain = m.hopT > 0 ? 5 : 1.6;
       m.speedK = m.hopT > 0 ? 1.6 : 1;
       m.closeT = Math.max(0, m.closeT - c.dt);
-      m.lead = m.closeT > 0 ? 90 : null;
+      m.lead = m.closeT > 0 ? 120 : null;
       m.near = m.closeT > 0 ? 40 : null;
       if (m.pincer2 > 0 && (m.pincer2 -= c.dt) <= 0) MOVES.lanes.pincers(en, e);
       return false;
@@ -734,7 +737,7 @@ export const MOVES = {
       const G = en.G, p = G.player, claws = e.mesh.userData.parts.filter((x) => x.name === 'claw' && !x.broken);
       if (!claws.length) return false;
       const dist = e.pos.distanceTo(p.pos), at = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 65) * 0.6);
-      for (const k of claws) { const from = k.obj.getWorldPosition(new THREE.Vector3()); en.fireOrb(from, at.clone().sub(from), 65, 16, '#ff6a3a', 1.8); }
+      for (const k of claws) { const from = k.obj.getWorldPosition(new THREE.Vector3()); en.fireOrb(from, at.clone().sub(from), 65, 12, '#ff6a3a', 1.8); }
       e.snap = 0.4;
       G.audio.tone(900, 0.12, { type: 'square', vol: 0.06, slide: -400 });
       if (first && e.enraged && e.mv) { e.mv.closeT = 2.5; e.mv.pincer2 = 0.6; }

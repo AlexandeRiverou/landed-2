@@ -223,6 +223,10 @@ try {
       res.par.at10 = finish(obj, { t: 10 });
       res.par.at14 = finish(start('hoop'), { t: 14 });
       res.par.timed = start('timed').par;
+      // Hold The Line runs a fixed 40 s clock: no par line on its card, and no speed bonus however it ends.
+      obj = start('survive');
+      G.step(1 / 30);
+      res.par.survive = { par: obj.par, card: document.getElementById('obj-par').textContent, done: finish(obj, { t: 1 }).lines.join() };
       // The banner: 4 world changes show the first and "+3 more", and it leaves within 3.6 s (still up at 3 s).
       G.mutations.celebrate = () => ['The trees are blue now.', 'Gravity is optional.', 'Clouds got bigger.', 'Sheep learned to fly.'];
       res.four = finish(start('hoop'));
@@ -684,6 +688,31 @@ try {
         G.enemies.warn = warn;
         G.input.keys.delete('Space');
       }
+    }
+    // Gary Prime's cut: aimed 140 m ahead of you and 25 m up (it crosses in front of you, not through you), and a bump
+    // mid-cut costs 10 hull, not his full 22.
+    {
+      const { MOVES } = await import('./src/bossmoves.js'), p = G.player;
+      G.powerups.active.clear();
+      const [e] = startBoss('garyPrime', { mod: null, duo: false });
+      e.pos.copy(p.pos).addScaledVector(p.right, 120);
+      MOVES.wingman.cut(G.enemies, e);
+      const aim = p.pos.clone().addScaledVector(p.forward, 140).setY(p.pos.y + 25).sub(e.pos).normalize();
+      out.garyCut = { aimErr: +e.dashDir.angleTo(aim).toFixed(3), burst: e.burst };
+      // Ram him (no shots in flight, none due): the first bump is mid-cut, the second after it.
+      const hits = [], damage = p.damage;
+      p.damage = function (n) { hits.push(n); return damage.call(this, n); };
+      const bump = () => {
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+        Object.assign(e, { cd: 99, burst: 0, contactCd: 0 }); e.pos.copy(p.pos); e.vel.set(0, 0, 0);
+        Object.assign(p, { invuln: 0, grace: 0, health: p.maxHealth });
+        hits.length = 0; G.step(1 / 30); return hits.slice();
+      };
+      try { out.garyCut.bump = bump(); e.dash = 0; out.garyCut.bumpPlain = bump(); } finally { p.damage = damage; }
+      G.objectives.current.dispose(G); G.objectives.current = null;
+      G.enemies.list.slice().forEach((x) => G.enemies.removeEnemy(x));
+      G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      p.health = p.maxHealth;
     }
     // Breathing room: fly straight away from a boss (an orbiter and a lead boss) and it lets the gap open well past its
     // fight distance, hovering where it lost you (within 30 m, 8 m/s once it has braked), holding its fire and letting the
@@ -1587,6 +1616,9 @@ try {
         if (!d) continue;
         G.persuasion.reset(null);
         if (type === 'loop') {
+          // The "LOOP HERE" sign fades out as you arrive, so it isn't sitting over your plane and crosshair.
+          const signAt = (pos) => { p.pos.copy(pos); d.o.dome.update(0); return d.o.dome.sign.material.opacity; };
+          out.signFade = { at: signAt(d.tg), far: signAt(d.tg.clone().addScaledVector(d.dir, -200)) };
           place(d.tg, d.dir); out.loopW = fly();
           place(d.tg, d.dir); out.loopBoost = fly({ boost: true });
           // easier() under a roof tightens the tuck (+0.25, up to 2.2): each loop from the dome is shorter. dispose() resets it.
@@ -2316,7 +2348,11 @@ try {
     const bits = E.list.filter((e) => e.type === 'balloonBit');
     out.dog = { dead: dog.dead, bits: bits.length };
     step(10);
-    shootAt(bits[0], 0.5);
+    // Bits home in and may ram the plane while we wait, so compare against the bits still alive right before the shot.
+    const target = E.list.find((e) => e.type === 'balloonBit');
+    out.dog.beforeBit = E.list.filter((e) => e.type === 'balloonBit').length;
+    if (target) shootAt(target, 0.5);
+    out.dog.bitDead = !!target?.dead;
     out.dog.afterBit = E.list.filter((e) => e.type === 'balloonBit').length;
     // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
     fresh();
@@ -2693,6 +2729,8 @@ try {
     [(({ arrow: [a0, a1, a2] }) => a0.shown && a0.faint && !a0.big && a0.label === '' && a1.shown && !a1.faint && !a1.big && a2.shown && !a2.faint && a2.big)(report.guide), 'guidance: an off-screen objective gets a faint unlabelled arrow before persuasion; its arrow steps make it normal, then big'],
     [(({ feeFree: a, feeFree2: b, feePaid: c }) => [a, b].every((r) => r.gain === 100 && r.lines[1] === 'Hints on the house' && !/fee/i.test(r.lines.join())) && c.gain === 76 && c.lines[1] === 'Hint fee -24')(report.guide), 'hint fee: none for the first 3 objectives ("Hints on the house"), charged from the 4th'],
     [(({ par: p }) => p.hoop === 12 && p.card === '⏱ Par 12 s · beat it for +60' && p.cardAfter === '' && p.at10.gain === 160 && p.at10.lines[1].includes('Speed bonus +60 (under par!)') && p.at14.gain === 100 && !/Speed bonus/.test(p.at14.lines.join()) && p.timed === 17)(report.guide), 'par: the hoop card shows "Par 12 s"; done in 10 s earns the speed bonus, in 14 s not; timed objectives get 60% of their clock'],
+    [((g) => g && g.aimErr < 0.01 && g.burst === 3 && g.bump.includes(10) && !g.bump.includes(22) && g.bumpPlain.includes(22))(report.garyCut), `Gary Prime's cut aims 140 m ahead and 25 m up, fires 3, and a bump mid-cut costs 10 (22 otherwise) (${JSON.stringify(report.garyCut)})`],
+    [(({ par: { survive: s } }) => s.par === Infinity && s.card === '' && !/Speed bonus/.test(s.done))(report.guide), `par: Hold The Line shows no par and never pays a speed bonus (${JSON.stringify(report.guide.par.survive)})`],
     [(({ four: f }) => f.lines.length === 4 && /^\+3 more world changes/.test(f.lines[3]) && f.lines[2] === 'The trees are blue now.' && f.showAt3s && !f.showAt36s)(report.guide) && report.bannerMaxLines >= 2 && report.bannerMaxLines <= 4, 'banner: at most 4 lines (4 world changes show one and "+3 more"), gone within 3.6 s'],
     [report.zoneBanner.length === 2 && /^New zone: /.test(report.zoneBanner[1]), `banner: a zone change shows the points and "New zone" only (${JSON.stringify(report.zoneBanner)})`],
     [report.guide.loopTasticHoops === 0 && report.guide.loopTasticLoops > 0 && report.guide.loopTasticLoops < 30, 'banner: "LOOP-TASTIC!" is only for the loop objective (200 hoops never), and not every time'],
@@ -2783,6 +2821,7 @@ try {
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
     ...(({ caveLoop: c }) => [
       [['loop', 'inverted'].every((k) => c[k] && c[k].dist >= 200 && c[k].dist <= 650 && c[k].chamber >= 120 && c[k].above >= 25 && c[k].above <= 45 && !c[k].virtual), `cave loops: a loop or upside-down objective targets a dome 200-650 m ahead, with >= 120 m from floor to roof over the loop and the start 25-45 m up (${JSON.stringify({ loop: c.loop && { ...c.loop, hints: undefined }, inverted: c.inverted && { ...c.inverted, hints: undefined, fly: undefined } })})`],
+      [c.signFade?.at === 0 && c.signFade.far === 1, `cave loops: the LOOP HERE sign is fully shown from 200 m out and gone once you're at the dome (${JSON.stringify(c.signFade)})`],
       [c.loopW?.done && !c.loopW.crashed && c.loopW.tucked && c.loopBoost?.done && !c.loopBoost.crashed, `cave loops: from the dome, holding W loops under the roof (tucked), and so does a boosted loop (${JSON.stringify([c.loopW, c.loopBoost])})`],
       [c.inverted?.fly?.at(-1)?.done && c.inverted.fly.length <= 2, `cave loops: from the dome, pulling up and letting go flies 4 s inverted without touching the roof (${JSON.stringify(c.inverted?.fly)})`],
       [c.loop?.hints.includes('In here, NO boost. Speed makes the loop bigger and the roof is not negotiable.') && c.loop.hints.includes('Fly to the glowing crystal dome, stay low, then hold W.') && !c.loop.hints.some((h) => /Shift/.test(h))
@@ -2886,7 +2925,7 @@ try {
     [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
     [['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('balloonBit') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (balloon bits never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
     [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
-    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.afterBit === 2, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.bitDead && RUSH.dog.afterBit === RUSH.dog.beforeBit - 1, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
     [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],

@@ -404,7 +404,8 @@ export function loopDome(G) {
 }
 
 // The marker: crystals in a ring round the middle of the loop's footprint, a soft glow on the floor there, and a
-// "LOOP HERE" sign floating just above the start. `pos` is the start (the objective's target).
+// "LOOP HERE" sign floating just above the start, fading out as you close in so it's not over your plane on arrival.
+// `pos` is the start (the objective's target).
 function makeDome(G, pos, dir, gap) {
   const D = DOME, g = new THREE.Group();
   const cx = pos.x + dir.x * (D.ahead / 2 - D.back), cz = pos.z + dir.z * (D.ahead / 2 - D.back);
@@ -424,8 +425,11 @@ function makeDome(G, pos, dir, gap) {
   g.add(glow, sign);
   G.scene.add(g);
   return {
-    pos, dir, gap,
-    update(t) { glowMat.opacity = 0.16 + Math.sin(t * 2.5) * 0.06; },
+    pos, dir, gap, sign,
+    update(t) {
+      glowMat.opacity = 0.16 + Math.sin(t * 2.5) * 0.06;
+      sign.material.opacity = THREE.MathUtils.clamp((G.player.pos.distanceTo(sign.position) - 30) / 30, 0, 1); // gone within 30 m
+    },
     dispose() { G.scene.remove(g); disposeTree(g); },
   };
 }
@@ -710,7 +714,8 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
 // ---------- manager ----------
 
 // Par times (s): finish under par for the speed bonus. Timed objectives get 60% of their clock; the rest (bosses too) 25 s.
-const PAR = { hoop: 12, tiny: 14, shrink: 14, moving: 15, altitude: 12, searchlight: 18, chain: 25, loop: 10, roll: 8, bullseye: 8, tour: 30, photo: 30, delivery: 40, bomb: 40, stars: 50 };
+// Hold The Line takes a fixed 40 s whatever you do, so it has no par (Infinity: no par line, no bonus).
+const PAR = { survive: Infinity, hoop: 12, tiny: 14, shrink: 14, moving: 15, altitude: 12, searchlight: 18, chain: 25, loop: 10, roll: 8, bullseye: 8, tour: 30, photo: 30, delivery: 40, bomb: 40, stars: 50 };
 const parFor = (obj, type) => PAR[type] ?? (obj.timeLimit ? Math.round(0.6 * obj.timeLimit) : 25);
 const FREE_HINTS = 3; // the first objectives of a run charge no hint fee
 
@@ -836,7 +841,7 @@ export class Objectives {
     const detail = [];
     let spare = null;
     if (!forced) {
-      if (obj.t < obj.par) { reward += 60; detail.push('Speed bonus +60 (under par!)'); }
+      if (Number.isFinite(obj.par) && obj.t < obj.par) { reward += 60; detail.push('Speed bonus +60 (under par!)'); }
       if (stage > 0 && this.completed < FREE_HINTS) detail.push('Hints on the house');
       else if (stage > 0) {
         const fee = Math.min(reward - 20, stage * 12);

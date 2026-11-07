@@ -356,7 +356,8 @@ on screen from the start. Each objective card shows a par time ("⏱ Par 12 s ·
 it; finish under par for a +60 speed bonus. Par is 12 s for a hoop or an altitude climb, 14 s for the tiny and
 shrinking hoops, 15 s for the wandering hoop, 18 s for the searchlights, 25 s for the slalom chain, 10 s for a loop,
 8 s for a barrel roll or a bullseye, 30 s for the tour or a photo safari, 40 s for a pizza delivery or a hot potato,
-and 50 s for stars. The speed hoop gets 60% of its clock (17 s); everything else, bosses included, gets 25 s. Hints
+and 50 s for stars. The speed hoop gets 60% of its clock (17 s); Hold The Line has no par (it always takes its full
+clock); everything else, bosses included, gets 25 s. Hints
 cost points (the "hint fee", 12 per persuasion tactic, never below 20 points left), except on the first 3 objectives of a run: "Hints on the
 house". The success banner keeps it short, at most 4 lines for 3.5 s: the points, one detail line (speed bonus, hint
 fee, spare plane), the headline world change and "+K more world changes. Look around!". When a win takes you into a
