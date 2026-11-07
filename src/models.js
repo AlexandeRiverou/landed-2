@@ -745,7 +745,7 @@ export function makeRivalJet(hat) {
 
 export function makeStorm(hat) {
   const g = new THREE.Group();
-  const m = lam('#5a5f6c');
+  const m = lam('#a9b0c2', { emissive: '#4a5068' }); // soft slate, lit from within: never a black blot overhead
   for (const [x, y, z, r] of [[10, -2, 2, 9], [-10, -1, -1, 9], [4, 5, -3, 8], [-5, 4, 3, 8], [0, -3, 8, 7]]) breakable(g, add(g, Ico(r, 1), m, { x, y, z }), r * 0.8, 'puff', 2);
   add(g, Ico(12, 1), m);
   weak(g, add(g, Sph(2.2, 8, 6), basic('#ffffff'), { x: 4, y: 2, z: 11.5 }), 2.4);

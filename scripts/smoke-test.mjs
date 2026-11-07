@@ -2434,19 +2434,26 @@ try {
     let zaps = 0;
     const zap = G.audio.zap;
     G.audio.zap = function () { zaps++; return zap.call(this); };
-    MOVES.loom.strike(E, cloud);
-    const hz = E.hazards.list.filter((h) => h.owner === cloud);
-    const rings = hz.filter((h) => h.shape === 'ring'), cols = hz.filter((h) => h.shape === 'column');
-    out.thunder = { rings: rings.length, spines: cols.length, thick: cols.filter((h) => h.mesh.scale.x > 1).length, other: hz.length - rings.length - cols.length, dark: hz.filter((h) => h.mesh.material.color.getHexString() === '2a2440').length, castZaps: zaps };
-    const [top, bottom, spine] = hz;
-    out.thunder.span = +(top.pos.y - bottom.pos.y).toFixed(1);
-    p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z);
-    p.invuln = 0;
-    const hp3 = p.health;
-    for (let k = 0; k < 30 * 1.3; k++) { E.hazards.update(1 / 30); p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z); }
-    out.thunder.lost = +(hp3 - p.health).toFixed(1);
-    out.thunder.landZaps = zaps - out.thunder.castZaps;
-    G.audio.zap = zap;
+    try {
+      MOVES.loom.strike(E, cloud);
+      const hz = E.hazards.list.filter((h) => h.owner === cloud);
+      const rings = hz.filter((h) => h.shape === 'ring'), cols = hz.filter((h) => h.shape === 'column');
+      out.thunder = { rings: rings.length, spines: cols.length, thick: cols.filter((h) => h.mesh.scale.x > 1).length, other: hz.length - rings.length - cols.length, dark: hz.filter((h) => h.mesh.material.color.getHexString() === '2a2440').length, castZaps: zaps };
+      // The cloud body itself must read as soft slate, not a black blot across the top of the view.
+      let shade = null;
+      cloud.mesh.traverse((o) => { if (shade === null && o.material?.isMeshLambertMaterial) shade = +(o.material.color.getHSL({}, 'srgb').l + o.material.emissive.getHSL({}, 'srgb').l).toFixed(2); });
+      out.thunder.shade = shade;
+      const [top, bottom, spine] = hz;
+      out.thunder.span = +(top.pos.y - bottom.pos.y).toFixed(1);
+      p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z);
+      p.invuln = 0;
+      const hp3 = p.health;
+      for (let k = 0; k < 30 * 1.3; k++) { E.hazards.update(1 / 30); p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z); }
+      out.thunder.lost = +(hp3 - p.health).toFixed(1);
+      out.thunder.landZaps = zaps - out.thunder.castZaps;
+    } finally {
+      G.audio.zap = zap;
+    }
     E.hazards.clear(cloud);
 
     clear();
@@ -2958,7 +2965,7 @@ try {
     [['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('pebble') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (pebbles never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
     [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
     [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Grudge Rock: breaks into 3 pebbles, which don't split again (${JSON.stringify(RUSH.dog)})`],
-    [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 18, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 18 on its axis, and the zap sounds on landing (${JSON.stringify(RUSH.thunder)})`],
+    [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 18 && RUSH.thunder.shade >= 0.6, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 18 on its axis, the zap sounds on landing, and the cloud body is light slate (${JSON.stringify(RUSH.thunder)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
     [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],

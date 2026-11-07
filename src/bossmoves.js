@@ -305,12 +305,13 @@ export const MOVES = {
     },
   },
 
-  // Thunderclaus: looms ~60 m above and ahead of you; lightning volleys strike along your path, each spot marked by a
-  // yellow ring at the cloud base, one at the bottom and a thin pale spine between them (nothing to block your view).
+  // Thunderclaus: looms ~75 m above and 200 m ahead of you (near the top of the view, not over it); lightning volleys
+  // strike along your path, each spot marked by a yellow ring at the cloud base, one at the bottom and a thin pale spine
+  // between them (nothing to block your view).
   loom: {
     step(en, e, c) {
       const h = heading(e, c.p, c.dt);
-      arrive(e, _b.copy(c.p.pos).addScaledVector(h, 120).add(_a.set(0, 60, 0)), en.cruise(e), c.dt, 1.2, 1);
+      arrive(e, _b.copy(c.p.pos).addScaledVector(h, 200).add(_a.set(0, 75, 0)), en.cruise(e), c.dt, 1.2, 1);
       return true;
     },
     strike(en, e) {
@@ -331,8 +332,8 @@ export const MOVES = {
           const dx = p.pos.x - x, dz = p.pos.z - z;
           if (dx * dx + dz * dz < 22 * 22 && p.pos.y < top + 5 && p.pos.y > bottom - 5) p.damage(18);
         }, { shape: 'ring', owner: e });
-        en.warn(at.clone().setY(bottom + 0.5), 22, '#ffe14a', fuse, null, { shape: 'ring', owner: e }); // where it lands
-        en.warn(at.clone().setY((top + bottom) / 2), 0.7, '#fff7a0', fuse, null, { shape: 'column', owner: e, h: Math.max(10, top - bottom) }); // the spine
+        en.warn(at.clone().setY(bottom + 2), 22, '#ffe14a', fuse, null, { shape: 'ring', owner: e }); // where it lands
+        en.warn(at.clone().setY((top + bottom) / 2), 0.45, '#fff7a0', fuse, null, { shape: 'column', owner: e, h: Math.max(10, top - bottom) }); // the spine
       }
       G.audio.tone(70, 0.9, { type: 'sawtooth', vol: 0.05, slide: -20 });
     },
