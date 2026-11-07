@@ -31,6 +31,13 @@ Most params are the ones random mutations also change (`amp`, `seaLevel`, `propT
 ones, all off by default:
 
 - **`cave: 1`:** a rock roof over everything (Crystal Caverns). `Terrain.ceilingHeight()` returns it.
+  Loops are tuned for it (Crystal Caverns only, not the Sunken Reef, which has no `cave` flag). While you hold pitch
+  up, the pitch rate scales with your speed over cruise, so boosting can't make a loop bigger, and once the loop is
+  under way it ramps to `player.loopTuck` × (`TUCK`, 1.5×: about a 53 m tall loop instead of 71 m). If the rest of
+  the circle wouldn't clear the roof, it tucks harder (up to 2.6×), and a roof under 20 m away mid-loop shows "Roof!
+  Pull harder!". Loop and upside-down objectives look 250–600 m ahead for a footprint with 120 m from floor to roof
+  (`loopDome(G)` in `src/objectives.js`, tuned by `DOME`), mark it with crystals, a glow and a "LOOP HERE ↺" sign,
+  and point there. It's a suggestion: a loop anywhere counts. If no spot qualifies there's no dome, only the tuck.
 - **`underwater: 1`:** you fly under the sea (Sunken Reef). The surface becomes the roof:
   `Terrain.ceilingHeight()` returns `seaLevel - 4`, and the player is held 7 m under the surface with a notice
   instead of crashing. The seabed is capped 60 m (`REEF_GAP`) under the surface and gets the land biomes, boats and

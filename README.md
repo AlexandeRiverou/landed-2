@@ -159,7 +159,15 @@ antennas, helipads, spires on the tallest towers and cranes on building sites.
 **Enemies** (`src/enemies.js`): angry drones, spiky balloon mines, a seagull gang, bee swarms, orb-spitting UFOs, ad
 blimps that drop "special offers", zapping sky jellyfish, grumpy ground cannons, Rival Pilot Gary (strafing runs), grumpy
 storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows. Enemies spawn in a narrow cone straight
-ahead of you and carry a small red marker, so you see them coming.
+ahead of you and carry a small red marker, so you see them coming. Five of them have their own trick:
+
+- **Umbrella Goon:** bullets bounce off its umbrella. Circle round and shoot it in the back.
+- **Balloon Animal:** pop it and it splits into 3 small, fast, angry balloon bits.
+- **Sniper Owl:** a red line means it's aiming. 1.5 s later it fires where you'll be. A stunt or a sharp turn
+  (35° or more) breaks the lock. Never more than 2 at once.
+- **Kite Twins:** two kites joined by a long string, and the string hurts. Go over or under it, or shoot one kite
+  to snap the string.
+- **Clingy Moth:** it latches onto your wing and drains your boost and hull. Any stunt shakes it off.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
 colours, props, sky, weather and music mood. There are 29, in order:
@@ -240,25 +248,37 @@ Game Over card says "Continued from *zone*". The title card remembers the furthe
 Furthest: Dune Sea (zone 4 of 29)", plus the lap after lap 1). Only flying on into a zone counts: a developer-menu jump
 doesn't by itself, but flying on from where it put you does.
 
-**Bosses** (`src/enemies.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
+**Bosses** (`src/enemies.js`, `src/bossmoves.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
 (a fresh random gap each time). There are 15, drawn from a shuffled deck so you meet them all before any repeats:
 
-- King Drone the Unpleasant (summons minions)
-- Her Royal Honkness the Goose Queen (golden eggs)
-- The Mothership (orb shotguns)
-- Thunderclaus (lightning up close, hail from afar)
-- Baron von Blimpenstein (carpet-bombs your flight path, drops "special offer" mines)
-- Empress Wobblina (rings of goo with a safe hole in the middle, zaps up close)
-- Gary Prime, Gary's dad (strafing runs and rapid bursts)
-- Queen Bee-atrice (stinger fans, calls in the swarm)
-- Don Pigeone the Godfeather (sends "associates", air mail from above)
-- Steven the Seagull Overlord (dive-bombs; a hit steals your boost)
-- The Mother of All Spiky Balloons (spike novas, mines in your path)
-- Fort Grumpington (a ground boss: mortars and flak; never in space)
-- Admiral Inkworth the Sky Octopus (a lead boss: ink blobs, orb spirals from its arms; every tentacle shot off means
-  fewer orbs)
-- Captain Clawdia the Sky Crab (a lead boss: bubble streams, pincer shots from each claw; snap the claws off)
-- Sir Puffington the Pufferfish (a lead boss: water jets, then puffs up so bullets bounce off, then pops a spike nova)
+- King Drone the Unpleasant: hops from throne to throne behind a ring of minion bodyguards, and sometimes yells
+  CHARGE and sends them at you.
+- Her Royal Honkness the Goose Queen: head-on jousts, dropping golden eggs as she passes.
+- The Mothership: blinks to a new spot (a green disc marks it first), fires orb shotguns, and once ENRAGED, a tractor beam.
+- Thunderclaus: hangs ahead of you and calls down lightning where you're going. Don't fly under the dark shafts.
+- Baron von Blimpenstein: bombing runs across your path. Don't fly under him. Shoot the gondola.
+- Empress Wobblina: swims in pulses, leaves stingers floating behind her, and fires rings of goo with a safe hole in
+  the middle.
+- Gary Prime, Gary's dad: flies alongside you as your mirror. Hold the trigger 1.5 s and he rolls out of the way, so
+  use short bursts. Shoot the propeller.
+- Queen Bee-atrice: darts around inside a shell of bodyguard bees. Pop the shell and she's exposed.
+- Don Pigeone the Godfeather: sits on a perch, sends "associates" and air mail rings, and moves house when you hit
+  him too often (or you wander off).
+- Steven the Seagull Overlord: circles high, then dive-bombs (a shadow ring warns you). Dodge and he faceplants. A hit
+  steals your boost.
+- The Mother of All Spiky Balloons: guarded by a spinning ring of mines. Find the gap. Mind the spike nova.
+- Fort Grumpington (a ground boss; never in space): pops up to fire mortars at marked rings, then ducks. Shoot it
+  while it's up, and aim for the barrel.
+- Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
+  Every tentacle shot off means fewer orbs.
+- Captain Clawdia the Sky Crab (a lead boss): snaps sideways between lanes in front of you. Bubble streams, pincer
+  shots. Snap the claws off.
+- Sir Puffington the Pufferfish (a lead boss): water jets, then puffs up (bullets bounce off) and drifts at you, then
+  pops a spike nova and is dazed for a moment. Shoot him while he's small.
+
+Every area attack shows up first as a translucent disc, ring or column, at least 1 s before it hits. Dodge a big move
+(a dive, a joust, the tractor beam) without getting hurt and you get "+25 Dodge!" and the boss is dazed for 1.5 s.
+A dazed boss has yellow stars over its head and takes 1.5× damage.
 
 From the third boss on, they can roll a modifier (Jumbo, Turbo, Furious But Fragile, Shiny for double points). From the
 fourth on, they can show up as twins that share one health bar. Most bosses circle you; lead bosses fly ahead of you,
@@ -269,8 +289,8 @@ in front, and hold their fire while they're behind you.
 Queen is sulking."). A circling boss can't keep up while you fly off from it: past half its orbit it goes at most 70%
 of your speed and gives up any charge it was making, and after 3 s of that out past its orbit it lets you go. Gary
 Prime and Steven never start a strafing run or a dive from behind a plane that's flying away. While it's lost you
-the boss hovers near the spot where it lost you and doesn't attack at all: no shots, summons, dashes, bombs, mines or
-dives. Its minions back off too and spawns pause for 3 s. The boss bar dims and says "(lost you)". Shoot it while it
+the boss hovers near the spot where it lost you and doesn't attack at all: no shots, summons, dashes, bombs, mines,
+dives or signature moves (its marked attacks and bodyguards go too). Its minions back off too and spawns pause for 3 s. The boss bar dims and says "(lost you)". Shoot it while it
 sulks and it fights back at once. While every boss in the fight has lost you or is coming back, your hull starts
 mending after 3 s instead of 10, at three times the rate. The break lasts up to 8 s of flying away, and ends early once
 you're 650 m out. Then it comes back, closing at most 30 m/s faster than you fly away, and stops about 150 m further
@@ -293,14 +313,19 @@ fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thi
 - *Collecting:* stars, balloons to fly into, a long wiggly star trail, a shooting gallery of balloons you have to shoot.
 - *Chases:* catching the golden goose, following Larry (Gary's nice cousin) or Professor Honk in formation.
 - *Stunts:* loop-de-loop (detected from your pitch rotation), flying upside down, going really fast, crop dusting (low
-  flying), climbing to an altitude.
+  flying), climbing to an altitude. In Crystal Caverns a loop is tighter while you keep pulling (boosting doesn't make
+  it bigger), it tucks harder near the roof, and "Roof! Pull harder!" warns you. Loops and upside-down objectives
+  there point you to a glowing crystal dome with a "LOOP HERE ↺" sign, over a tall chamber. Loops anywhere still count.
 - *Places:* buzzing a giant landmark, a three-stop sightseeing tour, flying under a stone arch, shooting a bullseye
   painted on the ground, and **Land On The Runway** (`src/runway.js`): a 24 × 180 m strip with lights and piano
   keys, flattened into the ground 520–820 m ahead. Touch down on it, then roll along it for 2 s or slow below
   12 m/s. If there's no dry land nearby, it makes you a little runway island. Not offered in Hollow Peaks, Metropolis,
   Sunken Reef or the zones with no ground.
-- *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line (survive 40 s while enemies
-  arrive twice as fast).
+- *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line: survive 40 s of 4 waves
+  ("WAVE 2/4"), each bigger than the last. Later waves come at you from the sides and (in open sky) from above, and
+  the final wave opens with three groups at once. Every kill mends 3 hull. Getting shot down knocks 15 s off the
+  clock instead of starting over, and after the second time the enemies ease off on their own. "THE LINE HELD!"
+  pops whatever's left. Worth 250.
 - *Quests* (new verbs, `src/quests.js`):
   - **Pizza Delivery:** fly into the pizza box, then take it to the drop-off pad under the light beam (over a void or
     in space it's a floating mailbox). It cools 2.4% a second once you have it. At 0% the customer eats cereal and
@@ -468,5 +493,21 @@ has `chase` (`null` when engaged, `'loose'`, `'catch'` coming back, or `'wait'` 
 state), `home` (where it lost you), `waitT` (s you've spent not fleeing while it waits), `fresh` (its next attack is
 the first after a break: no charge), `looseMax` (this break's length), `breaks` (breakaways in a row without damage),
 `behind` and `behindT` (s you've been flying off from it while engaged). An engaged boss is never sent back for
-being far away (a fresh one can spawn past the leash). The whole `G.secrets` API, and how to add a
+being far away (a fresh one can spawn past the leash).
+
+Boss signature moves live in `src/bossmoves.js` (`MOVES`). Each boss def in `BOSSES` names its `move`; `orbit` and
+`lead` are still its fight distance (breakaway, standoff). A move keeps its state in `e.mv`, which a breakaway or the
+boss's death clears, along with its hazards and bodyguards (enemies whose `e.guard` is `{ boss, kind, slot }`; not the same thing as the `guard` TYPES flag below). `G.enemies.warn(pos, r, color,
+t, onFire, { shape, owner, h })` puts down a telegraphed area attack (`shape` is `'disc'`, `'ring'`, `'column'` or
+`'sphere'`; `t` is at least 1 s), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hits bounce off),
+`split: [type, n]` (pops into n of another type), `max` (at most this many alive), `pair` (spawns as two joined by a
+string), `latch` (clings to the plane) and `quiet` (no intro). `CEILING` (exported, 18) caps regular enemies alive
+at once, whatever spawns them; boss bodyguards don't check it. `G.enemies.frenzy` is `null`, or during Hold The Line
+`{ wave, easier, burst, score }`; `WAVES` (exported) has each wave's spawn interval, cap, and flank/overhead chances,
+and gulls, bees and balloon bits count a third each toward a wave's cap. In caves, `loopDome(G)` (exported from
+`src/objectives.js`) finds and marks the loop chamber (or returns `null`), and the loop tuck is `TUCK` (exported from
+`src/player.js`, 1.5×) with `G.player.loopTuck` the current value (the loop's `easier()` raises it by 0.25, up to
+2.2, and it resets when the objective ends).
+
+The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).
