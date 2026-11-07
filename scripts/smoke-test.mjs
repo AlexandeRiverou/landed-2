@@ -681,6 +681,7 @@ try {
           }
           S.angles = buckets.size;
           S.hazards = M.hazards.length - h0;
+          S.attacks = e.attacks; // context when a signature is missing
           M.kinds[kind] = S;
           end();
         }
@@ -2347,13 +2348,21 @@ try {
     shootAt(dog, 0.5);
     const bits = E.list.filter((e) => e.type === 'balloonBit');
     out.dog = { dead: dog.dead, bits: bits.length };
-    step(10);
-    // Bits home in and may ram the plane while we wait, so compare against the bits still alive right before the shot.
-    const target = E.list.find((e) => e.type === 'balloonBit');
-    out.dog.beforeBit = E.list.filter((e) => e.type === 'balloonBit').length;
+    step(1); // past their 0.8 s scatter, before they've had long to ram the plane
+    // Bits home in and ram the plane (kamikaze), so some can vanish while we wait or shoot: count only bits that
+    // weren't there before the shot. Shooting one must kill it and make no new ones.
+    const bitsBefore = E.list.filter((e) => e.type === 'balloonBit');
+    const target = bitsBefore[0];
+    out.dog.beforeBit = bitsBefore.length;
+    out.dog.planeUp = !p.dead;
+    // Just the one bit, held still for the shot: a sibling right next to it could take the bullet, and one ramming the
+    // plane now would leave it unable to fire.
+    bitsBefore.slice(1).forEach((b) => E.removeEnemy(b));
+    G.powerups.active.set('freeze', 999);
     if (target) shootAt(target, 0.5);
+    G.powerups.active.delete('freeze');
     out.dog.bitDead = !!target?.dead;
-    out.dog.afterBit = E.list.filter((e) => e.type === 'balloonBit').length;
+    out.dog.newBits = E.list.filter((e) => e.type === 'balloonBit' && !bitsBefore.includes(e)).length;
     // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
     fresh();
     const owl = E.spawn('sniperOwl', ahead(330, 30));
@@ -2925,7 +2934,7 @@ try {
     [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
     [['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('balloonBit') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (balloon bits never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
     [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
-    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.bitDead && RUSH.dog.afterBit === RUSH.dog.beforeBit - 1, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
     [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],

@@ -536,11 +536,13 @@ export const MOVES = {
         _a.copy(m.target).sub(e.pos);
         e.vel.lerp(_a.setLength(en.cruise(e) * 2.6), 1 - Math.exp(-c.dt * 8));
         const low = e.pos.y - floorAt(G, e.pos) < e.radius + 25;
-        if (_a.subVectors(m.target, e.pos).length() < 15 || m.diveT > 2.5 || low) {
+        // You turned away mid-dive (out past half his orbit): he calls it off and lets you go, like any boss charge.
+        const fled = e.behind && c.dist > e.def.orbit * 0.5;
+        if (_a.subVectors(m.target, e.pos).length() < 15 || m.diveT > 2.5 || low || fled) {
           m.diving = false;
           m.charge = false;
-          m.pull = 1.2;
-          if (low) { daze(e, 2.5); G.ui.notify('Steven faceplanted! He\'s wide open!', 'good', 2.5, 0); G.audio.tone(200, 0.3, { type: 'square', vol: 0.06, slide: -120 }); }
+          m.pull = fled ? 0 : 1.2;
+          if (low && !fled) { daze(e, 2.5); G.ui.notify('Steven faceplanted! He\'s wide open!', 'good', 2.5, 0); G.audio.tone(200, 0.3, { type: 'square', vol: 0.06, slide: -120 }); }
           dodgeEnd(en, e);
         }
         return true;

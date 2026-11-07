@@ -572,7 +572,9 @@ export class Enemies {
         break;
       case 'megaUfo':
         cd = 3.4;
-        if (n % 3 === 0 && charge && BOSS_MOVES.blink.start(this, e)) break; // every 3rd: teleport instead
+        // Every 3rd attack: teleport instead. One due while you're turned away waits for the next attack, not 3 more.
+        if (n % 3 === 0) e.blinkDue = true;
+        if (e.blinkDue && charge && BOSS_MOVES.blink.start(this, e)) { e.blinkDue = false; break; }
         for (let k = 0; k < Math.max(2, 7 - (e.broken?.turret || 0)); k++) this.fireOrb(e.pos, aim(0.22), 52, 12, '#7aff5a', 1.1);
         G.audio.tone(200, 0.4, { type: 'sine', vol: 0.08, slide: 500 });
         break;
