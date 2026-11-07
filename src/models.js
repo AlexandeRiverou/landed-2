@@ -771,28 +771,30 @@ export function makeUmbrella(hat) {
   return g;
 }
 
-const BALLOON_COLORS = ['#ff4d6a', '#4dc4ff', '#7aff5a', '#ffd23a', '#c86aff'];
-const shiny = (color) => new THREE.MeshPhongMaterial({ color, shininess: 90, specular: '#ffffff' });
-
-// A balloon-animal dog: three balloons (body, head, tail) on tube legs.
-export function makeBalloonDog(hat) {
-  const g = new THREE.Group(), m = shiny(pick(BALLOON_COLORS));
-  add(g, Sph(3.2, 10, 8), m, { s: [0.9, 0.9, 1.7] });
-  add(g, Sph(2.4, 10, 8), m, { y: 3, z: 5, s: [1, 1, 1.3] });
-  add(g, Sph(1.6, 8, 6), m, { y: 3.2, z: -5.4, s: [0.7, 1.6, 0.7], rx: -0.5 });
-  for (const s of [-1, 1]) add(g, Sph(0.9, 6, 4), m, { x: s * 1.4, y: 5.2, z: 4.4, s: [0.8, 1.8, 0.8] }); // ears
-  for (const [x, z] of [[1.6, 2.6], [-1.6, 2.6], [1.6, -2.6], [-1.6, -2.6]]) add(g, Cyl(0.9, 0.9, 4.5, 8), m, { x, y: -3.4, z });
-  for (const x of [-0.8, 0.8]) add(g, Sph(0.35, 5, 4), basic('#1d1d22'), { x, y: 3.6, z: 7.6 });
-  if (hat) partyHat(g, 6.4);
+// A Grudge Rock: a mossy boulder with a flower on top and an angry face on its front (+Z).
+export function makeGrudgeRock(hat) {
+  const g = new THREE.Group(), stone = lam(C.rock);
+  add(g, Ico(6, 0), stone, { s: [1.1, 0.8, 1] });
+  add(g, Cone(5, 6, 6), lam(C.rock2), { y: -6, rx: PI }); // the underside, point down
+  add(g, Cyl(4.8, 5.4, 1, 7), lam(C.grass), { y: 4.2 }); // a moss cap
+  add(g, Box(0.15, 1.2, 0.15), lam(C.leaf), { x: 2, y: 5.2 });
+  add(g, Sph(0.55, 5, 4), basic(C.yellow), { x: 2, y: 5.9 });
+  for (const s of [-1, 1]) {
+    add(g, Sph(1.1, 8, 6), basic('#ffffff'), { x: s * 1.8, y: 0.8, z: 5.6 });
+    add(g, Sph(0.5, 6, 4), basic('#111111'), { x: s * 1.8, y: 0.8, z: 6.6 });
+    add(g, Box(2.4, 0.5, 0.5), basic('#222222'), { x: s * 1.8, y: 2.3, z: 6, rz: s * 0.4 }); // inner ends down: cross
+  }
+  if (hat) partyHat(g, 6);
   return g;
 }
 
-// One of the smaller, angrier balloons a Balloon Animal pops into.
-export function makeBalloonBit() {
-  const g = new THREE.Group(), color = pick(BALLOON_COLORS);
-  add(g, Sph(2, 8, 6), shiny(color), { s: [1, 1.2, 1] });
-  add(g, Cone(0.5, 0.8, 5), lam(color), { y: -2.6, rx: PI });
-  add(g, Box(0.8, 0.25, 0.25), basic('#1d1d22'), { y: 0.8, z: 1.8, rz: 0.3 }); // an angry brow
+// One of the pebbles a Grudge Rock breaks into. Still cross about it.
+export function makePebble() {
+  const g = new THREE.Group();
+  add(g, Ico(2.2, 0), lam(C.rock), { s: [1, 0.85, 1.1] });
+  add(g, Sph(0.7, 4, 3), lam(C.grass), { y: 1.6 });
+  for (const x of [-0.6, 0.6]) add(g, Sph(0.4, 5, 4), basic('#ffffff'), { x, y: 0.4, z: 2 });
+  add(g, Box(1.6, 0.35, 0.35), basic(C.black), { y: 1, z: 2, rz: 0.3 }); // one angry brow
   return g;
 }
 

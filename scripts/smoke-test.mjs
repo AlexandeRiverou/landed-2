@@ -2192,7 +2192,7 @@ try {
   }, FLAT);
 
   // Hold The Line ("The Rush": four waves, a clock that slips back when you're shot down) and the five newer regular
-  // enemies (Umbrella Goon, Balloon Animal, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
+  // enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
   // world changes for completing an objective are held back, and score, lives and god mode are put back afterwards.
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
@@ -2272,7 +2272,7 @@ try {
     const near = (list) => list.sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos))[0];
     G.score = 5000;
     out.types = {};
-    for (const type of ['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth']) {
+    for (const type of ['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth']) {
       fresh();
       E.introduced.delete(type);
       const n0 = notes.length;
@@ -2341,17 +2341,17 @@ try {
     u.face = toU.clone(); // facing away: you're behind it
     const back = shootAt(u);
     out.umbrella = { front, back };
-    // Balloon Animal: pops into 3 bits; a bit doesn't split again.
+    // Grudge Rock: breaks into 3 pebbles; a pebble doesn't split again.
     fresh();
-    const dog = E.spawn('balloonDog', ahead(80));
+    const dog = E.spawn('grudgeRock', ahead(80));
     step(1);
     shootAt(dog, 0.5);
-    const bits = E.list.filter((e) => e.type === 'balloonBit');
+    const bits = E.list.filter((e) => e.type === 'pebble');
     out.dog = { dead: dog.dead, bits: bits.length };
     step(1); // past their 0.8 s scatter, before they've had long to ram the plane
     // Bits home in and ram the plane (kamikaze), so some can vanish while we wait or shoot: count only bits that
     // weren't there before the shot. Shooting one must kill it and make no new ones.
-    const bitsBefore = E.list.filter((e) => e.type === 'balloonBit');
+    const bitsBefore = E.list.filter((e) => e.type === 'pebble');
     const target = bitsBefore[0];
     out.dog.beforeBit = bitsBefore.length;
     out.dog.planeUp = !p.dead;
@@ -2362,7 +2362,7 @@ try {
     if (target) shootAt(target, 0.5);
     G.powerups.active.delete('freeze');
     out.dog.bitDead = !!target?.dead;
-    out.dog.newBits = E.list.filter((e) => e.type === 'balloonBit' && !bitsBefore.includes(e)).length;
+    out.dog.newBits = E.list.filter((e) => e.type === 'pebble' && !bitsBefore.includes(e)).length;
     // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
     fresh();
     const owl = E.spawn('sniperOwl', ahead(330, 30));
@@ -2425,6 +2425,29 @@ try {
     p.damage(1e4);
     step(1, false);
     out.moth.dropped = !moth2.latched;
+    // Thunderclaus's volley: per strike a charged yellow ring up top, one at the bottom and a thin spine (no dark
+    // column to block the view). Only the hazards tick, so the boss itself never gets a turn; sitting on the first
+    // strike's axis costs exactly 18, and the zap sounds when it lands, not at the cast.
+    fresh();
+    const { MOVES } = await import('./src/bossmoves.js');
+    const cloud = E.spawnBoss('thunder', ahead(120, 60));
+    let zaps = 0;
+    const zap = G.audio.zap;
+    G.audio.zap = function () { zaps++; return zap.call(this); };
+    MOVES.loom.strike(E, cloud);
+    const hz = E.hazards.list.filter((h) => h.owner === cloud);
+    const rings = hz.filter((h) => h.shape === 'ring'), cols = hz.filter((h) => h.shape === 'column');
+    out.thunder = { rings: rings.length, spines: cols.length, thick: cols.filter((h) => h.mesh.scale.x > 1).length, other: hz.length - rings.length - cols.length, dark: hz.filter((h) => h.mesh.material.color.getHexString() === '2a2440').length, castZaps: zaps };
+    const [top, bottom, spine] = hz;
+    out.thunder.span = +(top.pos.y - bottom.pos.y).toFixed(1);
+    p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z);
+    p.invuln = 0;
+    const hp3 = p.health;
+    for (let k = 0; k < 30 * 1.3; k++) { E.hazards.update(1 / 30); p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z); }
+    out.thunder.lost = +(hp3 - p.health).toFixed(1);
+    out.thunder.landZaps = zaps - out.thunder.castZaps;
+    G.audio.zap = zap;
+    E.hazards.clear(cloud);
 
     clear();
     quiet();
@@ -2932,9 +2955,10 @@ try {
     [RUSH.relax.regulars === 0 && !RUSH.relax.objective, 'Hold The Line: nothing spawns in Relax Mode'],
     [Object.values(RUSH.types).every((r) => r.spawned >= 1 && r.intro === 1 && r.extra), `new enemies: each one spawns and shows its intro once (${JSON.stringify(RUSH.types)})`],
     [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
-    [['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('balloonBit') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (balloon bits never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
+    [['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('pebble') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (pebbles never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
     [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
-    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Grudge Rock: breaks into 3 pebbles, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 18, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 18 on its axis, and the zap sounds on landing (${JSON.stringify(RUSH.thunder)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
     [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],
