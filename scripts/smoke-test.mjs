@@ -223,6 +223,10 @@ try {
       res.par.at10 = finish(obj, { t: 10 });
       res.par.at14 = finish(start('hoop'), { t: 14 });
       res.par.timed = start('timed').par;
+      // Hold The Line runs a fixed 40 s clock: no par line on its card, and no speed bonus however it ends.
+      obj = start('survive');
+      G.step(1 / 30);
+      res.par.survive = { par: obj.par, card: document.getElementById('obj-par').textContent, done: finish(obj, { t: 1 }).lines.join() };
       // The banner: 4 world changes show the first and "+3 more", and it leaves within 3.6 s (still up at 3 s).
       G.mutations.celebrate = () => ['The trees are blue now.', 'Gravity is optional.', 'Clouds got bigger.', 'Sheep learned to fly.'];
       res.four = finish(start('hoop'));
@@ -601,6 +605,115 @@ try {
       G.objectives.current.dispose(G);
       G.objectives.current = null;
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    }
+    // Boss signature moves: ~20 s engaged with each boss shows its move at least once (a blink, a dive, a perch...).
+    // Every telegraphed hazard gives at least 1 s of warning, and no hazard or teleport starts while a boss is on a break.
+    out.moves = { kinds: {}, hazards: [], chaseTeleports: 0 };
+    {
+      const M = out.moves, warn = G.enemies.warn, V = G.player.pos.constructor;
+      G.enemies.warn = function (pos, r, color, t, onFire, opts) {
+        const owner = opts?.owner, rec = { kind: owner?.kind, onBreak: !!owner?.chase, at: G.time, fired: -1 };
+        M.hazards.push(rec);
+        return warn.call(this, pos, r, color, t, (h) => { rec.fired = +(G.time - rec.at).toFixed(2); onFire?.(h); }, opts);
+      };
+      const tidy = () => {
+        G.powerups.active.clear();
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      };
+      const end = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } tidy(); };
+      const flat = (v) => v.set(G.player.forward.x, 0, G.player.forward.z).normalize();
+      // Fly level at it (orbiters), or straight on (lead bosses and the Baron, who crosses in front of you).
+      const STRAIGHT = new Set(['octopus', 'crab', 'puffer', 'blimpBaron']);
+      try {
+        for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
+          tidy();
+          G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+          const [e] = startBoss(kind, { mod: null, duo: false });
+          const prev = e.pos.clone(), f = new V(), side = new V(), track = [];
+          const S = { teleport: 0, hazards: 0, run: 0, maxSpeed: 0, blobs: 0, ring: 0, angles: 0, guards: 0, shell: 0, still: 0, diveVy: 0, joust: 0, roll: -1, shields: '', lead: [Infinity, -Infinity], lateral: 0, puffShrink: 0 };
+          const buckets = new Set(), lat = [];
+          let stillN = 0, fireAt = -1, puff0 = -1, h0 = M.hazards.length;
+          for (let i = 0; i < 30 * 20; i++) {
+            G.player.grace = 1; G.player.health = G.player.maxHealth;
+            e.hp = e.maxHp; // a long look at the move, not a kill (nor rage)
+            if (!STRAIGHT.has(kind)) G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
+            if (kind === 'garyPrime' && i === 30 * 4) { G.input.keys.add('Space'); fireAt = G.time; }
+            step(1);
+            const to = new V().subVectors(e.pos, G.player.pos), dist = to.length(), speed = e.vel.length() * 0.85;
+            flat(f); side.set(-f.z, 0, f.x);
+            const jump = e.pos.distanceTo(prev);
+            if (jump > 80) { S.teleport++; if (e.chase) M.chaseTeleports++; }
+            prev.copy(e.pos);
+            if (i % 15 === 0) track.push(e.pos.clone());
+            S.maxSpeed = Math.max(S.maxSpeed, Math.round(speed));
+            S.blobs = Math.max(S.blobs, G.enemies.shots.filter((s) => s.owner === e).length);
+            const guards = G.enemies.list.filter((x) => x.guard && x.guard.boss === e && !x.guard.pop);
+            const ring = guards.filter((x) => x.guard.kind === 'ring');
+            S.ring = Math.max(S.ring, ring.length);
+            for (const g of ring) buckets.add(Math.floor(((Math.atan2(g.pos.z - e.pos.z, g.pos.x - e.pos.x) + Math.PI) / (Math.PI * 2)) * 12));
+            S.guards = Math.max(S.guards, guards.filter((x) => x.guard.kind === 'royal' && x.pos.distanceTo(e.pos) < 30).length);
+            S.shell = Math.max(S.shell, guards.filter((x) => x.guard.kind === 'shell').length);
+            stillN = e.mv?.sit && speed < 2 ? stillN + 1 : 0;
+            S.still = Math.max(S.still, +(stillN / 30).toFixed(1));
+            S.diveVy = Math.min(S.diveVy, Math.round(e.vel.y));
+            // Closing from in front of your nose: its own speed toward you (real m/s).
+            if (-to.dot(G.player.forward) < -0.5 * dist) S.joust = Math.max(S.joust, Math.round((-e.vel.dot(to) / dist) * 0.85));
+            if (fireAt >= 0 && S.roll < 0 && e.shield === 0) S.roll = +(G.time - fireAt).toFixed(2);
+            const sh = e.shield ?? 1;
+            if (S.shields.at(-1) !== (sh < 1 ? 'd' : 'u')) S.shields += sh < 1 ? 'd' : 'u';
+            if (i >= 180 && !e.chase) { const ahead = to.dot(f); S.lead = [Math.min(S.lead[0], Math.round(ahead)), Math.max(S.lead[1], Math.round(ahead))]; }
+            lat.push(to.dot(side));
+            if (lat.length > 30) lat.shift(); // 1 s
+            if (i >= 180) S.lateral = Math.max(S.lateral, Math.round(Math.max(...lat) - Math.min(...lat)));
+            if (e.puffT > 0 && puff0 < 0) puff0 = dist;
+            if (e.puffT > 0 && puff0 >= 0) S.puffShrink = Math.max(S.puffShrink, Math.round(puff0 - dist));
+            if (!(e.puffT > 0)) puff0 = -1;
+          }
+          G.input.keys.delete('Space');
+          // The longest straight stretch: 8 s of track whose end-to-end distance is ~its path length.
+          for (let a = 0; a + 16 < track.length; a++) {
+            let path = 0;
+            for (let k = a; k < a + 16; k++) path += track[k].distanceTo(track[k + 1]);
+            const span = track[a].distanceTo(track[a + 16]);
+            if (span > path * 0.97) S.run = Math.max(S.run, Math.round(span));
+          }
+          S.angles = buckets.size;
+          S.hazards = M.hazards.length - h0;
+          S.attacks = e.attacks; // context when a signature is missing
+          M.kinds[kind] = S;
+          end();
+        }
+      } finally {
+        G.enemies.warn = warn;
+        G.input.keys.delete('Space');
+      }
+    }
+    // Gary Prime's cut: aimed 140 m ahead of you and 25 m up (it crosses in front of you, not through you), and a bump
+    // mid-cut costs 10 hull, not his full 22.
+    {
+      const { MOVES } = await import('./src/bossmoves.js'), p = G.player;
+      G.powerups.active.clear();
+      const [e] = startBoss('garyPrime', { mod: null, duo: false });
+      e.pos.copy(p.pos).addScaledVector(p.right, 120);
+      MOVES.wingman.cut(G.enemies, e);
+      const aim = p.pos.clone().addScaledVector(p.forward, 140).setY(p.pos.y + 25).sub(e.pos).normalize();
+      out.garyCut = { aimErr: +e.dashDir.angleTo(aim).toFixed(3), burst: e.burst };
+      // Ram him (no shots in flight, none due): the first bump is mid-cut, the second after it.
+      const hits = [], damage = p.damage;
+      p.damage = function (n) { hits.push(n); return damage.call(this, n); };
+      const bump = () => {
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+        Object.assign(e, { cd: 99, burst: 0, contactCd: 0 }); e.pos.copy(p.pos); e.vel.set(0, 0, 0);
+        Object.assign(p, { invuln: 0, grace: 0, health: p.maxHealth });
+        hits.length = 0; G.step(1 / 30); return hits.slice();
+      };
+      try { out.garyCut.bump = bump(); e.dash = 0; out.garyCut.bumpPlain = bump(); } finally { p.damage = damage; }
+      G.objectives.current.dispose(G); G.objectives.current = null;
+      G.enemies.list.slice().forEach((x) => G.enemies.removeEnemy(x));
+      G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      p.health = p.maxHealth;
     }
     // Breathing room: fly straight away from a boss (an orbiter and a lead boss) and it lets the gap open well past its
     // fight distance, hovering where it lost you (within 30 m, 8 m/s once it has braked), holding its fire and letting the
@@ -1060,6 +1173,44 @@ try {
     for (let k = 0; k < 3000; k++) G.terrain.deform(far.x + Math.random() * 160, far.z + Math.random() * 160, 13, 4);
     out.pit.cellMax = window.WORLD_FOR_TEST.craterCellMax();
 
+    // Boss moves in a cave (a roof) and in space (no ground): movers that pick spots in the air (Steven's circle, the
+    // Godfeather's perches, the Mothership's blinks, King Drone's thrones) stay inside the gap and keep fighting.
+    {
+      const zone = G.zones.index, { ZONES } = await import('./src/zones.js'), V = G.player.pos.constructor;
+      const tidy = () => {
+        G.powerups.active.clear();
+        G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+        G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+        G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+      };
+      out.moveZones = {};
+      for (const name of ['Crystal Caverns', 'Low Orbit']) {
+        G.zones.enter(ZONES.findIndex((z) => z.name === name));
+        step(60);
+        for (const kind of ['seagullSteven', 'pigeonDon', 'megaUfo', 'kingDrone']) {
+          tidy();
+          G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+          if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+          G.objectives.start(G.objectives.makeBoss(kind, { mod: null, duo: false }), 'boss');
+          const e = G.enemies.list.find((x) => x.boss);
+          let outside = 0, sat = false;
+          for (let i = 0; i < 30 * 12; i++) {
+            G.player.grace = 1; G.player.health = G.player.maxHealth; e.hp = e.maxHp;
+            G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
+            step(1);
+            const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y), floor = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
+            if (e.pos.y > roof - e.radius + 1 || e.pos.y < floor) outside++;
+            sat ||= !!e.mv?.sit;
+          }
+          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks };
+          G.objectives.current.dispose(G);
+          G.objectives.current = null;
+          tidy();
+        }
+      }
+      G.zones.enter(zone);
+      step(60);
+    }
     // Zones: completing objectives flies you on to the next zone; every zone loads cleanly.
     const zone0 = G.zones.index;
     G.zones.sinceZone = 2; // one objective away from the next zone
@@ -1392,6 +1543,158 @@ try {
     out.hullGrew = G.player.maxHealth > hull || G.progress.level >= 3;
     out.score = G.score;
     out.chunks = G.terrain.chunks.size;
+    return out;
+  });
+  // Loops under a cave roof (Crystal Caverns): a loop or upside-down objective finds a tall chamber ahead (the dome)
+  // and targets it; from there, holding W (boosting or not) loops without touching the roof, thanks to the tuck; the
+  // hints fit a cave; easier() tightens the tuck. Outside caves loops are as before. No safety net: a crash is only
+  // recorded (no life lost), grace and invulnerability are off, no enemies, and objectives don't complete mid-check.
+  report.caveLoop = await page.evaluate(async () => {
+    const G = window.G, p = G.player, V = p.pos.constructor, Y = new V(0, 1, 0);
+    const { ZONES } = await import('./src/zones.js');
+    const { TUCK } = await import('./src/player.js');
+    const { waterLine } = await import('./src/world.js');
+    const saved = { zone: G.zones.index, baseSpeed: p.baseSpeed, update: G.objectives.update, spawn: G.enemies.spawnTimer, crash: p.crash, health: p.health, cooldown: G.objectives.cooldown, notify: G.ui.notify };
+    const out = {};
+    let crashed = null, notes = [];
+    p.crash = (r) => { crashed ||= r; };
+    G.ui.notify = function (text, ...rest) { notes.push({ text, t: G.time }); return saved.notify.call(this, text, ...rest); };
+    G.objectives.update = () => {};
+    G.enemies.spawnTimer = 1e9;
+    p.baseSpeed = 44; // a fresh run's cruise speed (the speed mutation may have raised it by now)
+    const clearObj = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); };
+    const calm = () => { G.enemies.list.slice().forEach((e) => G.enemies.removeEnemy(e)); G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); };
+    const frame = () => { p.invuln = 0; p.grace = 0; p.health = 1e6; G.step(1 / 60); };
+    const enter = (i) => { G.zones.enter(i); for (let k = 0; k < 30; k++) G.step(0.1); G.objectives.cooldown = 1e9; clearObj(); calm(); };
+    const floor = (x, z) => Math.max(G.terrain.surfaceHeight(x, z), waterLine());
+    const chamber = (t, d) => { // lowest roof minus highest floor over the loop's footprint (as the dome search sees it)
+      let f = -Infinity, r = Infinity;
+      for (let a = -10; a <= 70; a += 10) for (const s of [-15, 0, 15]) { const x = t.x + d.x * a - d.z * s, z = t.z + d.z * a + d.x * s; f = Math.max(f, floor(x, z)); r = Math.min(r, G.terrain.ceilingHeight(x, z)); }
+      return Math.round(r - f);
+    };
+    const place = (pos, dir) => {
+      p.pos.copy(pos); p.prevPos.copy(p.pos);
+      p.quat.setFromAxisAngle(Y, Math.atan2(-dir.x, -dir.z)); p.updateAxes();
+      Object.assign(p, { speed: p.baseSpeed, loopAccum: 0, boost: 1, maneuver: null, landed: null, dead: false, god: false });
+      p.model.group.visible = true;
+    };
+    // Hold W (boosting: at full boost speed already, Shift held) until one full loop, or (invert) until upside down, then let go for 4 s inverted.
+    const fly = ({ boost = false, invert = false, max = 9 } = {}) => {
+      crashed = null; calm();
+      let t = 0, pa = 0, inv = 0, done = false, released = false, y0 = p.pos.y, ymax = y0, tucked = false;
+      if (boost) { G.input.keys.add('ShiftLeft'); p.speed = p.baseSpeed * 1.7; }
+      G.input.keys.add('KeyW');
+      while (t < max && !crashed && !done) {
+        frame(); t += 1 / 60; ymax = Math.max(ymax, p.pos.y); tucked ||= p.tuckT > 0;
+        if (invert) {
+          if (!released && p.up.y < -0.9 && p.forward.y < 0.15) { G.input.keys.delete('KeyW'); released = true; }
+          if (p.up.y < -0.3) inv += 1 / 60;
+          done = inv >= 4;
+        } else { done = pa > 5 && Math.abs(p.loopAccum) < 1; pa = Math.abs(p.loopAccum); }
+      }
+      G.input.keys.clear();
+      return { done, crashed, climb: Math.round(ymax - y0), secs: +t.toFixed(2), tucked };
+    };
+    // Start the objective from a few spots (wandering a little between tries) until it finds a dome.
+    const startDome = (type) => {
+      for (let k = 0; k < 12; k++) {
+        clearObj();
+        p.god = true; p.quat.setFromAxisAngle(Y, k * 2.4); p.updateAxes();
+        for (let i = 0; i < 30; i++) G.step(1 / 20);
+        p.god = false;
+        G.objectives.startType(type);
+        const o = G.objectives.current, tg = o.target();
+        if (!tg) continue;
+        return { o, tg: tg.clone(), dir: o.dome.dir.clone(), tries: k + 1, dist: Math.round(tg.distanceTo(p.pos)), chamber: chamber(tg, o.dome.dir), above: Math.round(tg.y - floor(tg.x, tg.z)), virtual: o.virtual, hints: o.hints };
+      }
+      return null;
+    };
+    try {
+      enter(ZONES.findIndex((z) => z.world.cave));
+      for (const type of ['loop', 'inverted']) {
+        const d = startDome(type);
+        out[type] = d && { tries: d.tries, dist: d.dist, chamber: d.chamber, above: d.above, virtual: d.virtual, hints: d.hints };
+        if (!d) continue;
+        G.persuasion.reset(null);
+        if (type === 'loop') {
+          // The "LOOP HERE" sign fades out as you arrive, so it isn't sitting over your plane and crosshair.
+          const signAt = (pos) => { p.pos.copy(pos); d.o.dome.update(0); return d.o.dome.sign.material.opacity; };
+          out.signFade = { at: signAt(d.tg), far: signAt(d.tg.clone().addScaledVector(d.dir, -200)) };
+          place(d.tg, d.dir); out.loopW = fly();
+          place(d.tg, d.dir); out.loopBoost = fly({ boost: true });
+          // easier() under a roof tightens the tuck (+0.25, up to 2.2): each loop from the dome is shorter. dispose() resets it.
+          out.easier = [];
+          for (let k = 0; k < 4; k++) {
+            const text = k ? d.o.easier(G) : null;
+            place(d.tg, d.dir);
+            out.easier.push({ tuck: +p.loopTuck.toFixed(2), req: p.loopRequirement, text, ...fly() });
+          }
+          clearObj();
+          out.tuckAfter = p.loopTuck;
+          // The roof warning: a loop past 60° with the roof 15 m up warns once, then not again for 3 s.
+          const r = G.terrain.ceilingHeight(d.tg.x, d.tg.z);
+          const at = new V(d.tg.x, r - 15, d.tg.z);
+          place(at, d.dir);
+          notes = [];
+          const t0 = G.time;
+          G.input.keys.add('KeyW');
+          for (let i = 0; i < 60 * 3.3; i++) { p.pos.copy(at); p.loopAccum = 1.2; frame(); } // held in place, mid-loop
+          G.input.keys.clear();
+          out.roofWarns = notes.filter((n) => n.text === 'Roof! Pull harder!').map((n) => +(n.t - t0).toFixed(2));
+        } else {
+          // 4 s inverted flies on well past the dome, where the roof may come down again: up to 3 domes, one miss allowed.
+          out.inverted.fly = [];
+          for (let k = 0, e = d; k < 3 && e; k++) {
+            place(e.tg, e.dir);
+            out.inverted.fly.push(fly({ invert: true, max: 14 }));
+            if (out.inverted.fly.at(-1).done) break;
+            e = startDome('inverted');
+            G.persuasion.reset(null);
+          }
+          clearObj();
+        }
+      }
+      // Hot & cold survives a target it can't face (NaN): it used to throw.
+      const d = startDome('loop');
+      if (d) {
+        const P = G.persuasion, avail = P.available;
+        P.available = (o) => avail.call(P, o).filter((x) => x.t.id === 'hotCold');
+        P.escalate();
+        P.available = avail;
+        const fx = P.effects.at(-1);
+        d.o.target = () => new V(NaN, 0, 0);
+        try { fx.update(0.1); out.hotColdNaN = 'ok'; } catch (e) { out.hotColdNaN = e.message; }
+        clearObj();
+      }
+      // Outside caves nothing changed: a held-W loop in the start zone climbs ~71 m in ~5.8 s, with no tuck; the hints
+      // still suggest boost and climbing; easier() lowers the loop requirement.
+      enter(0);
+      const dir = new V(0, 0, -1);
+      place(new V(p.pos.x, floor(p.pos.x, p.pos.z) + 350, p.pos.z), dir);
+      for (let i = 0; i < 20; i++) frame(); // settle level
+      place(p.pos.clone(), dir);
+      out.zone0 = fly();
+      G.objectives.startType('loop');
+      out.zone0.loopHints = G.objectives.current.hints;
+      out.zone0.loopTarget = G.objectives.current.target();
+      G.objectives.current.easier(G);
+      out.zone0.easier = { req: +p.loopRequirement.toFixed(2), tuck: p.loopTuck };
+      clearObj();
+      G.objectives.startType('inverted');
+      out.zone0.invHints = G.objectives.current.hints;
+      out.zone0.invVirtual = G.objectives.current.virtual;
+      clearObj();
+    } finally {
+      G.input.keys.clear();
+      p.crash = saved.crash;
+      G.ui.notify = saved.notify;
+      G.objectives.update = saved.update;
+      G.enemies.spawnTimer = saved.spawn;
+      G.objectives.cooldown = saved.cooldown;
+      G.zones.enter(saved.zone);
+      for (let k = 0; k < 30; k++) G.step(0.1);
+      p.dead = false; p.god = false; p.health = saved.health; p.baseSpeed = saved.baseSpeed; p.loopTuck = TUCK; p.loopRequirement = 1;
+    }
     return out;
   });
   // Stunts, driven by real double key presses and synthetic touch flicks on the steering stick. Over flat land (no
@@ -1887,6 +2190,255 @@ try {
     p.god = god;
     return out;
   }, FLAT);
+
+  // Hold The Line ("The Rush": four waves, a clock that slips back when you're shot down) and the five newer regular
+  // enemies (Umbrella Goon, Balloon Animal, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
+  // world changes for completing an objective are held back, and score, lives and god mode are put back afterwards.
+  const RUSH = await page.evaluate(async () => {
+    const G = window.G, p = G.player, E = G.enemies, out = {};
+    const { CEILING } = await import('./src/enemies.js');
+    const V = p.pos.constructor, UP = new V(0, 1, 0);
+    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify };
+    G.mutations.celebrate = () => [];
+    if (G.relax) G.setRelax(false);
+    const notes = [];
+    G.ui.notify = (t, ...a) => { notes.push(t); return saved.notify.call(G.ui, t, ...a); };
+    const clear = () => { E.list.slice().forEach((e) => E.removeEnemy(e)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); E.calmTimer = 0; };
+    const quiet = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); G.ui.setObjective(null); };
+    quiet();
+    clear();
+    G.objectives.cooldown = 1e9;
+    G.powerups.active.clear();
+    G.powerups.timer = 1e9;
+    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+    G.input.mouseFire = false;
+    p.god = false;
+    p.lives = 1e6;
+    // safe: no damage (grace always: the ground pushes the plane up instead of crashing it).
+    const step = (n, safe = true) => { for (let k = 0; k < n; k++) { if (safe) p.invuln = 99; p.grace = 99; G.step(1 / 30); } };
+    const regulars = () => E.list.filter((e) => !e.quest).length;
+    const clock = () => { const m = /🛡 (\d+) \/ (\d+)s · WAVE (\d)\/4/.exec(G.objectives.current?.progress || ''); return m && { t: +m[1], need: +m[2], wave: +m[3] }; };
+
+    // Hold The Line: waves 1-4 in the progress text, never more than CEILING regulars, a death knocks 15 s off the
+    // clock, the second one makes it easier, and at the end everything pops (no points) within a second.
+    G.score = 800;
+    G.objectives.startType('survive');
+    const obj = G.objectives.current;
+    const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward });
+    const track = () => { const c = clock(); if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave); htl.maxRegulars = Math.max(htl.maxRegulars, regulars()); };
+    for (let k = 0; k < 30 * 22; k++) { step(1); track(); }
+    htl.progress = obj.progress;
+    const before = clock();
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    htl.slip = { before: before.t, after: clock().t, dead: p.dead, toast: notes.some((t) => /clock slipped back 15 seconds/.test(t)) };
+    step(30 * 3);
+    const easier0 = E.frenzy.easier, need0 = clock().need;
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    htl.second = { easier: E.frenzy.easier - easier0, need0, need: clock().need, toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
+    let addedAtEnd = null, scorePrev = G.score;
+    const complete = G.objectives.complete;
+    G.objectives.complete = function (f) { addedAtEnd = G.score - scorePrev; return complete.call(this, f); };
+    for (let k = 0; k < 30 * 60 && G.objectives.current === obj; k++) { scorePrev = G.score; step(1); track(); }
+    G.objectives.complete = complete;
+    htl.done = G.objectives.current !== obj;
+    htl.addedAtEnd = addedAtEnd;
+    htl.held = notes.includes('THE LINE HELD!');
+    step(30);
+    htl.after1s = regulars();
+    htl.frenzyAfter = E.frenzy;
+    htl.ceiling = CEILING;
+    // Relax Mode: no spawns, even with a frenzy set.
+    G.objectives.startType('survive');
+    step(60);
+    G.setRelax(true);
+    E.frenzy = { wave: 4, easier: 0, burst: true, score: 0 };
+    E.spawnTimer = 0;
+    step(150);
+    out.relax = { regulars: regulars(), objective: !!G.objectives.current };
+    E.frenzy = null;
+    G.setRelax(false);
+    quiet();
+    clear();
+
+    // The new regular enemies. Each spawns with its intro (once), and a scripted aim pilot shoots it down within 15 s:
+    // it flies at the nearest, firing (round the back of an Umbrella Goon; barrel-rolling off a moth).
+    E.spawnTimer = 1e9;
+    const fresh = () => { clear(); p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z)); p.invuln = 0; G.powerups.active.clear(); };
+    const ahead = (m, up = 0) => p.pos.clone().addScaledVector(p.forward, m).add(new V(0, up, 0));
+    const near = (list) => list.sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos))[0];
+    G.score = 5000;
+    out.types = {};
+    for (const type of ['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth']) {
+      fresh();
+      E.introduced.delete(type);
+      const n0 = notes.length;
+      E.spawnGroup(type, 'front');
+      const spawned = E.list.filter((e) => e.type === type).length;
+      const extra = E.spawn(type, ahead(600, 40)); // a second one (pair) of the same type: no second intro
+      const res = (out.types[type] = { spawned, intro: notes.slice(n0).filter((t) => t === extra.def.intro).length, extra: !!extra, t: null });
+      // The hunt: one (pair) 250 m ahead.
+      clear();
+      E.spawn(type, ahead(250, 10));
+      const mine = E.list.filter((e) => e.type === type), k0 = G.stats.kills;
+      let pass = null;
+      for (let i = 0; i < 30 * 15; i++) {
+        const alive = mine.filter((e) => !e.dead && e.state !== 'falling');
+        if (!alive.length) { res.t = +(i / 30).toFixed(1); break; }
+        const e = near(alive), d = e.pos.distanceTo(p.pos);
+        // Aimed where it will be when the bullets get there (enemies move at 0.85 pace, bullets ~340 m/s).
+        const at = e.pos.clone().addScaledVector(e.vel, (0.85 * d) / 340);
+        // An umbrella facing you (within 65°): boost past it, 35 m to the side, to a spot 100 m behind it, then turn and shoot.
+        const off = p.pos.clone().sub(e.pos);
+        if (pass && (--pass.t <= 0 || p.pos.distanceTo(pass.at) < 30)) pass = null;
+        if (e.face && !pass && off.clone().normalize().dot(e.face) > 0.42) pass = { at: e.pos.clone().addScaledVector(new V().crossVectors(off, UP).normalize(), 35).addScaledVector(off.clone().normalize(), -100), t: 30 * 6 };
+        if (pass) at.copy(pass.at);
+        if (pass && d > 150) G.input.keys.add('ShiftLeft');
+        else G.input.keys.delete('ShiftLeft');
+        if (e.latched) { if (!p.maneuver && p.maneuverCd <= 0) p.startManeuver('left'); }
+        else p.nudgeToward(at, 2.5, 1 / 30);
+        G.input.mouseFire = true;
+        step(1);
+      }
+      G.input.mouseFire = false;
+      G.input.keys.delete('ShiftLeft');
+      res.kills = G.stats.kills - k0;
+    }
+    // They all turn up in the ordinary spawn mix (not the bits), and at most 2 Sniper Owls at a time.
+    fresh();
+    const picks = new Set();
+    for (let k = 0; k < 3000; k++) picks.add(E.pickType());
+    E.spawn('sniperOwl', ahead(400, 40));
+    E.spawn('sniperOwl', ahead(450, 40));
+    let owls = 0;
+    for (let k = 0; k < 2000; k++) if (E.pickType() === 'sniperOwl') owls++;
+    out.picks = { all: [...picks], third: owls };
+
+    // Shooting a bullet into `e` (it arrives this frame, flying the way the plane faces). Returns hp lost, and the damage sent.
+    const shootAt = (e, hp = 100) => {
+      while (p.bullets.length) p.removeBullet(0);
+      p.shootCd = 0;
+      p.fire();
+      let dmg = 0;
+      for (const b of p.bullets) { b.pos.copy(e.pos).addScaledVector(b.vel, -1 / 30); dmg += b.dmg; }
+      e.hp = hp;
+      step(1);
+      return { lost: hp - e.hp, dmg };
+    };
+    const face = (at) => { p.nudgeToward(at, 1e3, 1); p.updateAxes(); };
+    // Umbrella Goon: nothing gets through the front; from behind, full damage.
+    fresh();
+    G.powerups.active.set('freeze', 999); // held still, so the placed bullets are on target
+    const u = E.spawn('umbrella', ahead(80));
+    step(1);
+    face(u.pos);
+    const toU = u.pos.clone().sub(p.pos).normalize();
+    u.face = toU.clone().negate(); // facing you
+    const front = shootAt(u);
+    u.face = toU.clone(); // facing away: you're behind it
+    const back = shootAt(u);
+    out.umbrella = { front, back };
+    // Balloon Animal: pops into 3 bits; a bit doesn't split again.
+    fresh();
+    const dog = E.spawn('balloonDog', ahead(80));
+    step(1);
+    shootAt(dog, 0.5);
+    const bits = E.list.filter((e) => e.type === 'balloonBit');
+    out.dog = { dead: dog.dead, bits: bits.length };
+    step(1); // past their 0.8 s scatter, before they've had long to ram the plane
+    // Bits home in and ram the plane (kamikaze), so some can vanish while we wait or shoot: count only bits that
+    // weren't there before the shot. Shooting one must kill it and make no new ones.
+    const bitsBefore = E.list.filter((e) => e.type === 'balloonBit');
+    const target = bitsBefore[0];
+    out.dog.beforeBit = bitsBefore.length;
+    out.dog.planeUp = !p.dead;
+    // Just the one bit, held still for the shot: a sibling right next to it could take the bullet, and one ramming the
+    // plane now would leave it unable to fire.
+    bitsBefore.slice(1).forEach((b) => E.removeEnemy(b));
+    G.powerups.active.set('freeze', 999);
+    if (target) shootAt(target, 0.5);
+    G.powerups.active.delete('freeze');
+    out.dog.bitDead = !!target?.dead;
+    out.dog.newBits = E.list.filter((e) => e.type === 'balloonBit' && !bitsBefore.includes(e)).length;
+    // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
+    fresh();
+    const owl = E.spawn('sniperOwl', ahead(330, 30));
+    owl.cd = 0.3;
+    let on = null, fired = null;
+    const shots0 = new Set(E.shots);
+    for (let k = 0; k < 30 * 8 && fired === null; k++) {
+      step(1, false);
+      if (on === null && owl.beam?.visible) on = k;
+      if (E.shots.some((s) => !shots0.has(s))) fired = k;
+    }
+    out.owl = { lock: on !== null && fired !== null ? +((fired - on) / 30).toFixed(3) : null, dist: Math.round(owl.pos.distanceTo(p.pos)) };
+    let on2 = null;
+    for (let k = 0; k < 30 * 8 && on2 === null; k++) { step(1, false); if (owl.beam.visible) on2 = k; }
+    step(8, false);
+    const hp1 = p.health, shots1 = new Set(E.shots);
+    p.startManeuver('left');
+    step(1, false);
+    out.owl.broken = on2 !== null && !owl.beam.visible && owl.state !== 'aim';
+    step(30 * 2.5, false);
+    out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
+    out.owl.lost = hp1 - p.health;
+    // Kite Twins: flying through the string hurts (12) and says so; shooting a kite snaps the string.
+    fresh();
+    G.powerups.active.set('freeze', 999);
+    const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
+    step(1);
+    const mid = ka.pos.clone().add(kb.pos).multiplyScalar(0.5);
+    const across = new V().crossVectors(kb.pos.clone().sub(ka.pos), UP).normalize();
+    p.pos.copy(mid).addScaledVector(across, -8);
+    p.prevPos.copy(p.pos);
+    face(mid.clone().addScaledVector(across, 60));
+    p.invuln = 0;
+    p.health = p.maxHealth; // full: no mending in the way
+    const n1 = notes.length;
+    step(12, false);
+    out.kites = { pair: !!pair && kb !== ka, gap: Math.round(ka.pos.distanceTo(kb.pos)), lost: +(p.maxHealth - p.health).toFixed(2), toast: notes.slice(n1).some((t) => /kite string/.test(t)), inScene: !!pair.line.parent };
+    face(ka.pos);
+    shootAt(ka, 0.5);
+    out.kites.snapped = ka.dead && !pair.line.parent && kb.pair === null;
+    // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
+    fresh();
+    const moth = E.spawn('moth', ahead(6));
+    step(1, false);
+    const latched = moth.latched;
+    p.boost = 1;
+    const hp2 = p.health;
+    step(60, false);
+    out.moth = { latched, boost: +p.boost.toFixed(2), lost: +(hp2 - p.health).toFixed(1) };
+    const k1 = G.stats.kills, s1 = G.score;
+    p.startManeuver('left');
+    step(1, false);
+    out.moth.off = !moth.latched && moth.state === 'falling';
+    for (let k = 0; k < 30 * 15 && !moth.dead; k++) step(1);
+    out.moth.paid = { kills: G.stats.kills - k1, score: G.score - s1, dead: moth.dead };
+    // Shot down with a moth on: it drops off.
+    fresh();
+    const moth2 = E.spawn('moth', ahead(6));
+    step(1, false);
+    p.damage(1e4);
+    step(1, false);
+    out.moth.dropped = !moth2.latched;
+
+    clear();
+    quiet();
+    step(30 * 3); // respawned
+    G.powerups.active.clear();
+    Object.assign(G, { score: saved.score });
+    Object.assign(G.objectives, { completed: saved.completed, cooldown: saved.cooldown });
+    G.mutations.celebrate = saved.celebrate;
+    G.ui.notify = saved.notify;
+    E.spawnTimer = 6;
+    p.god = saved.god;
+    p.lives = saved.lives;
+    return out;
+  });
   // A portrait phone gets the wider view.
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -2186,6 +2738,8 @@ try {
     [(({ arrow: [a0, a1, a2] }) => a0.shown && a0.faint && !a0.big && a0.label === '' && a1.shown && !a1.faint && !a1.big && a2.shown && !a2.faint && a2.big)(report.guide), 'guidance: an off-screen objective gets a faint unlabelled arrow before persuasion; its arrow steps make it normal, then big'],
     [(({ feeFree: a, feeFree2: b, feePaid: c }) => [a, b].every((r) => r.gain === 100 && r.lines[1] === 'Hints on the house' && !/fee/i.test(r.lines.join())) && c.gain === 76 && c.lines[1] === 'Hint fee -24')(report.guide), 'hint fee: none for the first 3 objectives ("Hints on the house"), charged from the 4th'],
     [(({ par: p }) => p.hoop === 12 && p.card === '⏱ Par 12 s · beat it for +60' && p.cardAfter === '' && p.at10.gain === 160 && p.at10.lines[1].includes('Speed bonus +60 (under par!)') && p.at14.gain === 100 && !/Speed bonus/.test(p.at14.lines.join()) && p.timed === 17)(report.guide), 'par: the hoop card shows "Par 12 s"; done in 10 s earns the speed bonus, in 14 s not; timed objectives get 60% of their clock'],
+    [((g) => g && g.aimErr < 0.01 && g.burst === 3 && g.bump.includes(10) && !g.bump.includes(22) && g.bumpPlain.includes(22))(report.garyCut), `Gary Prime's cut aims 140 m ahead and 25 m up, fires 3, and a bump mid-cut costs 10 (22 otherwise) (${JSON.stringify(report.garyCut)})`],
+    [(({ par: { survive: s } }) => s.par === Infinity && s.card === '' && !/Speed bonus/.test(s.done))(report.guide), `par: Hold The Line shows no par and never pays a speed bonus (${JSON.stringify(report.guide.par.survive)})`],
     [(({ four: f }) => f.lines.length === 4 && /^\+3 more world changes/.test(f.lines[3]) && f.lines[2] === 'The trees are blue now.' && f.showAt3s && !f.showAt36s)(report.guide) && report.bannerMaxLines >= 2 && report.bannerMaxLines <= 4, 'banner: at most 4 lines (4 world changes show one and "+3 more"), gone within 3.6 s'],
     [report.zoneBanner.length === 2 && /^New zone: /.test(report.zoneBanner[1]), `banner: a zone change shows the points and "New zone" only (${JSON.stringify(report.zoneBanner)})`],
     [report.guide.loopTasticHoops === 0 && report.guide.loopTasticLoops > 0 && report.guide.loopTasticLoops < 30, 'banner: "LOOP-TASTIC!" is only for the loop objective (200 hoops never), and not every time'],
@@ -2216,6 +2770,24 @@ try {
     [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
+    // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
+    ...(() => {
+      const SIG = {
+        megaUfo: (s) => s.teleport >= 1, thunder: (s) => s.hazards >= 1, blimpBaron: (s) => s.run > 300,
+        jellyEmpress: (s) => s.maxSpeed > 35 && s.blobs > 0, mineMother: (s) => s.ring >= 6 && s.angles >= 6,
+        kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
+        seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
+        fortGrump: (s) => /udu/.test(s.shields), octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
+      };
+      const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
+      const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
+      const zones = Object.entries(report.moveZones || {});
+      return [
+        [Object.keys(kinds).length >= 15 && miss.length === 0, `every boss shows its signature move: blink, lightning columns, bombing runs, pulses, mine ring, royal guard, bee shell, perch, dive, joust, wingman roll, duck, jets, lane snaps, puffed approach (missing: ${miss.map((k) => `${k} ${JSON.stringify(kinds[k])}`).join('; ') || 'none'})`],
+        [fired.length >= 10 && fired.every((h) => h.fired >= 1) && hz.every((h) => !h.onBreak) && report.moves.chaseTeleports === 0, `boss hazards give 1 s+ of warning, and none (nor a teleport) starts while a boss is on a break (${hz.length} hazards, quickest ${Math.min(...fired.map((h) => h.fired))} s, on a break ${hz.filter((h) => h.onBreak).length}, teleports on a break ${report.moves?.chaseTeleports})`],
+        [zones.length === 8 && zones.every(([, z]) => z.outside === 0 && z.attacks > 0) && zones.filter(([k, z]) => k.endsWith('pigeonDon') && z.sat).length === 2, `boss moves in a cave and in space: bosses stay between floor and roof, keep attacking, and the Godfeather finds perches (${JSON.stringify(report.moveZones)})`],
+      ];
+    })(),
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap > b.fight + 120 && b.waitIn >= 0 && b.waitIn <= 15 && Math.abs(b.waitDist - 150) <= 30 && b.stayed && b.minWait > 120 && b.reIn >= 0 && b.reIn <= 8))(report.breathing || {}), `bosses let you fly off, come back only to a standoff (fight + 150 ± 30 m) within 15 s, stay past fight + 120 m while you keep fleeing, and re-engage within 8 s of you turning in (${JSON.stringify((report.breathing || {}))})`],
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.gap >= b.fight + 250 && b.quiet && b.again >= 2.5 && b.again <= 7))(report.breathing || {}), 'boss breakaway: the gap opens 250 m+ past fight distance, no attacks until it re-engages, then its first attack is 2.5 to 7 s later'],
     [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.homeOff <= 30 && b.braking <= 12 && b.hovering <= 8))(report.breathing || {}), 'boss breakaway: a loose boss hovers within 30 m of where it lost you, at 8 m/s (12 while braking, the first 1.5 s)'],
@@ -2256,6 +2828,19 @@ try {
     [(({ city: c }) => c && Object.keys(c.props).length >= 10 && ['car', 'streetLamp', 'trafficLight'].every((t) => c.props[t] > 0) && ['waterTower', 'antenna', 'helipad'].some((t) => c.props[t] > 0) && c.misplaced.length === 0)(report), 'Metropolis: city props are instanced, traffic on the streets, rooftop props on the roofs'],
     [['picnicTable', 'tractor', 'camperVan', 'skiLift'].every((t) => report.countrySeen[t] > 0), 'new countryside, desert and snow props turn up in their zones'],
     [(() => { const c = report.zones.find((z) => z.name === 'Crystal Caverns'); return c && c.gap >= 55 && c.planeUnderRoof && report.caveObjective.underRoof; })(), 'the cave has a roof, and the plane and objectives stay under it'],
+    ...(({ caveLoop: c }) => [
+      [['loop', 'inverted'].every((k) => c[k] && c[k].dist >= 200 && c[k].dist <= 650 && c[k].chamber >= 120 && c[k].above >= 25 && c[k].above <= 45 && !c[k].virtual), `cave loops: a loop or upside-down objective targets a dome 200-650 m ahead, with >= 120 m from floor to roof over the loop and the start 25-45 m up (${JSON.stringify({ loop: c.loop && { ...c.loop, hints: undefined }, inverted: c.inverted && { ...c.inverted, hints: undefined, fly: undefined } })})`],
+      [c.signFade?.at === 0 && c.signFade.far === 1, `cave loops: the LOOP HERE sign is fully shown from 200 m out and gone once you're at the dome (${JSON.stringify(c.signFade)})`],
+      [c.loopW?.done && !c.loopW.crashed && c.loopW.tucked && c.loopBoost?.done && !c.loopBoost.crashed, `cave loops: from the dome, holding W loops under the roof (tucked), and so does a boosted loop (${JSON.stringify([c.loopW, c.loopBoost])})`],
+      [c.inverted?.fly?.at(-1)?.done && c.inverted.fly.length <= 2, `cave loops: from the dome, pulling up and letting go flies 4 s inverted without touching the roof (${JSON.stringify(c.inverted?.fly)})`],
+      [c.loop?.hints.includes('In here, NO boost. Speed makes the loop bigger and the roof is not negotiable.') && c.loop.hints.includes('Fly to the glowing crystal dome, stay low, then hold W.') && !c.loop.hints.some((h) => /Shift/.test(h))
+        && c.inverted?.hints.includes('Under the tall dome, pull up until you\'re upside down, then LET GO.') && !c.inverted.hints.some((h) => /climb/i.test(h)), 'cave loops: the hints say no boost and point at the dome, and never suggest boosting (loop) or climbing (inverted)'],
+      [c.easier?.length === 4 && c.easier.slice(1).every((e, i) => e.tuck === [1.75, 2, 2.2][i] && e.req === 1 && e.done && !e.crashed && e.climb <= c.easier[i].climb - 2 && /roomier/.test(e.text)) && c.tuckAfter === 1.5, `cave loops: each easier() tightens the tuck (+0.25, to 2.2 at most) and makes the loop at least 2 m shorter; the requirement stays 360°, and dispose resets the tuck (${JSON.stringify(c.easier?.map((e) => [e.tuck, e.climb]))})`],
+      [c.roofWarns?.length === 2 && c.roofWarns[0] < 0.2 && c.roofWarns[1] >= 3, `cave loops: a loop past 60° with the roof close warns "Roof! Pull harder!", at most every 3 s (${JSON.stringify(c.roofWarns)})`],
+      [c.hotColdNaN === 'ok', `hot & cold: a target it can't face (NaN) doesn't throw (${c.hotColdNaN})`],
+      [c.zone0?.done && !c.zone0.crashed && !c.zone0.tucked && Math.abs(c.zone0.climb - 71) <= 5 && Math.abs(c.zone0.secs - 5.8) <= 0.3 && c.zone0.loopTarget === null, `loops outside caves are unchanged: no tuck, ~71 m up, ~5.8 s, no dome (${JSON.stringify(c.zone0 && { climb: c.zone0.climb, secs: c.zone0.secs })})`],
+      [c.zone0?.loopHints.includes('Speed helps! Boost (Shift) then hold W.') && c.zone0.invHints.includes('Climb a bit first so you have room.') && c.zone0.invVirtual && c.zone0.easier.req === 0.85 && c.zone0.easier.tuck === 1.5, 'loops outside caves: the old hints stay, and easier() still lowers the loop requirement'],
+    ])(report),
     [report.zones.filter((z) => z.name !== 'Crystal Caverns' && z.name !== 'Sunken Reef').every((z) => z.roof === null), 'only the cave has a roof (and the reef, see below)'],
     [(({ underwater: u }, r) => r && r.roof === r.sea - 4 && r.planeUnderRoof && !u.dead && u.pressedSecs >= 1 && u.maxY < u.sea && u.aboveSurface.length === 0 && u.hues >= 6)(report, report.zones.find((z) => z.name === 'Sunken Reef')), 'underwater: the surface is the roof, the plane and objectives stay under it, and the seabed is colourful'],
     [report.zones.find((z) => z.name === 'Planet Pebble').curve > 1 && report.zones[0].curve < 0.5, 'Planet Pebble curves the horizon (and nothing else does)'],
@@ -2338,6 +2923,21 @@ try {
     [S.feats.list === 10 && S.feats.all && S.feats.stored === 10, 'secrets: all 10 found and saved in localStorage'],
     [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
+    // ---- Hold The Line ("The Rush") and the newer regular enemies (see the RUSH block)
+    [(({ htl: h }) => [1, 2, 3, 4].every((w) => h.waves.includes(w)) && /· WAVE \d\/4$/.test(h.progress) && h.reward === 250)(RUSH), `Hold The Line: "WAVE n/4" in the progress text, and the waves reach 4 (${JSON.stringify(RUSH.htl.waves)})`],
+    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 8, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
+    [(({ slip: s }) => s.dead && s.toast && Math.abs(s.before - s.after - 15) <= 1)(RUSH.htl), `Hold The Line: getting shot down knocks the clock back 15 s (${JSON.stringify(RUSH.htl.slip)})`],
+    [(({ second: s }) => s.easier === 1 && s.need === s.need0 - 8 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself (${JSON.stringify(RUSH.htl.second)})`],
+    [(({ htl: h }) => h.done && h.held && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined })})`],
+    [RUSH.relax.regulars === 0 && !RUSH.relax.objective, 'Hold The Line: nothing spawns in Relax Mode'],
+    [Object.values(RUSH.types).every((r) => r.spawned >= 1 && r.intro === 1 && r.extra), `new enemies: each one spawns and shows its intro once (${JSON.stringify(RUSH.types)})`],
+    [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
+    [['umbrella', 'balloonDog', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('balloonBit') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (balloon bits never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
+    [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
+    [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Balloon Animal: pops into 3 balloon bits, which don't split again (${JSON.stringify(RUSH.dog)})`],
+    [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
+    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
+    [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
     [desk.pauseShown && desk.pauseCalls === 'fs,quit,quit', 'desktop: with the bridge, the pause card has Quit too'],

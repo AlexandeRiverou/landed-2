@@ -629,7 +629,7 @@ function hotCold(G, o) {
       const tg = o.target();
       t -= dt; tintCd -= dt;
       if (!tg || t <= 0) return false;
-      const h = HEAT.find((x) => facing(G, tg) >= x[0]);
+      const h = HEAT.find((x) => facing(G, tg) >= x[0]) ?? HEAT[4]; // NaN facing (on the target): no match
       if (h === last) return;
       if (last && tintCd <= 0 && (h === HEAT[0] || h === HEAT[4])) { G.ui.tint(h[2], 1.5); tintCd = 4; } // a warm or icy flush at the extremes
       last = h;

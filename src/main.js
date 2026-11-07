@@ -216,7 +216,7 @@ function flyAgain(keepZone = false) {
   G.powerups.resetRun();
   G.objectives.resetRun();
   G.enemies.clearAll();
-  Object.assign(G.enemies, { spawnTimer: 6, calmTimer: 0, frenzy: false, hats: false }); // as on boot (hats: a mutation)
+  Object.assign(G.enemies, { spawnTimer: 6, calmTimer: 0, frenzy: null, hats: false }); // as on boot (hats: a mutation)
   if (!keepZone) G.zones.lap = 1;
   G.zones.sinceZone = 0;
   G.zones.enter(keepZone ? G.zones.index : 0);

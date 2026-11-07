@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
-import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, BUZZ } from './objectives.js';
+import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, loopDome, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -301,15 +301,21 @@ export function mkSpeed(G) {
 
 export function mkInverted(G) {
   const p = G.player;
+  const cave = !!G.world.cave, dome = loopDome(G); // under a roof, a tall chamber for the half loop (see objectives.js)
+  const flip = 'Pull up (W) until you\'re upside down at the top of a loop, then LET GO. You\'ll keep flying inverted.';
   let need = 4, time = 0, was = false;
   return objective({
-    type: 'inverted', reward: 150, noun: 'the upside-down', virtual: true,
+    type: 'inverted', reward: 150, noun: 'the upside-down', virtual: !dome,
     title: pick(['Upside Down Appreciation Day', 'Australian Mode', 'Ceiling Is The New Floor']),
     desc: `Fly upside down for ${need} seconds. The world looks better from up there. Down there. You know what we mean.`,
     caps: new Set(['easier']),
     signText: ['FLIP IT', '↻ ↻ ↻'],
-    hints: ['Pull up (W) until you\'re upside down at the top of a loop, then LET GO. You\'ll keep flying inverted.', 'Climb a bit first so you have room.'],
+    // Under a cave roof, climbing first is the wrong advice.
+    hints: cave ? [dome && 'Under the tall dome, pull up until you\'re upside down, then LET GO.', flip].filter(Boolean) : [flip, 'Climb a bit first so you have room.'],
+    dome,
+    target() { return dome ? dome.pos : null; },
     onUpdate(dt, G) {
+      dome?.update(this.t);
       const inv = !p.dead && p.up.y < -0.3;
       if (inv) { time += dt; this.progressed = true; if (!was) G.ui.notify('Upside down! Hold it there!', 'info', 2, 0); }
       was = inv;
@@ -317,6 +323,7 @@ export function mkInverted(G) {
       return time >= need ? 'done' : null;
     },
     easier() { need = Math.max(1.5, need - 1); return `Only ${need} seconds upside down now. Blood rushing to the head is optional.`; },
+    dispose() { dome?.dispose(); },
   });
 }
 
@@ -350,24 +357,52 @@ export function mkPest(G) {
   });
 }
 
+// Hold The Line ("The Rush"): four waves, each bigger (enemies.js WAVES has the spawn rates and caps). A wave starts
+// at this share of the clock (8, 20 and 32 s of 40). Getting shot down knocks SLIP s off the clock; the second time,
+// the enemies go easier on you by themselves.
+const WAVE_AT = [0, 0.2, 0.5, 0.8], SLIP = 15;
+const WAVE_TEXT = ['Wave 1 of 4. They\'re warming up.', 'Wave 2! They brought friends.', 'Wave 3! Okay, this is a lot.', 'FINAL WAVE! Everybody, at once!'];
+
 export function mkSurvive(G) {
-  let need = 40, time = 0;
-  G.enemies.frenzy = true;
+  let need = 40, time = 0, top = 0, deaths = 0, down = false;
+  const F = (G.enemies.frenzy = { wave: 1, easier: 0, burst: false, score: G.score }); // score: the cap bonus counts the score you came in with
+  G.enemies.spawnTimer = Math.min(G.enemies.spawnTimer, 0.5);
   return objective({
-    type: 'survive', reward: 200, noun: 'the onslaught', virtual: true, needsEnemies: true,
+    type: 'survive', reward: 250, noun: 'the onslaught', virtual: true, needsEnemies: true,
     title: pick(['Hold The Line', 'Survive The Rush Hour', 'Enemy Party (You Are The Piñata)']),
-    desc: `Enemies are coming in twice as fast. Survive ${need} seconds without getting shot down. Shooting back is encouraged.`,
+    desc: `Enemies come in waves, and they get bigger. Survive ${need} seconds. Every kill patches your hull a little. Shooting back is strongly encouraged.`,
     caps: new Set(['easier']),
     signText: ['SURVIVE!', '(GOOD LUCK)'],
-    hints: ['Keep moving: weaving makes you harder to hit.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
+    hints: ['Keep moving: weaving makes you harder to hit.', 'Kills patch your hull.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
     onUpdate(dt, G) {
-      if (G.player.dead) { if (time > 0) G.ui.notify('Shot down! The survival clock starts over.', 'bad', 3); time = 0; }
-      else { time += dt; this.progressed = true; }
-      this.progress = `🛡 ${time.toFixed(0)} / ${need}s survived`;
-      return time >= need ? 'done' : null;
+      if (G.player.dead) {
+        if (!down) {
+          down = true;
+          time = Math.max(0, time - SLIP);
+          G.ui.notify(`Shot down! The clock slipped back ${SLIP} seconds.`, 'bad', 3);
+          if (++deaths === 2) { this.easier(); G.ui.notify('The enemies saw that. They feel a bit bad about it.', 'info', 4, 1); }
+        }
+      } else { down = false; time += dt; this.progressed = true; }
+      F.wave = WAVE_AT.findLastIndex((k) => time >= k * need) + 1;
+      if (F.wave > top) {
+        top = F.wave;
+        G.ui.notify(WAVE_TEXT[top - 1], 'warn', 3, 1);
+        if (top === 4) F.burst = true;
+      }
+      this.progress = `🛡 ${time.toFixed(0)} / ${need}s · WAVE ${F.wave}/4`;
+      if (time < need) return null;
+      // The line held: every regular enemy pops into confetti (no points), and the sky stays quiet for a moment.
+      G.ui.notify('THE LINE HELD!', 'good', 3, 1);
+      for (const e of G.enemies.list.filter((x) => !x.quest)) { G.fx.confetti(e.pos); G.enemies.removeEnemy(e); }
+      G.enemies.calm(6);
+      return 'done';
     },
-    easier() { need = Math.max(15, need - 10); return `Survival time cut to ${need} seconds. The enemies are getting tired too.`; },
-    dispose(G) { G.enemies.frenzy = false; },
+    easier() {
+      need = Math.max(20, need - 8);
+      F.easier++;
+      return `Survival time cut to ${need} seconds, and the waves are a bit smaller. The enemies are getting tired too.`;
+    },
+    dispose(G) { G.enemies.frenzy = null; },
   });
 }
 

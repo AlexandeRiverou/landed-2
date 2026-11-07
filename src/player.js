@@ -25,6 +25,15 @@ const MANEUVERS = {
 const BOOST_DRAIN = 0.25, BOOST_REGEN = 0.2, WHOOSH_GAP = 0.6;
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
+// Cave tuck: under a rock roof, pulling up (pitch held up) scales the pitch rate by your speed over BASE_SPEED from
+// the start, so boosting (or the speed mutation) can't make a loop bigger. Past TUCK_FROM rad of loop the rate also
+// ramps to loopTuck × over TUCK_RAMP s: TUCK (1.5×) is a ~27 m radius, a loop ~53 m tall (71 m untucked); easier()
+// raises it. Between ROOF_TUCK.from and .to rad, if the rest of the circle wouldn't clear the roof by ROOF_TUCK.margin
+// m, the plane tucks harder (up to ROOF_TUCK.max × base, times the speed factor). A loop past ROOF_WARN.angle rad with
+// the roof under ROOF_WARN.dist m away gets a warning.
+export const TUCK = 1.5; // the base tuck (objectives.js easier() raises it for one loop)
+const TUCK_FROM = 0.7, TUCK_RAMP = 0.4, ROOF_WARN = { angle: PI / 3, dist: 20, gap: 3 };
+const ROOF_TUCK = { from: 0.35, to: PI, margin: 8, max: 2.6 };
 
 // Landing. A touchdown is a landing (not a crash) when the sink rate (m/s), bank (rad), nose (forward.y) and
 // wings (up.y) are within these, on dry ground whose slope (rise per metre) is gentle enough.
@@ -74,6 +83,8 @@ export class Player {
     this.deadTimer = 0;
     this.loopAccum = 0;
     this.loopIdle = 0;
+    this.tuckT = -1;         // seconds into a cave tuck; -1 when not tucking
+    this.roofWarned = -99;
     this.events = [];
     this.maneuver = null;    // double-tap stunt in progress (see MANEUVERS)
     this.maneuverCd = 0;
@@ -107,6 +118,7 @@ export class Player {
     this.freeBoost = 0;
     this.sinceHit = 99;
     this.loopRequirement = 1;
+    this.loopTuck = TUCK;
     this.setSkin(PLANE_SKINS[0]);
   }
 
@@ -179,17 +191,23 @@ export class Player {
     this.airTime += dt;
     // Double-tap stunts take over the controls while they run.
     if (input.gesture && !this.maneuver && this.maneuverCd <= 0) this.startManeuver(input.gesture);
+    const tuck = this.tuckRate(dt, input);
     if (this.maneuver) this.stepManeuver(dt);
-    else this.steer(dt, input);
+    else this.steer(dt, input, tuck);
 
-    // Loop detection: accumulate pitch rotation in one direction.
-    const dp = input.pitch * PITCH_RATE * dt;
+    // Loop detection: accumulate pitch rotation in one direction (as applied, tuck included).
+    const dp = input.pitch * PITCH_RATE * tuck * dt;
     if (Math.abs(input.pitch) > 0.25) {
       if (Math.sign(dp) !== Math.sign(this.loopAccum) && Math.abs(this.loopAccum) > 0.5) this.loopAccum *= 0.5;
       this.loopAccum += dp;
       this.loopIdle = 0;
     } else if ((this.loopIdle += dt) > 1.2) this.loopAccum = 0;
     if (Math.abs(this.loopAccum) >= Math.PI * 2 * this.loopRequirement) { this.events.push('loop'); this.loopAccum = 0; }
+    if (G.world.cave && Math.abs(this.loopAccum) > ROOF_WARN.angle && G.time - this.roofWarned > ROOF_WARN.gap
+      && G.terrain.ceilingHeight(this.pos.x, this.pos.z, this.pos.y) - this.pos.y < ROOF_WARN.dist) {
+      this.roofWarned = G.time;
+      G.ui.notify('Roof! Pull harder!', 'warn', 1.5, 2);
+    }
 
     // Speed + boost.
     const boosting = this.throttle(dt, input);
@@ -240,12 +258,38 @@ export class Player {
     return true;
   }
 
-  // Normal flying. Roll input sets a target bank angle (casual: let go → wings level).
-  steer(dt, input) {
+  // The pitch-rate multiplier for this frame: 1, except during a cave tuck (see TUCK_FROM). A soft rising whoosh starts it.
+  tuckRate(dt, input) {
+    const G = this.G;
+    if (!G.world.cave || this.maneuver || input.pitch <= 0.25) { this.tuckT = -1; return 1; }
+    const fast = Math.max(1, this.speed / BASE_SPEED);
+    let k = fast;
+    if (this.loopAccum > TUCK_FROM) {
+      if (this.tuckT < 0) { this.tuckT = 0; G.audio.tone(200, 0.6, { type: 'sine', vol: 0.05, slide: 260 }); }
+      this.tuckT += dt;
+      k *= 1 + (this.loopTuck - 1) * Math.min(1, this.tuckT / TUCK_RAMP);
+    } else this.tuckT = -1;
+    if (this.loopAccum > ROOF_TUCK.from && this.loopAccum < ROOF_TUCK.to) {
+      // The circle you're on (radius speed / pitch rate) still climbs R × (1 + up.y) to its top. Its centre is R × up
+      // away: the roof is checked here, over the top and over the circle's far side. Not enough room under the
+      // lowest of them: pitch faster so it fits.
+      const p = this.pos, rate = PITCH_RATE * input.pitch, R = this.speed / (rate * k);
+      const cx = p.x + this.up.x * R, cz = p.z + this.up.z * R;
+      _v.set(this.forward.x, 0, this.forward.z).normalize().multiplyScalar(R);
+      const roof = Math.min(G.terrain.ceilingHeight(p.x, p.z, p.y), G.terrain.ceilingHeight(cx, cz, p.y), G.terrain.ceilingHeight(cx + _v.x, cz + _v.z, p.y));
+      const room = roof - 2.5 - ROOF_TUCK.margin - p.y, climb = 1 + this.up.y;
+      const need = room > 0 ? (this.speed * climb) / (room * rate) : Infinity;
+      k = Math.max(k, Math.min(need, ROOF_TUCK.max * fast));
+    }
+    return k;
+  }
+
+  // Normal flying. Roll input sets a target bank angle (casual: let go → wings level). `tuck` scales the pitch rate.
+  steer(dt, input, tuck = 1) {
     const G = this.G, q = this.quat;
     const bank = Math.asin(THREE.MathUtils.clamp(-this.right.y, -1, 1));
     const dRoll = THREE.MathUtils.clamp((input.roll * MAX_BANK - bank) * BANK_RESPONSE, -ROLL_RATE, ROLL_RATE) * dt;
-    q.multiply(_q.setFromAxisAngle(X, input.pitch * PITCH_RATE * dt));
+    q.multiply(_q.setFromAxisAngle(X, input.pitch * PITCH_RATE * tuck * dt));
     q.multiply(_q.setFromAxisAngle(Z, -dRoll));
     q.multiply(_q.setFromAxisAngle(Y, -input.yaw * YAW_RATE * dt));
     this.updateAxes();

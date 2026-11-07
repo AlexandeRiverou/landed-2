@@ -170,7 +170,7 @@ export class UI {
 
     const obj = G.objectives.current;
     e.objProgress.textContent = obj ? obj.progress || '' : '';
-    e.objPar.textContent = obj && obj.par && obj.t < obj.par ? `⏱ Par ${obj.par} s · beat it for +60` : '';
+    e.objPar.textContent = obj && Number.isFinite(obj.par) && obj.t < obj.par ? `⏱ Par ${obj.par} s · beat it for +60` : '';
     const t = obj && obj.target();
     if (!t || p.dead) {
       e.marker.style.display = 'none';
