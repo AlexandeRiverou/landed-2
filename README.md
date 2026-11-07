@@ -162,7 +162,8 @@ storm clouds, and evil top-hat pigeons. Harder types unlock as your score grows.
 ahead of you and carry a small red marker, so you see them coming. Five of them have their own trick:
 
 - **Umbrella Goon:** bullets bounce off its umbrella. Circle round and shoot it in the back.
-- **Balloon Animal:** pop it and it splits into 3 small, fast, angry balloon bits.
+- **Grudge Rock:** a mossy boulder off a floating island, with a flower on top and a very cross face. It takes 4 hits,
+  then breaks into 3 small, fast Grudge Pebbles that dive straight at you. They don't break any further.
 - **Sniper Owl:** a red line means it's aiming. 1.5 s later it fires where you'll be. A stunt or a sharp turn
   (35° or more) breaks the lock. Never more than 2 at once.
 - **Kite Twins:** two kites joined by a long string, and the string hurts. Go over or under it, or shoot one kite
@@ -255,7 +256,9 @@ doesn't by itself, but flying on from where it put you does.
   CHARGE and sends them at you.
 - Her Royal Honkness the Goose Queen: head-on jousts, dropping golden eggs as she passes.
 - The Mothership: blinks to a new spot (a green disc marks it first), fires orb shotguns, and once ENRAGED, a tractor beam.
-- Thunderclaus: hangs ahead of you and calls down lightning where you're going. Don't fly under the dark shafts.
+- Thunderclaus: looms high up ahead of you and calls down lightning where you're going. Each strike is marked first by
+  a yellow ring under the cloud, a yellow ring where the bolt lands and a thin pale line between them. Don't fly
+  between the rings.
 - Baron von Blimpenstein: bombing runs across your path. Don't fly under him. Shoot the gondola.
 - Empress Wobblina: swims in pulses, leaves stingers floating behind her, and fires rings of goo with a safe hole in
   the middle.
@@ -501,11 +504,11 @@ Boss signature moves live in `src/bossmoves.js` (`MOVES`). Each boss def in `BOS
 boss's death clears, along with its hazards and bodyguards (enemies whose `e.guard` is `{ boss, kind, slot }`; not the same thing as the `guard` TYPES flag below). `G.enemies.warn(pos, r, color,
 t, onFire, { shape, owner, h })` puts down a telegraphed area attack (`shape` is `'disc'`, `'ring'`, `'column'` or
 `'sphere'`; `t` is at least 1 s), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hits bounce off),
-`split: [type, n]` (pops into n of another type), `max` (at most this many alive), `pair` (spawns as two joined by a
+`split: [type, n]` (breaks into n of another type), `max` (at most this many alive), `pair` (spawns as two joined by a
 string), `latch` (clings to the plane) and `quiet` (no intro). `CEILING` (exported, 18) caps regular enemies alive
 at once, whatever spawns them; boss bodyguards don't check it. `G.enemies.frenzy` is `null`, or during Hold The Line
 `{ wave, easier, burst, score }`; `WAVES` (exported) has each wave's spawn interval, cap, and flank/overhead chances,
-and gulls, bees and balloon bits count a third each toward a wave's cap. In caves, `loopDome(G)` (exported from
+and gulls, bees and Grudge Pebbles count a third each toward a wave's cap. In caves, `loopDome(G)` (exported from
 `src/objectives.js`) finds and marks the loop chamber (or returns `null`), and the loop tuck is `TUCK` (exported from
 `src/player.js`, 1.5×) with `G.player.loopTuck` the current value (the loop's `easier()` raises it by 0.25, up to
 2.2, and it resets when the objective ends).

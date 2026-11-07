@@ -1,9 +1,9 @@
 // Enemies: chasing drones, spiky balloon mines, dive-bombing seagulls, orb-spitting UFOs,
 // grumpy storm clouds, bee swarms, ad blimps, sky jellyfish, ground cannons, Rival Pilot Gary,
-// umbrella goons, balloon animals, sniper owls, kite twins, clingy moths, and (quest-only) evil pigeons.
+// umbrella goons, grudge rocks, sniper owls, kite twins, clingy moths, and (quest-only) evil pigeons.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeBalloonDog, makeBalloonBit, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MOVES as BOSS_MOVES, Hazards, guardStep, animateBoss, endMoves, dropBoss, daze } from './bossmoves.js';
@@ -23,8 +23,8 @@ const TYPES = {
   // guard: front hits bounce off (see guarded). split: pops into that many of another type. max: at most this many alive.
   // pair: spawns as two, joined by a string. latch: clings to the plane instead of bumping it. quiet: no intro.
   umbrella: { hp: 3, radius: 6, dmg: 12, speed: 30, make: makeUmbrella, score: 90, minScore: 250, weight: 1, kamikaze: false, guard: true, name: 'Umbrella Goon', intro: 'An Umbrella Goon. Bullets bounce off the front. It is very proud of its umbrella.' },
-  balloonDog: { hp: 4, radius: 9, dmg: 15, speed: 14, make: makeBalloonDog, score: 60, minScore: 120, weight: 1.2, kamikaze: false, split: ['balloonBit', 3], name: 'Balloon Animal', intro: 'A Balloon Animal! Pop it and it becomes several smaller, angrier balloon animals.' },
-  balloonBit: { hp: 1, radius: 3, dmg: 10, speed: 48, make: makeBalloonBit, score: 10, minScore: 0, weight: 0, kamikaze: true, quiet: true, name: 'Balloon Bit' },
+  grudgeRock: { hp: 4, radius: 9, dmg: 15, speed: 14, make: makeGrudgeRock, score: 60, minScore: 120, weight: 1.2, kamikaze: false, split: ['pebble', 3], name: 'Grudge Rock', intro: 'A Grudge Rock! Break it and you get several smaller rocks. They keep the grudge.' },
+  pebble: { hp: 1, radius: 3, dmg: 10, speed: 48, make: makePebble, score: 10, minScore: 0, weight: 0, kamikaze: true, quiet: true, name: 'Grudge Pebble' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
   kites: { hp: 2, radius: 5, dmg: 12, speed: 26, make: makeKite, score: 50, minScore: 200, weight: 1, kamikaze: false, pair: true, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. Do not fly through the string. Go over. Or under.' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
@@ -47,7 +47,7 @@ const SHOOTERS = ['ufo', 'blimp', 'cannon', 'sniperOwl'];
 // Never more regular (non-quest) enemies than this at once, whatever spawns them. Small fry count a third each
 // toward a wave's cap.
 export const CEILING = 18;
-const SMALL = { gull: 1 / 3, bee: 1 / 3, balloonBit: 1 / 3 };
+const SMALL = { gull: 1 / 3, bee: 1 / 3, pebble: 1 / 3 };
 // Frenzy spawn distances (m): ahead, from a flank, from above (that many m over you).
 // Ahead they come in closer to your line (±RUSH_SPREAD m to the side, ±RUSH_RISE m up or down), so you meet them.
 const RUSH_AHEAD = [220, 420], RUSH_SPREAD = 25, RUSH_RISE = 8, RUSH_FLANK = [240, 320], FLANK_YAW = (70 * Math.PI) / 180, RUSH_ABOVE = 70;
@@ -151,7 +151,7 @@ export const BOSSES = {
     make: makeStorm, scale: 2.5, crownY: 13, crownS: 2.2, radius: 38, hp: 110, speed: 22, orbit: 110, dmg: 20, face: 'player',
     name: 'Thunderclaus, Cloud of Bad Moods', short: 'Thunderclaus', noun: 'Thunderclaus',
     move: 'loom',
-    desc: 'The grumpiest cloud ever. It hangs over you and calls down lightning where you\'re going. Don\'t fly under the dark spots.',
+    desc: 'The grumpiest cloud ever. It hangs over you and calls down lightning where you\'re going. Yellow rings mark the spot: don\'t fly between them.',
     taunts: ['Thunderclaus: "I am NOT a fluffy cloud."', 'Thunderclaus: "It\'s going to rain. On YOU. Specifically."', 'Thunderclaus: "Brrrrumble. That means \'go away\'."'],
     rage: ['Thunderclaus is now a category 5 grump.', 'The forecast says: extremely angry.'],
   },
@@ -586,7 +586,7 @@ export class Enemies {
           p.damage(16);
         } else {
           cd = 3;
-          BOSS_MOVES.loom.strike(this, e); // lightning columns along your path, each on a dark disc first
+          BOSS_MOVES.loom.strike(this, e); // lightning bolts along your path, each marked by yellow rings first
         }
         break;
       case 'blimpBaron':
@@ -783,7 +783,7 @@ export class Enemies {
   regulars() { return this.list.filter((e) => !e.quest); }
 
   // Hold The Line's cap counts regulars near enough to matter: within ACTIVE_R m and not more than ACTIVE_BEHIND m
-  // behind you. Small fry (gulls, bees, balloon bits) count a third each.
+  // behind you. Small fry (gulls, bees, pebbles) count a third each.
   active() {
     const p = this.G.player, f = flatForward(p, _pp);
     let n = 0;
@@ -1121,12 +1121,12 @@ export class Enemies {
         }
         break;
       }
-      case 'balloonDog':
-        // Bobs toward you, slowly. A bump just bounces off: popping it is where the trouble starts (see kill).
+      case 'grudgeRock':
+        // Bobs toward you, slowly. A bump just bounces off: breaking it is where the trouble starts (see kill).
         steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(0, Math.sin(e.t * 1.5) * 6, 0)), 0.8);
         break;
-      case 'balloonBit':
-        // Scatters from the pop for 0.8 s (real), then homes in.
+      case 'pebble':
+        // Scatters from the break for 0.8 s (real), then homes in.
         if (e.stateT < 0.8 * PACE) e.vel.multiplyScalar(Math.exp(-dt * 1.5));
         else steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(Math.sin(e.t * 7) * 8, Math.cos(e.t * 6) * 5, 0)), 2.5);
         break;
@@ -1320,7 +1320,7 @@ export class Enemies {
     if (e.type === 'cannon' || e.type === 'jelly') return;
     if (e.type === 'mine' || e.type === 'storm') e.mesh.rotation.y += dt * 0.4;
     if (e.type === 'ufo') e.mesh.rotation.y += dt * 1.5;
-    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
+    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
     else if (e.vel.lengthSq() > 1 && e.type !== 'mine' && e.type !== 'ufo') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
   }
 
@@ -1356,8 +1356,9 @@ export class Enemies {
     } else if (byPlayer && !e.paid) this.payout(e);
     G.audio.explode();
     this.remove(i);
-    // A Balloon Animal pops into smaller, angrier balloons that scatter, then home in (never past the CEILING).
+    // A Grudge Rock breaks into pebbles (and a puff of grit) that scatter, then home in (never past the CEILING).
     if (e.def.split && !e.boss) {
+      G.fx.emit(e.pos, 18, { colors: ['#8a8378', '#6f685f', '#b8b0a4'], speed: 30, life: 0.7, size: 6 });
       const [type, n] = e.def.split;
       for (let k = 0; k < Math.min(n, CEILING - this.regulars().length); k++) {
         const bit = this.spawn(type, e.pos.clone().add(new THREE.Vector3(rand(-3, 3), rand(-3, 3), rand(-3, 3))), { quest: e.quest });

@@ -305,29 +305,37 @@ export const MOVES = {
     },
   },
 
-  // Thunderclaus: looms ~60 m above and ahead of you; lightning volleys strike dark shafts along your path.
+  // Thunderclaus: looms ~75 m above and 200 m ahead of you (near the top of the view, not over it); lightning volleys
+  // strike along your path, each spot marked by a yellow ring at the cloud base, one at the bottom and a thin pale spine
+  // between them (nothing to block your view).
   loom: {
     step(en, e, c) {
       const h = heading(e, c.p, c.dt);
-      arrive(e, _b.copy(c.p.pos).addScaledVector(h, 120).add(_a.set(0, 60, 0)), en.cruise(e), c.dt, 1.2, 1);
+      arrive(e, _b.copy(c.p.pos).addScaledVector(h, 200).add(_a.set(0, 75, 0)), en.cruise(e), c.dt, 1.2, 1);
       return true;
     },
     strike(en, e) {
       const G = en.G, p = G.player, f = flatFwd(p, new THREE.Vector3()), side = sideOf(f, new THREE.Vector3());
       const n = e.enraged ? 5 : 3;
       for (let k = 0; k < n; k++) {
-        // A dark shaft from the cloud base (55 m over you) down past your altitude: don't fly through it.
+        // A bolt from the cloud base (55 m over you) down past your altitude: don't fly between the rings. Fuses stagger
+        // 0.12 s each, so the volley rolls along your path.
         const at = p.pos.clone().addScaledVector(f, p.speed * 1.2 + k * 35).addScaledVector(side, rand(-20, 20));
         const top = Math.min(p.pos.y + 55, G.terrain.ceilingHeight(at.x, at.z, p.pos.y) - 5), bottom = Math.max(floorAt(G, at), p.pos.y - 80);
-        at.y = (top + bottom) / 2;
-        en.warn(at, 22, '#2a2440', 1.2, (hz) => {
-          G.fx.lightning(_a.copy(hz.pos).setY(top), _b.copy(hz.pos).setY(bottom));
-          const dx = p.pos.x - hz.pos.x, dz = p.pos.z - hz.pos.z;
+        const fuse = 1.2 + 0.12 * k;
+        en.warn(at.clone().setY(top), 22, '#ffe14a', fuse, (hz) => {
+          const x = hz.pos.x, z = hz.pos.z;
+          // Two bolts ~3 m apart read as one thick one.
+          for (const o of [-1.5, 1.5]) G.fx.lightning(_a.set(x + o, top, z - o), _b.set(x - o, bottom, z + o));
+          G.fx.emit(_a.set(x, THREE.MathUtils.clamp(p.pos.y, bottom, top), z), 12, { colors: ['#fff7a0', '#ffffff'], speed: 25, life: 0.5, size: 5 });
+          if (k === 0) G.audio.zap();
+          const dx = p.pos.x - x, dz = p.pos.z - z;
           if (dx * dx + dz * dz < 22 * 22 && p.pos.y < top + 5 && p.pos.y > bottom - 5) p.damage(18);
-        }, { shape: 'column', owner: e, h: Math.max(10, top - bottom) });
+        }, { shape: 'ring', owner: e });
+        en.warn(at.clone().setY(bottom + 2), 22, '#ffe14a', fuse, null, { shape: 'ring', owner: e }); // where it lands
+        en.warn(at.clone().setY((top + bottom) / 2), 0.45, '#fff7a0', fuse, null, { shape: 'column', owner: e, h: Math.max(10, top - bottom) }); // the spine
       }
       G.audio.tone(70, 0.9, { type: 'sawtooth', vol: 0.05, slide: -20 });
-      G.audio.zap();
     },
   },
 
