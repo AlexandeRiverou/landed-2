@@ -18,6 +18,7 @@ const R = 160; // planet radius (m)
 export const GLOBE = {
   R, ahead: 760, floorGap: 200, top: 1150 - R - 150, // spawn: 760 m ahead at your altitude, clamped between floor and ceiling
   spin: 0.035, spinAwake: 0.055,                     // rad/s about world up (phase 2+: faster)
+  glare: 0.15,                                       // shield down: no spin; the face turns toward you at up to this (rad/s)
   crashPad: 4, ghostPad: 3,                          // closer than R + crashPad crashes; ghost / god mode skims at R + ghostPad
   respawn: 450, breather: 500,                       // respawn distance from the centre; farther than breather: a breather
   grow: 1.2,                                         // s to scale in on arrival
@@ -28,11 +29,11 @@ export const GLOBE = {
 // The gadgets (count = entries in LAYOUT). worth: how much of the 100-point bar it drains in all; they add up to 112, so
 // a few can be skipped, but never the generators (the eye is shielded until they're gone) nor the eye (82 without it).
 const KINDS = {
-  turret: { hp: 4, worth: 6, score: 40, icon: '🔫', line: 'Turret popped! The planet felt that.' },
-  generator: { hp: 8, worth: 8, score: 60, icon: '🛡', line: 'Shield generator down! {n} to go.' },
+  turret: { hp: 3, worth: 6, score: 40, icon: '🔫', line: 'Turret popped! The planet felt that.' },
+  generator: { hp: 6, worth: 8, score: 60, icon: '🛡', line: 'Shield generator down! {n} to go.' },
   vent: { hp: 3, worth: 3, score: 40, icon: '🌋', line: 'Vent plugged! Burp denied.' },
   sweeper: { hp: 6, worth: 5, score: 40, icon: '🌀', line: 'Sweeper snapped! Hair day: ruined.' },
-  eye: { hp: 20, worth: 30, score: 40, line: 'The eye is out! It can\'t see you now. It can still feel you.' },
+  eye: { hp: 14, worth: 30, score: 40, line: 'The eye is out! It can\'t see you now. It can still feel you.' },
   crown: { hp: 10, worth: 0, score: 40, line: 'CROWN KNOCKED OFF! Every gadget takes 30% more damage now. The planet is mortified.' },
 };
 // Where they sit: [kind, longitude°, latitude°]. Longitude 0 is the face, turned toward you when it arrives.
@@ -53,8 +54,10 @@ const VENT = { r: 14, h: 130, warn: 1.4, blast: 1.2, dmg: 15, range: 260, rangeM
 // Sweepers: a `len` m bar spinning `up` m over the surface; touching it (within `hit` m) costs dmg, at most every cd s.
 const SWEEP = { len: 120, up: 22, rate: 0.6, rateAwake: 0.8, dmg: 12, hit: 5, cd: 1.5, whir: 150 };
 // The eye: a shield bubble (r) while any generator stands; then the lid opens `open` s (phase 3: openMad) every `every`
-// s, after `twitch` s of twitching and creaking. Phase 3, once per opening: a glare (column warning, then a beam).
-const EYE = { shield: 45, every: 9, open: 4, openMad: 5, twitch: 1, glareR: 10, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, lidOpen: -1.9 };
+// s, after `twitch` s of twitching and creaking. Phase 3, once per opening: a glare. A thin "laser sight" from the eye
+// (radius sight[0] thickening to sight[1] over glareWarn s), then a steady beam that thick (beamOpacity, no flicker) that stops
+// glareOver m past where it aimed. Its hit radius is glareR (+ 4 m for the plane), whatever the sight looks like.
+const EYE = { shield: 45, every: 9, open: 4, openMad: 5, twitch: 1, glareR: 10, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, glareOver: 30, sight: [1.5, 3], beamOpacity: 0.7, lidOpen: -1.9 };
 const DRONES = 3, ROCKS = { n: 2, every: 12, max: 2 };
 const RUBBLE = { n: 8, size: [12, 14], speed: 15, safe: 3 };
 const DYING = { chain: 1.4, split: 1.8 }; // s for every gadget left to go off, one by one; s until it splits
@@ -64,7 +67,8 @@ const TEXT = {
   arrive: '⚠ THE WHOLE PLANET IS THE BOSS: Grumbleglobe! It is NOT a morning planet.',
   phase2: 'Grumbleglobe is properly awake now. It\'s launching drones. From its pores.',
   phase3: 'MELTDOWN! The planet is cracking. Its eye stays open longer: finish it!',
-  shieldDown: 'SHIELD DOWN! Its eye is open for business. Wait for it to blink.',
+  shieldDown: 'SHIELD DOWN! Shoot the eye when it opens. It really hates that.',
+  turned: 'Grumbleglobe turned to glare at you. Rude. Effective.',
   firstEye: 'Right in the eye! It\'s really upset now.',
   rock: 'That\'s just rock. Shoot the gadgets!',
   far: 'Out of range. The planet is fuming quietly.',
@@ -297,7 +301,7 @@ export class Globe {
     this.tauntT = 6;
     this.tinkAt = -1;
     this.tips = {};
-    this.glare = add(group, new THREE.CylinderGeometry(1, 1, 1, 16, 1, true), basic('#ff6aff', 0.8, true));
+    this.glare = add(group, new THREE.CylinderGeometry(1, 1, 1, 16, 1, true), basic('#ff6aff', EYE.beamOpacity, true));
     this.glare.visible = false;
     this.target0 = new THREE.Vector3();
     this.home = new THREE.Vector3();
@@ -329,7 +333,7 @@ export class Globe {
     e.t += dt;
     this.grow = Math.min(1, this.grow + real / GLOBE.grow);
     this.group.scale.setScalar(Math.max(0.01, 1 - (1 - this.grow) ** 3));
-    if (this.dying < 0) this.body.rotation.y += dt * (this.phase > 1 ? GLOBE.spinAwake : GLOBE.spin);
+    if (this.dying < 0) this.turn(dt, p);
     for (const s of this.of('sweeper')) s.hub.rotation.y += dt * (this.phase > 1 ? SWEEP.rateAwake : SWEEP.rate);
     this.group.updateMatrixWorld(true);
     for (const x of this.parts) {
@@ -359,6 +363,15 @@ export class Globe {
   }
 
   of(kind) { return this.parts.filter((x) => x.kind === kind && !x.broken); }
+
+  // It spins while the shield stands; once it's down it stops and turns its face (longitude 0, local +Z) toward you,
+  // easing in over the last few degrees, so the eye you have to shoot isn't running away.
+  turn(dt, p) {
+    const b = this.body;
+    if (!this.shieldDown) { b.rotation.y += dt * (this.phase > 1 ? GLOBE.spinAwake : GLOBE.spin); return; }
+    const want = Math.atan2(p.pos.x - this.C.x, p.pos.z - this.C.z), d = Math.atan2(Math.sin(want - b.rotation.y), Math.cos(want - b.rotation.y));
+    b.rotation.y += clamp(d * 1.5, -GLOBE.glare, GLOBE.glare) * dt;
+  }
 
   // The planet is solid: fly into it and you crash (ghost or god mode skims the surface; just respawned too).
   // Drones and rocks are pushed back out of it.
@@ -443,6 +456,7 @@ export class Globe {
     if (part.kind === 'crown') this.e.vulnerable = 1.3;
     if (part.kind === 'vent') this.quiet(part);
     if (part.kind === 'turret') part.tip.material.opacity = 0;
+    if (part.kind === 'eye') this.e.hp = 0; // the finisher: the chain explosion (startDying) takes whatever's left
     const n = this.left(part.kind);
     if (part.kind === 'generator' && n === 0) return; // eyeStep announces the shield going down
     G.ui.notify(K.line.replace('{n}', n), 'good', 3, 1);
@@ -557,6 +571,7 @@ export class Globe {
     if (!this.shieldDown) {
       this.shieldDown = true;
       G.ui.notify(TEXT.shieldDown, 'good', 4, 2);
+      G.ui.notify(TEXT.turned, 'info', 3, 1);
       G.audio.zap();
       Object.assign(x, { state: 'shut', t: 2 });
     }
@@ -572,20 +587,31 @@ export class Globe {
     }
   }
 
-  // Phase 3, once per opening: a column marks the line from the eye to where you'll be in 1 s, then the beam.
+  // Phase 3, once per opening: a thin sight line from the eye to where you'll be in 1 s (it thickens as it charges:
+  // animate), then the beam. The warning keeps r = glareR (the hit radius); only its mesh is drawn thin.
   glareAt() {
     const G = this.G, p = G.player, x = this.eye;
     if (!this.sees(x, 650)) return;
     const from = x.wb.clone(), to = p.pos.clone().addScaledVector(p.forward, p.speed * EYE.glareAhead), dir = to.clone().sub(from), len = dir.length();
     dir.normalize();
-    G.enemies.warn(from.clone().addScaledVector(dir, len / 2), EYE.glareR, '#ff4dff', EYE.glareWarn, () => this.beam(from, dir, len), { shape: 'column', owner: this.e, h: len, dir });
+    this.sight = G.enemies.warn(from.clone().addScaledVector(dir, len / 2), EYE.glareR, '#ff4dff', EYE.glareWarn, () => this.beam(from, dir, len), { shape: 'column', owner: this.e, h: len, dir });
+    this.sightLine();
     G.audio.tone(300, EYE.glareWarn, { type: 'square', vol: 0.03, slide: 500 });
     this.e.attacks++;
   }
 
+  // The sight's drawn radius: sight[0] → sight[1] over the warning.
+  sightLine() {
+    const hz = this.sight;
+    if (!this.G.enemies.hazards.list.includes(hz)) { this.sight = null; return; } // cleared elsewhere: its mesh is back in the pool
+    const k = Math.min(1, hz.t / hz.T), r = EYE.sight[0] + (EYE.sight[1] - EYE.sight[0]) * k;
+    hz.mesh.scale.x = hz.mesh.scale.z = r;
+  }
+
   beam(from, dir, len) {
+    this.sight = null;
     if (this.dozing || this.dying >= 0) return;
-    const L = len + 80;
+    const L = len + EYE.glareOver;
     this.beamT = EYE.glareBeam;
     this.beamHit = false;
     this.beamA = from;
@@ -593,7 +619,7 @@ export class Globe {
     this.glare.visible = true;
     this.glare.position.copy(from).addScaledVector(dir, L / 2).sub(this.C);
     this.glare.quaternion.setFromUnitVectors(Y, dir);
-    this.glare.scale.set(EYE.glareR * 0.6, L, EYE.glareR * 0.6);
+    this.glare.scale.set(EYE.sight[1], L, EYE.sight[1]); // drawn as thick as the sight ended; steady (EYE.beamOpacity), no flashing
     this.G.audio.zap();
   }
 
@@ -646,16 +672,16 @@ export class Globe {
     x.shield.material.opacity = 0.16 + 0.05 * Math.sin(t * 2 * TAU / 2);
     for (const v of this.of('vent')) {
       v.core.material.color.set(v.state === 'quiet' ? '#3a1a10' : '#ff9a3a');
-      if (v.blast.visible) v.blast.material.opacity = 0.55 + 0.25 * Math.sin(t * 25);
+      if (v.blast.visible) v.blast.material.opacity = 0.6 + 0.1 * Math.sin(t * 12); // under 2 Hz: no flashing
     }
     if (this.phase > 2) {
       const k = 0.5 + 0.5 * Math.sin(t * 4);
       this.cracks.children[0].material.opacity = 0.55 + 0.45 * k;
       this.rock.emissive.setRGB(0.16 + 0.12 * k, 0.05, 0.06);
     }
+    if (this.sight) this.sightLine();
     if (this.beamT > 0) {
       this.beamT -= real;
-      this.glare.material.opacity = 0.5 + 0.4 * Math.sin(t * 40);
       const p = G.player;
       if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { this.beamHit = true; p.damage(EYE.glareDmg); }
       if (this.beamT <= 0) this.glare.visible = false;
@@ -679,6 +705,7 @@ export class Globe {
     for (const v of this.of('vent')) this.quiet(v);
     this.glare.visible = false;
     this.beamT = 0;
+    this.sight = null;
     this.chain = this.parts.filter((x) => !x.broken).sort(() => Math.random() - 0.5);
     this.chainGap = (DYING.chain - 0.2) / Math.max(1, this.chain.length);
     this.chainAt = 0.2;
@@ -766,6 +793,7 @@ export class Globe {
     for (const t of this.of('turret')) { t.wind = 0; t.shots = 0; t.tip.material.opacity = 0.0001; }
     this.glare.visible = false;
     this.beamT = 0;
+    this.sight = null;
   }
 }
 
@@ -778,6 +806,7 @@ export function mkSiege(G, level) {
   return objective({
     type: 'boss', boss: 'grumbleglobe', siege: true, needsEnemies: true, noun: 'Grumbleglobe', globe, wakeText: TEXT.wake,
     reward: Math.round((400 + level * 100) * GLOBE.reward),
+    par: 110, // s: a fair fight's length (objectives.js keeps an objective's own par; other bosses get 25)
     title: 'BOSS: Grumbleglobe',
     desc: 'The whole planet is the boss. Shoot its gadgets: turrets, vents, sweepers and the 3 cyan shield generators, then its eye. Bare rock does nothing.',
     caps: new Set(['easier']),

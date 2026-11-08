@@ -221,7 +221,7 @@ export const TACTICS = [
   },
   {
     id: 'flatten', tier: 3,
-    can: (o, P) => !P.flattened && P.G.world.amp > 0.5,
+    can: (o, P) => !P.flattened && P.G.world.amp > 0.5 && !P.G.zones.current.noGround, // no mountains to sit down in space
     apply: (G, o, P) => {
       P.flattened = { prev: G.world.amp, now: G.world.amp * 0.35 };
       G.world.amp = P.flattened.now;
