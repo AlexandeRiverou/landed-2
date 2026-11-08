@@ -2658,7 +2658,8 @@ try {
     for (let k = 0; k < 30 * 6; k++) { hover(tur, 200); p.health = p.maxHealth; step(1); }
     const pair = fired.slice(nb).filter((f) => f.x === tur);
     out.phase2.burst = pair.length >= 2;
-    // Shield down: no spin; the face turns toward you at up to 0.30 rad/s (enemy time) until it looks right at you.
+    // Shield down: no spin; while the eye is due (shut past its time, or twitching) the face turns toward you at up to
+    // 0.30 rad/s (enemy time); otherwise it holds still.
     // The eye, due to open, holds shut while the face is more than 0.7 rad off you; it starts twitching once within.
     {
       const face = () => { const to = new V().subVectors(p.pos, g.C).setY(0).normalize(); return g.eye.wn.clone().setY(0).normalize().dot(to); };
@@ -2674,8 +2675,14 @@ try {
       };
       for (let k = 0; k < 30 * 2; k++) { sit(); step(1); watch(); }
       const rate = Math.abs(g.body.rotation.y - r0) / (2 * 0.85);
-      for (let k = 0; k < 30 * 22; k++) { sit(); step(1); watch(); }
-      out.turn = { f0: +f0.toFixed(2), rate: +rate.toFixed(3), f1: +face().toFixed(3), toast: notes.includes('Grumbleglobe turned to glare at you. Rude. Effective.'), held: +(held / 30).toFixed(2), heldErr: +heldErr.toFixed(2), twitchErr };
+      // Hold still: on every step the eye isn't due (shut past its time) or twitching, the face doesn't move at all.
+      let still = 0;
+      for (let k = 0; k < 30 * 22; k++) {
+        const due = (g.eye.state === 'shut' && g.eye.t <= 0) || g.eye.state === 'twitch', ry = g.body.rotation.y;
+        sit(); step(1); watch();
+        if (!due) still = Math.max(still, Math.abs(g.body.rotation.y - ry));
+      }
+      out.turn = { f0: +f0.toFixed(2), rate: +rate.toFixed(3), f1: +face().toFixed(3), toast: notes.includes('Grumbleglobe turned to glare at you. Rude. Effective.'), held: +(held / 30).toFixed(2), heldErr: +heldErr.toFixed(2), twitchErr, still: still < 1e-6, stillMax: still };
     }
     park();
     E.list.filter((x) => !x.quest).forEach((x) => E.removeEnemy(x));
@@ -2728,6 +2735,20 @@ try {
       out.phase3.reach.sight = { end: tipEnd(g.sightTip), body: Math.round(g.sight.mesh.position.z + g.sight.mesh.scale.y / 2 - from.z), same: g.sightTip.material === g.sight.mesh.material };
       E.hazards.clear(e); g.sightLine(); out.phase3.reach.sight.gone = !g.sight && !g.sightTip.visible; g.beamT = 0; g.glare.visible = g.glareTip.visible = false;
       G.camera.position.copy(cam);
+    }
+    // A glare from behind the camera gets a toast ("glaring at your back"); one in front of it doesn't.
+    {
+      const cam = G.camera.position.clone(), q = G.camera.quaternion.clone(), attacks = e.attacks;
+      const back = (away) => {
+        p.pos.copy(eye.mid).addScaledVector(eye.wn, 200); p.prevPos.copy(p.pos);
+        G.camera.position.copy(p.pos).addScaledVector(eye.wn, 30);
+        G.camera.lookAt(G.camera.position.clone().addScaledVector(eye.wn, away ? 100 : -100)); G.camera.updateMatrixWorld(true);
+        const n = notes.length; g.glareAt();
+        E.hazards.clear(e); g.sightLine();
+        return notes.slice(n).includes('Grumbleglobe is glaring at your back. Swerve!');
+      };
+      out.phase3.glareBack = { behind: back(true), ahead: back(false) };
+      G.camera.position.copy(cam); G.camera.quaternion.copy(q); G.camera.updateMatrixWorld(true); e.attacks = attacks;
     }
     // The treadmill: you keep 126° round from the face (as if chasing a far-side gadget), so it never looks at you. The
     // eye, due to open, holds shut 6 s (enemy time), then twitches and opens anyway. Then, in front of the eye but with
@@ -3380,6 +3401,7 @@ try {
     [(({ phase2: q }) => q.phase === 2 && q.drones === 3 && Math.abs(q.spin - 0.055) < 0.005 && q.toast && q.burst)(GLOBE), `Grumbleglobe phase 2 (66%): 3 drones, faster spin (shield up), two-shot bursts (${JSON.stringify(GLOBE.phase2)})`],
     [(({ phase3: q }) => q.phase === 3 && q.enraged && q.cracks && /ENRAGED/.test(q.bar) && q.toast && q.eyeOpen >= 5.8 && q.glare && q.glare.t >= 1.2 && q.glare.fired >= 1.2 && q.glare.hit === 1 && q.glare.sight && q.glare.sight[0] >= 2 && q.glare.sight[0] < 2.5 && q.glare.sight[1] > 3.5 && q.glare.sight[1] <= 4 && q.glare.beamOp.length === 1 && q.glare.beamOp[0] === 0.7 && q.glare.beamOver >= 25 && q.glare.beamOver <= 35 && q.glare.beamDrawn && (q.glare.beamDrawn.endToAim <= 1 || Math.abs(q.glare.beamDrawn.camGap - 50) <= 0.5) && Math.abs(q.glare.beamDrawn.hitPast - 30 - q.glare.beamDrawn.shortOfAim) <= 0.2 && q.glare.beamDrawn.tip === 40 && q.glare.beamDrawn.point === 0 && q.rocks >= 1 && q.rocks <= 2)(GLOBE), `Grumbleglobe phase 3 (33%): ENRAGED, cracks, the eye open 6 s, a 1.2 s+ glare warning (a thin sight, 2 m thickening to 4 m) before its 20-damage beam (steady 0.7, drawn up to where it aimed or 50 m short of the camera, narrowing over its last 40 m, hitting ~30 m past you), up to 2 Grudge Rocks (${JSON.stringify(GLOBE.phase3)})`],
     [(({ phase3: { held: q } }) => q && q.held >= 5.9 && q.held <= 6.2 && q.err > 0.7 && q.opened && q.inView && q.inView.held >= 5.9 && q.inView.held <= 6.2 && q.inView.opened && q.inView.sees && q.inView.glares === 0)(GLOBE), `Grumbleglobe: an eye the face can't bring round to you (you keep 126° off it) still twitches and opens after 6 s held shut; a forced opening with the face off you fires no glare (${JSON.stringify(GLOBE.phase3.held)})`],
+    [(({ phase3: { glareBack: q } }) => q && q.behind === true && q.ahead === false)(GLOBE), `Grumbleglobe glare: from behind the camera it toasts "glaring at your back"; from in front, no toast (${JSON.stringify(GLOBE.phase3.glareBack)})`],
     [(({ phase3: { reach: q } }) => q && q.in9 === 1 && q.out11 === 0 && q.past25 === 1 && q.past45 === 0 && q.camDrawn === 70 && q.camEnd === 70 && q.sight && q.sight.end === 70 && q.sight.body === 35 && q.sight.same && q.sight.gone)(GLOBE), `Grumbleglobe glare: hit radius 6 + 4 m, the hit segment 30 m past the aim point, the drawn beam and the sight stopping 50 m short of the camera, their last 40 m (half, for these 70 m) a narrowing tip (${JSON.stringify(GLOBE.phase3.reach)})`],
     [GLOBE.hazards === 0 && GLOBE.freeze && GLOBE.homing, `Grumbleglobe: every warning lasts 1 s+, Time Freeze stops the spin, Homing Bullets pick a gadget (${JSON.stringify({ hazards: GLOBE.hazards, freeze: GLOBE.freeze, homing: GLOBE.homing })})`],
     [(({ crash: c, respawn: r }) => c.dead && c.lives === 4 && c.glow && c.toast && c.mega && r.dist >= 445 && r.dist <= 455 && Math.abs(r.dy) <= 2 && r.deg <= 5 && r.invuln > 2 && r.broken)(GLOBE), `Grumbleglobe: flying into it shows the pull-up glow, then crashes and costs a life (Mega Plane too); the respawn is 450 m out facing it, destroyed gadgets still gone (${JSON.stringify({ crash: GLOBE.crash, respawn: GLOBE.respawn })})`],
@@ -3388,7 +3410,7 @@ try {
     [GLOBE.next.type && GLOBE.next.type !== 'boss' && !GLOBE.next.siege && GLOBE.next.zone === 'Grumbleglobe', `Grumbleglobe: the zone's next objective comes as usual among the rubble (${JSON.stringify(GLOBE.next)})`],
     [(({ par: q }) => q.obj === 110 && q.card === '⏱ Par 110 s · beat it for +60' && q.flatten === false)(GLOBE), `Grumbleglobe: its own par, 110 s, on the card; no "flatten" persuasion in space (${JSON.stringify(GLOBE.par)})`],
     [(({ par: { hp: h } }) => h.turret === 3 && h.generator === 6 && h.vent === 3 && h.sweeper === 6 && h.eye === 14)(GLOBE), `Grumbleglobe: gadget hp turret 3, generator 6, vent 3, sweeper 6, eye 14 (${JSON.stringify(GLOBE.par.hp)})`],
-    [(({ turn: t }) => t && t.f0 < -0.4 && t.rate > 0.27 && t.rate <= 0.301 && t.f1 > 0.99 && t.toast && t.held >= 1 && t.heldErr > 1.5 && t.twitchErr !== null && t.twitchErr < 0.7)(GLOBE), `Grumbleglobe: once the shield is down it stops spinning and turns its face to you at up to 0.30 rad/s; the eye holds shut while the face is over 0.7 rad off you, then opens (${JSON.stringify(GLOBE.turn)})`],
+    [(({ turn: t }) => t && t.f0 < -0.4 && t.rate > 0.27 && t.rate <= 0.301 && t.f1 > 0.88 && t.still === true && t.toast && t.held >= 1 && t.heldErr > 1.5 && t.twitchErr !== null && t.twitchErr < 0.7)(GLOBE), `Grumbleglobe: once the shield is down it stops spinning and turns its face to you at up to 0.30 rad/s only while the eye is due, and holds still otherwise; the eye holds shut while the face is over 0.7 rad off you, then opens (${JSON.stringify(GLOBE.turn)})`],
     [(({ eyeKill: k }) => k && k.hpBefore > 20 && k.broke && k.dying && k.dead && k.allGone)(GLOBE), `Grumbleglobe: breaking the eye ends the fight, whatever is left of the bar (${JSON.stringify(GLOBE.eyeKill)})`],
     [(({ fresh: f }) => f && f.other && f.intact && f.turretHp === 4.2 && f.eyeHp === 19.6 && f.hp === 100)(GLOBE), `Grumbleglobe: a fresh run continued from its zone gets a fresh planet; lap 2 gadgets have 1.4× hp (${JSON.stringify(GLOBE.fresh)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],

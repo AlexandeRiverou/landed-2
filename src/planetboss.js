@@ -18,7 +18,7 @@ const R = 160; // planet radius (m)
 export const GLOBE = {
   R, ahead: 760, floorGap: 200, top: 1150 - R - 150, // spawn: 760 m ahead at your altitude, clamped between floor and ceiling
   spin: 0.035, spinAwake: 0.055,                     // rad/s about world up (phase 2+: faster)
-  glare: 0.30,                                       // shield down: no spin; the face turns toward you at up to this (rad/s)
+  glare: 0.30,                                       // shield down: no spin; while the eye is due (shut past its time, or twitching) the face turns toward you at up to this (rad/s); otherwise it holds still, so you can always reach a gadget
   crashPad: 4, ghostPad: 3,                          // closer than R + crashPad crashes; ghost / god mode skims at R + ghostPad
   respawn: 450, breather: 500,                       // respawn distance from the centre; farther than breather: a breather
   grow: 1.2,                                         // s to scale in on arrival
@@ -72,6 +72,7 @@ const TEXT = {
   phase3: 'MELTDOWN! The planet is cracking. Its eye stays open longer: finish it!',
   shieldDown: 'SHIELD DOWN! Shoot the eye when it opens. It really hates that.',
   turned: 'Grumbleglobe turned to glare at you. Rude. Effective.',
+  glareBack: 'Grumbleglobe is glaring at your back. Swerve!',
   firstEye: 'Right in the eye! It\'s really upset now.',
   rock: 'That\'s just rock. Shoot the gadgets!',
   far: 'Out of range. The planet is fuming quietly.',
@@ -372,14 +373,18 @@ export class Globe {
 
   of(kind) { return this.parts.filter((x) => x.kind === kind && !x.broken); }
 
-  // It spins while the shield stands; once it's down it stops and turns its face (longitude 0, local +Z) toward you,
-  // easing in over the last few degrees, so the eye you have to shoot isn't running away.
+  // It spins while the shield stands; once it's down it stops. Only while the eye is due (shut past its time, or
+  // twitching) does it turn its face (longitude 0, local +Z) toward you, easing in over the last few degrees, with a
+  // grind as it starts; otherwise it holds still, so a far-side gadget never drifts away at your own orbital rate.
   turn(dt, p) {
     const b = this.body;
     if (!this.shieldDown) { b.rotation.y += dt * (this.phase > 1 ? GLOBE.spinAwake : GLOBE.spin); return; }
     const want = Math.atan2(p.pos.x - this.C.x, p.pos.z - this.C.z), d = Math.atan2(Math.sin(want - b.rotation.y), Math.cos(want - b.rotation.y));
     this.faceErr = Math.abs(d); // how far the face is off you (rad): the eye only opens within EYE.facing (eyeStep)
-    b.rotation.y += clamp(d * 1.5, -GLOBE.glare, GLOBE.glare) * dt;
+    const x = this.eye, looking = !x.broken && ((x.state === 'shut' && x.t <= 0) || x.state === 'twitch');
+    if (looking) b.rotation.y += clamp(d * 1.5, -GLOBE.glare, GLOBE.glare) * dt;
+    if (looking && !this.looking && x.state === 'shut' && this.faceErr >= EYE.facing) this.G.audio.tone(55, 0.8, { type: 'sawtooth', vol: 0.04, slide: 40 }); // the grind: it's looking for you
+    this.looking = looking;
   }
 
   // The planet is solid: fly into it and you crash (ghost or god mode skims the surface; just respawned too).
@@ -606,6 +611,8 @@ export class Globe {
     if (!this.sees(x, 650)) return;
     const from = x.wb.clone(), to = p.pos.clone().addScaledVector(p.forward, p.speed * EYE.glareAhead), dir = to.clone().sub(from), len = dir.length();
     dir.normalize();
+    const cam = G.camera, look = cam.getWorldDirection(new THREE.Vector3());
+    if (look.dot(new THREE.Vector3().subVectors(from, cam.position)) < 0) G.ui.notify(TEXT.glareBack, 'bad', 2);
     this.sight = G.enemies.warn(from.clone().addScaledVector(dir, len / 2), EYE.glareR, '#ff4dff', EYE.glareWarn, () => this.beam(from, dir, len), { shape: 'column', owner: this.e, h: len, dir });
     this.aim = { from, dir, len };
     this.sightLine();
