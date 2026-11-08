@@ -18,7 +18,7 @@ const R = 160; // planet radius (m)
 export const GLOBE = {
   R, ahead: 760, floorGap: 200, top: 1150 - R - 150, // spawn: 760 m ahead at your altitude, clamped between floor and ceiling
   spin: 0.035, spinAwake: 0.055,                     // rad/s about world up (phase 2+: faster)
-  glare: 0.15,                                       // shield down: no spin; the face turns toward you at up to this (rad/s)
+  glare: 0.30,                                       // shield down: no spin; the face turns toward you at up to this (rad/s)
   crashPad: 4, ghostPad: 3,                          // closer than R + crashPad crashes; ghost / god mode skims at R + ghostPad
   respawn: 450, breather: 500,                       // respawn distance from the centre; farther than breather: a breather
   grow: 1.2,                                         // s to scale in on arrival
@@ -54,10 +54,13 @@ const VENT = { r: 14, h: 130, warn: 1.4, blast: 1.2, dmg: 15, range: 260, rangeM
 // Sweepers: a `len` m bar spinning `up` m over the surface; touching it (within `hit` m) costs dmg, at most every cd s.
 const SWEEP = { len: 120, up: 22, rate: 0.6, rateAwake: 0.8, dmg: 12, hit: 5, cd: 1.5, whir: 150 };
 // The eye: a shield bubble (r) while any generator stands; then the lid opens `open` s (phase 3: openMad) every `every`
-// s, after `twitch` s of twitching and creaking. Phase 3, once per opening: a glare. A thin "laser sight" from the eye
-// (radius sight[0] thickening to sight[1] over glareWarn s), then a steady beam that thick (beamOpacity, no flicker) that stops
-// glareOver m past where it aimed. Its hit radius is glareR (+ 4 m for the plane), whatever the sight looks like.
-const EYE = { shield: 45, every: 9, open: 4, openMad: 5, twitch: 1, glareR: 10, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, glareOver: 30, sight: [1.5, 3], beamOpacity: 0.7, lidOpen: -1.9 };
+// s, after `twitch` s of twitching and creaking, but only once the face is within `facing` rad of you (it stays shut
+// until then, `held` s at most: then it opens anyway, and skips that opening's glare if still off you). Phase 3, once
+// per opening: a glare. A thin "laser sight" from the eye (radius sight[0] thickening to sight[1] over glareWarn s),
+// then a steady beam that thick (beamOpacity, no flicker), drawn only up to where it aimed (and stopping camGap m short
+// of the camera), its last `tip` m narrowing to a point; it hits glareOver m past that. Its hit radius is glareR (+ 4 m
+// for the plane), whatever the sight looks like.
+const EYE = { shield: 45, every: 9, open: 5, openMad: 6, twitch: 1, facing: 0.7, held: 6, glareR: 6, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, glareOver: 30, camGap: 50, tip: 40, sight: [2, 4], beamOpacity: 0.7, lidOpen: -1.9 };
 const DRONES = 3, ROCKS = { n: 2, every: 12, max: 2 };
 const RUBBLE = { n: 8, size: [12, 14], speed: 15, safe: 3 };
 const DYING = { chain: 1.4, split: 1.8 }; // s for every gadget left to go off, one by one; s until it splits
@@ -303,6 +306,11 @@ export class Globe {
     this.tips = {};
     this.glare = add(group, new THREE.CylinderGeometry(1, 1, 1, 16, 1, true), basic('#ff6aff', EYE.beamOpacity, true));
     this.glare.visible = false;
+    // The narrowing near ends of the beam (its material) and of the sight (it borrows the warning's, see sightLine).
+    const tipGeo = new THREE.CylinderGeometry(0, 1, 1, 16, 1, true);
+    this.glareTip = add(group, tipGeo, this.glare.material);
+    this.sightTip = add(group, tipGeo, this.glare.material);
+    this.glareTip.visible = this.sightTip.visible = false;
     this.target0 = new THREE.Vector3();
     this.home = new THREE.Vector3();
     G.scene.add(group);
@@ -370,6 +378,7 @@ export class Globe {
     const b = this.body;
     if (!this.shieldDown) { b.rotation.y += dt * (this.phase > 1 ? GLOBE.spinAwake : GLOBE.spin); return; }
     const want = Math.atan2(p.pos.x - this.C.x, p.pos.z - this.C.z), d = Math.atan2(Math.sin(want - b.rotation.y), Math.cos(want - b.rotation.y));
+    this.faceErr = Math.abs(d); // how far the face is off you (rad): the eye only opens within EYE.facing (eyeStep)
     b.rotation.y += clamp(d * 1.5, -GLOBE.glare, GLOBE.glare) * dt;
   }
 
@@ -563,6 +572,8 @@ export class Globe {
   }
 
   // The eye: stares out of its bubble while any generator stands; then shut → twitch (1 s, creaking) → open, on a cycle.
+  // It holds shut past its time until the face looks your way (faceErr < EYE.facing), so it never opens on empty sky;
+  // but never more than EYE.held s (x.t runs on below 0), so a chase round the far side can't keep it shut for good.
   eyeStep(dt) {
     const G = this.G, x = this.eye;
     if (x.broken) return;
@@ -576,13 +587,14 @@ export class Globe {
       Object.assign(x, { state: 'shut', t: 2 });
     }
     x.t -= dt;
-    if (x.state === 'shut' && x.t <= 0) {
-      Object.assign(x, { state: 'twitch', t: EYE.twitch });
+    if (x.state === 'shut' && x.t <= 0 && (this.faceErr < EYE.facing || x.t <= -EYE.held)) {
+      Object.assign(x, { state: 'twitch', t: EYE.twitch, forced: this.faceErr >= EYE.facing });
       G.audio.tone(70, EYE.twitch, { type: 'sawtooth', vol: 0.05, slide: 50 }); // the creak
     } else if (x.state === 'twitch' && x.t <= 0) {
       Object.assign(x, { state: 'open', t: this.phase > 2 ? EYE.openMad : EYE.open, glared: false });
     } else if (x.state === 'open') {
-      if (this.phase > 2 && !x.glared && !G.player.dead) { x.glared = true; this.glareAt(); }
+      // No glare from a forced opening while the face is still off you: it never beams from the side that isn't looking.
+      if (this.phase > 2 && !x.glared && !G.player.dead) { x.glared = true; if (!(x.forced && this.faceErr > EYE.facing)) this.glareAt(); }
       if (x.t <= 0) Object.assign(x, { state: 'shut', t: EYE.every - EYE.twitch - (this.phase > 2 ? EYE.openMad : EYE.open) });
     }
   }
@@ -595,31 +607,55 @@ export class Globe {
     const from = x.wb.clone(), to = p.pos.clone().addScaledVector(p.forward, p.speed * EYE.glareAhead), dir = to.clone().sub(from), len = dir.length();
     dir.normalize();
     this.sight = G.enemies.warn(from.clone().addScaledVector(dir, len / 2), EYE.glareR, '#ff4dff', EYE.glareWarn, () => this.beam(from, dir, len), { shape: 'column', owner: this.e, h: len, dir });
+    this.aim = { from, dir, len };
     this.sightLine();
     G.audio.tone(300, EYE.glareWarn, { type: 'square', vol: 0.03, slide: 500 });
     this.e.attacks++;
   }
 
-  // The sight's drawn radius: sight[0] → sight[1] over the warning.
+  // The sight's drawn radius: sight[0] → sight[1] over the warning. Its length is clipped like the beam's, every frame
+  // (the camera moves); the warning mesh is the body and sightTip, in the same material, the narrowing end.
   sightLine() {
     const hz = this.sight;
-    if (!this.G.enemies.hazards.list.includes(hz)) { this.sight = null; return; } // cleared elsewhere: its mesh is back in the pool
-    const k = Math.min(1, hz.t / hz.T), r = EYE.sight[0] + (EYE.sight[1] - EYE.sight[0]) * k;
-    hz.mesh.scale.x = hz.mesh.scale.z = r;
+    if (!this.G.enemies.hazards.list.includes(hz)) { this.sight = null; this.sightTip.visible = false; return; } // cleared elsewhere: its mesh is back in the pool
+    const k = Math.min(1, hz.t / hz.T), r = EYE.sight[0] + (EYE.sight[1] - EYE.sight[0]) * k, { from, dir, len } = this.aim;
+    this.sightTip.material = hz.mesh.material;
+    this.rod(hz.mesh, _c.set(0, 0, 0), this.sightTip, from, dir, this.drawn(from, dir, len), r);
   }
 
+  // How far a glare from `from` along `dir` (aimed `len` m out) is drawn: to the aim point, but never within camGap m
+  // of the camera (so it can't fill the screen when you fly away from the eye).
+  drawn(from, dir, len) {
+    const cam = _a.subVectors(this.G.camera.position, from).dot(dir);
+    return cam > 0 ? clamp(cam - EYE.camGap, 1, len) : len;
+  }
+
+  // Lay a body cylinder (its parent at `origin`) and a tip cone (in the planet group) from `from` along `dir`, L m in
+  // all, radius r: the tip is the last EYE.tip m (half of a short one), narrowing to a point at the near end.
+  rod(body, origin, tip, from, dir, L, r) {
+    const t = Math.min(EYE.tip, L / 2), b = L - t;
+    body.position.copy(from).addScaledVector(dir, b / 2).sub(origin);
+    body.quaternion.setFromUnitVectors(Y, dir);
+    body.scale.set(r, b, r);
+    tip.position.copy(from).addScaledVector(dir, b + t / 2).sub(this.C);
+    tip.quaternion.copy(body.quaternion);
+    tip.scale.set(r, t, r);
+    tip.visible = true;
+  }
+
+  // The hit segment runs glareOver m past the aim point; the mesh only as far as drawn() allows (beamLen m).
   beam(from, dir, len) {
     this.sight = null;
+    this.sightTip.visible = false;
     if (this.dozing || this.dying >= 0) return;
-    const L = len + EYE.glareOver;
+    const L = this.drawn(from, dir, len);
     this.beamT = EYE.glareBeam;
     this.beamHit = false;
     this.beamA = from;
-    this.beamB = from.clone().addScaledVector(dir, L);
+    this.beamB = from.clone().addScaledVector(dir, len + EYE.glareOver);
+    this.beamLen = L;
     this.glare.visible = true;
-    this.glare.position.copy(from).addScaledVector(dir, L / 2).sub(this.C);
-    this.glare.quaternion.setFromUnitVectors(Y, dir);
-    this.glare.scale.set(EYE.sight[1], L, EYE.sight[1]); // drawn as thick as the sight ended; steady (EYE.beamOpacity), no flashing
+    this.rod(this.glare, this.C, this.glareTip, from, dir, L, EYE.sight[1]); // as thick as the sight ended; steady (EYE.beamOpacity), no flashing
     this.G.audio.zap();
   }
 
@@ -666,7 +702,7 @@ export class Globe {
 
   animate(real) {
     const G = this.G, x = this.eye, t = this.e.t, ease = 1 - Math.exp(-real * 10);
-    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.25 * Math.abs(Math.sin(t * 30)) : 0;
+    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.25 * Math.abs(Math.sin(t * 12)) : 0; // ~3.8 Hz
     x.lid.rotation.x += ((this.dozing || this.dying >= 0 ? 0 : lid) - x.lid.rotation.x) * ease;
     x.shield.visible = this.gens() > 0 && !x.broken;
     x.shield.material.opacity = 0.16 + 0.05 * Math.sin(t * 2 * TAU / 2);
@@ -684,7 +720,7 @@ export class Globe {
       this.beamT -= real;
       const p = G.player;
       if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { this.beamHit = true; p.damage(EYE.glareDmg); }
-      if (this.beamT <= 0) this.glare.visible = false;
+      if (this.beamT <= 0) this.glare.visible = this.glareTip.visible = false;
     }
     // Red markers only where to shoot: the generators while the shield is up, the eye once it's open. Not on the far side.
     const cam = G.camera.position;
@@ -703,7 +739,7 @@ export class Globe {
     this.e.hp = 0;
     G.enemies.hazards.clear(this.e);
     for (const v of this.of('vent')) this.quiet(v);
-    this.glare.visible = false;
+    this.glare.visible = this.glareTip.visible = this.sightTip.visible = false;
     this.beamT = 0;
     this.sight = null;
     this.chain = this.parts.filter((x) => !x.broken).sort(() => Math.random() - 0.5);
@@ -791,7 +827,7 @@ export class Globe {
     this.G.enemies.hazards.clear(this.e);
     for (const v of this.of('vent')) this.quiet(v);
     for (const t of this.of('turret')) { t.wind = 0; t.shots = 0; t.tip.material.opacity = 0.0001; }
-    this.glare.visible = false;
+    this.glare.visible = this.glareTip.visible = this.sightTip.visible = false;
     this.beamT = 0;
     this.sight = null;
   }
