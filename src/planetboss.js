@@ -311,6 +311,7 @@ export class Globe {
     const tipGeo = new THREE.CylinderGeometry(0, 1, 1, 16, 1, true);
     this.glareTip = add(group, tipGeo, this.glare.material);
     this.sightTip = add(group, tipGeo, this.glare.material);
+    this.sightTip.userData.keep = true; // it borrows the pooled warning's material; tipGeo is disposed via glareTip
     this.glareTip.visible = this.sightTip.visible = false;
     this.target0 = new THREE.Vector3();
     this.home = new THREE.Vector3();
