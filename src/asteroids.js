@@ -25,14 +25,15 @@ export class Asteroids {
     while (this.list.length > density) this.remove(this.list.length - 1);
   }
 
-  spawn(pos, size, vel) {
+  // safe: seconds before it can hurt you on contact (a planet's rubble flying apart).
+  spawn(pos, size, vel, safe = 0) {
     const m = new THREE.Mesh(this.geo, pick(this.mats));
     m.scale.set(size * rand(0.8, 1.2), size * rand(0.7, 1.1), size * rand(0.8, 1.2));
     m.position.copy(pos);
     m.rotation.set(rand(0, 6), rand(0, 6), rand(0, 6));
     this.G.scene.add(m);
     this.list.push({
-      mesh: m, pos: m.position, size, hp: Math.ceil(size / 7),
+      mesh: m, pos: m.position, size, hp: Math.ceil(size / 7), safe,
       vel: vel || new THREE.Vector3(rand(-6, 6), rand(-2, 2), rand(-6, 6)),
       spin: new THREE.Vector3(rand(-0.6, 0.6), rand(-0.6, 0.6), rand(-0.6, 0.6)),
     });
@@ -79,9 +80,10 @@ export class Asteroids {
         const d = a.pos[k] - p.pos[k];
         if (d > lim) a.pos[k] -= 2 * lim; else if (d < -lim) a.pos[k] += 2 * lim;
       }
+      if (a.safe > 0) a.safe -= dt;
       if (p.dead) continue;
       // Ram it: it hurts, and the rock doesn't survive either.
-      if (a.pos.distanceTo(p.pos) < a.size + 3 * p.sizeScale) {
+      if (a.safe <= 0 && a.pos.distanceTo(p.pos) < a.size + 3 * p.sizeScale) {
         p.damage(Math.round(10 + a.size * 0.6));
         if (!this.hitTip) { this.hitTip = true; G.ui.notify('Asteroids hurt! Shoot them apart or fly around them.', 'warn', 4, 1); }
         this.smash(i, false);

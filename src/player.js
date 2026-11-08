@@ -155,8 +155,9 @@ export class Player {
       this.deadTimer -= dt;
       if (this.deadTimer <= 0) {
         if (this.lives <= 0) { if (!G.gameOver) G.endRun(); return; } // out of planes: Game Over (main.js)
-        const f = this.forward;
+        const f = this.forward, at = this.pos.clone();
         this.spawn(this.pos.x, this.pos.z, Math.atan2(-f.x, -f.z));
+        G.enemies.placeRespawn(this, at); // a planet fight moves you back out in front of the planet
         G.ui.notify(pick(T.respawn), 'info', 3, 0);
       }
       return;
@@ -536,17 +537,20 @@ export class Player {
     }
   }
 
-  // Homing Bullets power-up: curve toward the nearest enemy in front of the bullet.
+  // Homing Bullets power-up: curve toward the nearest enemy in front of the bullet. A planet boss offers its nearest
+  // gadget that can be hurt right now instead of its centre (planetboss.js homeAt).
   steerBullet(b, dt) {
     let best = null, bd = 260 * 260;
     for (const e of this.G.enemies.list) {
-      _v.subVectors(e.pos, b.pos);
+      const at = e.planet ? e.planet.homeAt(b.pos) : e.pos;
+      if (!at) continue;
+      _v.subVectors(at, b.pos);
       const d = _v.lengthSq();
-      if (d < bd && _v.dot(b.vel) > 0) { bd = d; best = e; }
+      if (d < bd && _v.dot(b.vel) > 0) { bd = d; best = at; }
     }
     if (!best) return;
     const speed = b.vel.length();
-    _v.subVectors(best.pos, b.pos).setLength(speed);
+    _v.subVectors(best, b.pos).setLength(speed);
     b.vel.lerp(_v, 1 - Math.exp(-dt * 6)).setLength(speed);
   }
 
@@ -568,7 +572,8 @@ export class Player {
     if (this.health <= 0) this.crash('enemy');
   }
 
-  crash(reason) {
+  // text: a line of its own instead of the usual quip for this reason.
+  crash(reason, text = null) {
     const G = this.G;
     this.dead = true;
     this.landed = null;
@@ -587,7 +592,7 @@ export class Player {
     G.audio.explode();
     G.ui.flash('#ffffff', 0.5);
     G.shake?.(1.5, 0.35);
-    G.ui.notify(pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
+    G.ui.notify(text || pick(reason === 'water' ? T.crashWater : reason === 'enemy' ? T.crashEnemy : T.crashGround), 'bad', 4);
     if (free) return;
     G.ui.livesLost();
     if (this.lives === 1) G.ui.notify(`Last life! ${pick(T.lastLife)}`, 'warn', 4, 2);

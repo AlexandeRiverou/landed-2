@@ -9,6 +9,7 @@ import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
 import { waterLine } from './world.js';
 import { MAX_LIVES, TUCK } from './player.js';
+import { mkSiege } from './planetboss.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
@@ -745,6 +746,7 @@ export class Objectives {
     this.nextBossAt = bossGap(); // completed-objective count that brings the next boss
     this.bossDeck = bossDeck();
     this.pendingBoss = false; // a boss interrupted by relax mode comes back first
+    this.held = null;         // a world boss (Grumbleglobe) dozing through relax mode, resumed first
   }
 
   // Next boss from the deck that fits the current zone (no fort in space). Reshuffles when it runs out.
@@ -770,6 +772,8 @@ export class Objectives {
 
   next() {
     const G = this.G;
+    if (this.held) return this.resume();
+    if (G.zones.current.siege && !G.zones.siegeDone) return this.startSiege();
     if (this.pendingBoss || this.completed >= this.nextBossAt) {
       if (!this.pendingBoss) this.nextBossAt = this.completed + bossGap();
       this.pendingBoss = false;
@@ -778,6 +782,43 @@ export class Objectives {
     const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]) && G.zones.allowsObjective(t[0]));
     const [type, , make] = weightedPick(pool, (t) => t[1]);
     this.start(make(G), type);
+  }
+
+  // The zone's world boss (zones.js `siege`). It takes this stretch's boss slot: the level goes up and the gap to the
+  // next regular boss re-rolls. Never in the regular deck, never with modifiers or twins.
+  startSiege() {
+    const G = this.G, level = this.bossLevel++;
+    this.nextBossAt = this.completed + bossGap();
+    G.zones.siegeDone = true;
+    this.start(mkSiege(G, level), 'boss');
+  }
+
+  // Back from relax mode: the dozing planet wakes up where it left off (destroyed gadgets stay destroyed).
+  resume() {
+    const obj = this.held;
+    this.held = null;
+    obj.doze(false);
+    this.start(obj, 'boss');
+    this.G.ui.notify(obj.wakeText, 'warn', 4, 2);
+  }
+
+  // A held planet goes for good (a fresh run, a dev-menu jump).
+  dropHeld() {
+    if (!this.held) return;
+    this.held.dispose(this.G);
+    this.held = null;
+  }
+
+  // Leaving a world boss's zone (Zones.enter): its fight ends quietly, held or under way.
+  endSiege() {
+    const G = this.G;
+    this.dropHeld();
+    if (!this.current?.siege) return;
+    G.persuasion.reset(null);
+    this.current.dispose(G);
+    this.current = null;
+    this.cooldown = 3;
+    G.ui.setObjective(null);
   }
 
   // A specific objective type, right now (developer menu).
@@ -800,6 +841,7 @@ export class Objectives {
   // A fresh run after a Game Over: the objective leaves, and the count (and the first-hoop, boss pacing) starts over.
   resetRun() {
     this.suspend();
+    this.dropHeld(); // CONTINUE FROM a world boss's zone starts a fresh planet
     this.pendingBoss = false;
     this.completed = 0;
     this.bossLevel = 0;
@@ -814,9 +856,12 @@ export class Objectives {
     const G = this.G, obj = this.current;
     this.cooldown = 3;
     if (!obj) return;
-    if (obj.type === 'boss') { this.pendingBoss = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
     G.persuasion.reset(null);
-    obj.dispose(G);
+    if (obj.siege) { this.held = obj; obj.doze(true); } // the planet stays, asleep (planetboss.js)
+    else {
+      if (obj.type === 'boss') { this.pendingBoss = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
+      obj.dispose(G);
+    }
     this.current = null;
     G.ui.setObjective(null);
   }
