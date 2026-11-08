@@ -5,7 +5,8 @@ developer menu and the smoke test pick up new entries on their own, so adding a 
 
 The title card's "Furthest" line (`landed-furthest` in `localStorage`, see `src/progression.js`) saves a zone by its
 index in `ZONES`. Adding a zone at the end is safe. Inserting one earlier shifts what a saved index points at, so a
-returning player's "Furthest" line names a different zone. That's harmless, but say so in the PR.
+returning player's "Furthest" line names a different zone. That's harmless, but say so in the PR. (Grumbleglobe went
+in as zone 25 of 30, so saved indices of 24 and up now point one zone earlier than where the player really got.)
 
 ## A zone entry
 
@@ -21,7 +22,8 @@ returning player's "Furthest" line names a different zone. That's harmless, but 
 | `decor` | Big set pieces that follow the camera like the sky dome: `earthBelow`, `retroSun`, `gasGiant`, `ringArch`. Built in `Zones.buildDecor()`, which disposes the old decor first. |
 | `sunAzimuth` | Fixes the sky's sun direction (radians), so the lighting lines up with a sun in the decor (Neon Grid uses `Math.PI` for its retro sun). Zones without it get a fresh random sun direction. |
 | `asteroids`, `comets` | Asteroid count and comets (space zones). |
-| `noGround` | No ground: ground objectives, ground enemies and ground bosses are skipped. |
+| `noGround` | No ground: ground objectives, ground enemies and ground bosses are skipped, and so is the persuasion engine's "flatten the mountains" tactic. |
+| `siege` | A world boss that owns the zone. Its first objective is that boss, whatever the boss pacing says, and it takes the stretch's boss slot (`bossLevel` goes up, the gap to the next regular boss re-rolls). Leaving the zone ends the fight. Only `'grumbleglobe'` exists (`src/planetboss.js`, started by `Objectives.startSiege()`). See "World boss zones" below. |
 | `noObjectives` | Objective types this zone doesn't offer (e.g. `altitude` and `stairs` under a roof, `gate` in the city). |
 | `lock` | Mutation groups that can't fire here, so random world changes don't break the zone's look. Start from `LOCK`, `SHAPE_LOCK` or `SPACE_LOCK`. Add `'decor'` when the zone has its own decor, so the random planet mutation stays out of it. |
 
@@ -157,6 +159,25 @@ them. A shader patch moves every vertex down by `CURVE · d²` (d = horizontal d
 `AXIS_CURVE · a²` (a = distance along `CURVE_AXIS`). `Zones.update()` eases both values toward the zone's `curve` and
 `axisCurve`, so the world bends in and back out over a few seconds. Sky things (dome, planets, decor) opt out with
 `noCurve(material)`. `curveDrop()` gives the same offset on the CPU, for lining up HTML overlays.
+
+## World boss zones (`siege`)
+
+Grumbleglobe (zone 25, between Gas Giant and The Moon) is a space zone (`noGround`, `asteroids: 0`, mood `ember`)
+whose whole point is its world boss. With `siege` set:
+
+- **On arrival:** `Objectives.next()` starts the siege before anything else, once per visit (`Zones.siegeDone`). The
+  dev menu's zone jump clears the current objective first, so it happens there too.
+- **Relax Mode:** the fight isn't thrown away. The objective is kept in `G.objectives.held` and the planet dozes; back
+  from Relax, `next()` resumes it with every broken gadget still broken.
+- **Leaving:** `Zones.enter()` into a zone without `siege` calls `Objectives.endSiege()`, which drops the fight
+  quietly. A fresh run (`resetRun()`) drops a held one too.
+- **Par:** the objective carries its own `par` (110 s), which `Objectives.start()` keeps instead of the default.
+- **The world:** keep the zone empty around the boss: no asteroids (the planet's rubble adds 8 on defeat), and no
+  ground for it to clip into.
+
+A new world boss needs a maker like `mkSiege()` (an objective with `siege: true`, `doze(on)` and its own `par`) and
+its own dev-menu button. `startSiege()` always builds Grumbleglobe today, so it would also have to pick the maker by
+the zone's `siege` name.
 
 ## Checklist for a new zone
 

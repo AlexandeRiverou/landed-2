@@ -140,6 +140,12 @@ export const ZONES = [
     sky: 'jovian', weather: 'dust', clouds: ['#fff6ea', 60, -120], fog: 0.9, mood: 'space', decor: 'gasGiant', noGround: true, lock: [...SPACE_LOCK, 'decor'],
   },
   {
+    // siege: the zone's first objective is this world boss (planetboss.js), whatever the boss pacing says.
+    name: 'Grumbleglobe', blurb: 'A tiny planet with a big frown. It has turrets, a shield and one very angry eye. Please take them away.',
+    world: { palette: 'lunar', floor: -900, seaLevel: -1000, floatingIslands: 0, propDensity: 0.3 },
+    sky: 'space', weather: 'stardust', clouds: ['#ffffff', 0], mood: 'ember', asteroids: 0, noGround: true, siege: 'grumbleglobe', lock: SPACE_LOCK,
+  },
+  {
     name: 'The Moon', blurb: 'Craters, dust and a great view of home. Mind the boulders.',
     world: { palette: 'lunar', craters: 1, seaLevel: -400, amp: 0.7, terrace: 0, canyon: 0, mesa: 0, spikes: 0.3, propTheme: 'lunar', propDensity: 0.5, floatingIslands: 0, tempBias: -1 },
     sky: 'space', weather: 'clear', clouds: ['#ffffff', 0], mood: 'space', decor: 'earthrise', asteroids: 6, lock: SPACE_LOCK,
@@ -178,6 +184,7 @@ export class Zones {
     G.scene.add(this.decor);
     this.el = { label: document.getElementById('zone'), card: document.getElementById('zone-card') };
     this.cardTimer = 0;
+    this.siegeDone = false; // this visit's siege (a zone's world boss) has started
     // The title card's "furthest zone" line (Progress remembers it between visits). A zone the list no longer has: no line.
     const f = G.progress.furthest, far = f && ZONES[f.index];
     if (far) document.getElementById('furthest').textContent = `🗺 Furthest: ${far.name} (zone ${f.index + 1} of ${ZONES.length}${f.lap > 1 ? `, lap ${f.lap}` : ''})`;
@@ -208,6 +215,9 @@ export class Zones {
     const G = this.G;
     this.index = i;
     const z = this.current;
+    // A world boss belongs to its zone: leaving ends its fight. Back in (or still in) its zone, a fight under way counts.
+    if (!z.siege) G.objectives.endSiege();
+    this.siegeDone = !!(G.objectives.current?.siege || G.objectives.held);
     const { palette, ...params } = z.world;
     Object.assign(world, WORLD_DEFAULTS, params);
     world.palette = ZONE_PALETTES[palette] || PALETTES.find((p) => p.name === palette) || PALETTES[0];

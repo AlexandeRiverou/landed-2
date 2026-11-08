@@ -69,7 +69,7 @@ const KITE_GAP = 70, KITE_GAP_ROOF = 40, STRING_HIT = 4, STRING_CD = 1.5;
 // Clingy Moth while latched: boost tank drained per s, hull per s.
 const MOTH_BOOST = 0.15, MOTH_HP = 2;
 // Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
-const PACE = 0.85;
+export const PACE = 0.85;
 // Boss breathing room: fly away from a boss and it lets you go (hovers where it lost you, holds its fire unless you shoot
 // it) so you can patch up and turn around, until you're LEASH m away or its loose time is up. Then it comes back, but only to a
 // standoff (its fight distance + STANDOFF m) where it waits: you get the first move. The loose time starts at LOOSE_T s
@@ -100,7 +100,7 @@ function flatForward(p, out) {
 }
 
 let markerMat = null, stringMat = null, beamMat = null;
-function makeMarker() {
+export function makeMarker() {
   if (!markerMat) {
     const cv = document.createElement('canvas');
     cv.width = cv.height = 64;
@@ -711,7 +711,11 @@ export class Enemies {
 
   // Relax mode: everything hostile leaves the sky at once, orbs included.
   clearAll() {
-    for (let i = this.list.length - 1; i >= 0; i--) { this.G.fx.emit(this.list[i].pos, 10, { colors: ['#ffffff', '#ffd0f4'], speed: 20, life: 0.8, size: 6 }); this.remove(i); }
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      if (this.list[i].planet) continue; // Grumbleglobe dozes through it (its objective holds it, objectives.js suspend)
+      this.G.fx.emit(this.list[i].pos, 10, { colors: ['#ffffff', '#ffd0f4'], speed: 20, life: 0.8, size: 6 });
+      this.remove(i);
+    }
     for (const s of this.shots) this.G.scene.remove(s.mesh);
     this.shots.length = 0;
     this.hazards.clear(); // boss warnings vanish unfired
@@ -822,7 +826,7 @@ export class Enemies {
 
   maybeSpawn(dt) {
     const G = this.G, p = G.player, F = this.frenzy;
-    if (this.calmTimer > 0 || p.dead || G.relax) return;
+    if (this.calmTimer > 0 || p.dead || G.relax || this.planet()) return; // the planet fight brings its own company
     if (F) this.sweep();
     // The final wave opens with three groups at once: ahead, left and right.
     if (F?.burst) { F.burst = false; for (const side of [0, -1, 1]) this.spawnGroup(this.pickType(), side ? 'flank' : 'front', side); }
@@ -867,14 +871,25 @@ export class Enemies {
     else this.spawn(type, pos);
   }
 
+  // Grumbleglobe (planetboss.js) while it's in the sky and awake, else null.
+  planet() { return this.list.find((e) => e.planet && !e.planet.dozing)?.planet || null; }
+
+  // Close enough to a planet boss to crash into it? The pull-up warning's probes ask this (pullup.js).
+  solidAt(at) { return this.list.some((e) => e.planet && e.planet.inside(at)); }
+
+  // After a crash, a planet fight puts you back out where you can see it (Player.update): `at` is where you went down.
+  placeRespawn(p, at) { for (const e of this.list) if (e.planet) e.planet.respawn(p, at); }
+
   update(dt) {
-    const G = this.G, p = G.player;
+    const G = this.G, p = G.player, real = dt;
     dt *= PACE * G.powerups.enemyTimeScale(); // Slow-Mo / Time Freeze power-ups
     this.calmTimer = Math.max(0, this.calmTimer - dt);
     this.maybeSpawn(dt);
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
+      // The planet boss runs itself (collisions and bullets in real time); true once it has broken up.
+      if (e.planet) { if (e.planet.update(dt, real)) this.kill(i, true); continue; }
       e.t += dt;
       e.stateT += dt;
       const toP = _v.subVectors(p.pos, e.pos);
@@ -946,7 +961,7 @@ export class Enemies {
     }
     const bosses = this.list.filter((e) => e.boss && !e.dead);
     // Faster mending only while it has lost you or is coming back: shadowing you from its standoff isn't a rest.
-    this.breather = bosses.length > 0 && bosses.every((e) => e.chase === 'loose' || e.chase === 'catch');
+    this.breather = bosses.length > 0 && bosses.every((e) => (e.planet ? e.planet.far : e.chase === 'loose' || e.chase === 'catch')); // a planet: you're out of its range
     this.updateShots(dt);
     this.hazards.update(dt);
   }
@@ -968,11 +983,11 @@ export class Enemies {
   damagePart(e, part, dmg, pos) {
     const G = this.G;
     e.hp -= dmg * part.mult;
-    if (part.mult > 1) {
+    if (part.mult > 1 || part.counted) { // counted: a planet gadget, whose every hit drains the bar whatever its mult
       G.fx.sparkle(pos, '#ffd23a');
       G.fx.emit(pos, 12, { colors: ['#ffffff', '#ffd23a'], speed: 45, life: 0.4, size: 5 });
       G.audio.tone(1500, 0.07, { type: 'triangle', vol: 0.05 });
-      if (!this.weakTip) { this.weakTip = true; G.ui.notify('WEAK SPOT! Glowing parts take extra damage. Aim there.', 'good', 4, 1); }
+      if (!this.weakTip && !e.planet) { this.weakTip = true; G.ui.notify('WEAK SPOT! Glowing parts take extra damage. Aim there.', 'good', 4, 1); }
     } else {
       G.fx.sparkle(pos, '#ffaa55');
       G.audio.tick();
@@ -990,6 +1005,7 @@ export class Enemies {
     G.fx.explosion(_pp);
     G.audio.pop();
     (e.broken ||= {})[part.name] = (e.broken[part.name] || 0) + 1;
+    if (e.planet) { e.planet.broke(part); return; } // Grumbleglobe scores and announces its own gadgets
     const n = e.broken[part.name];
     const total = e.mesh.userData.parts.filter((x) => x.name === part.name).length;
     G.score += e.boss ? 40 : 10;

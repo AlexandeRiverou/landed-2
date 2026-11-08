@@ -171,7 +171,7 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
 - **Clingy Moth:** it latches onto your wing and drains your boost and hull. Any stunt shakes it off.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
-colours, props, sky, weather and music mood. There are 29, in order:
+colours, props, sky, weather and music mood. There are 30, in order:
 
 - Meadowlands → Autumn Woods (falling leaves) → Canyon Country → Dune Sea (blowing dust) → Frozen Peaks
 - **Hollow Peaks:** huge mountains and deep canyons, with tunnels clean through the rock. They're 56–90 m wide,
@@ -202,6 +202,8 @@ colours, props, sky, weather and music mood. There are 29, in order:
   apart)
 - **Gas Giant:** no ground at all. Stripy cloud decks scroll far below, and a huge ringed planet hangs in a hazy
   orange sky.
+- **Grumbleglobe:** a small, grumpy planet hangs in black space, and the whole planet is the boss. You meet it the
+  moment you arrive (see "The world boss" under Bosses).
 - The Moon (craters, Earthrise) → **Mars** (red canyons, dust, two tiny moons)
 - **Planet Pebble:** a planet so small the ground visibly curves away toward a close horizon (`src/curve.js` bends
   every vertex down by its squared distance from the camera; gameplay stays flat).
@@ -214,7 +216,7 @@ a zone, but can't break its identity. To add or change a zone, see [`docs/zones.
 
 **Music** (`src/music.js`): a calm soundtrack synthesised live in WebAudio, no audio files. There are 9 moods:
 `day`, `dusk`, `dream` and `space`, plus `frost` (Frozen Peaks), `deep` (Crystal Caverns, Sunken Reef), `ember`
-(Volcano Land), `retro` (Neon Grid) and `wonder` (Mushroom Forest, Candy Kingdom, Alien World). Each mood starts on
+(Volcano Land, Grumbleglobe), `retro` (Neon Grid) and `wonder` (Mushroom Forest, Candy Kingdom, Alien World). Each mood starts on
 its signature sound, then the music moves in sections of 4 chords. Every section picks a new chord progression (each
 mood has 3–4), a new top layer (plucks, a soft arpeggio, a little call-and-answer melody, a pulsing bass, or just
 pads), a new pad colour and a slightly different brightness. Now and then it steps to a nearby key, and the next
@@ -246,7 +248,7 @@ the first zone on a new landscape. Found secrets stay found.
 Got past the first zone (or onto lap 2)? Then the card also offers **CONTINUE FROM** *ZONE* (or `C`): the same fresh
 run, but in the zone (and lap) you reached, on a new landscape. Score, level and perks still start over. That run's
 Game Over card says "Continued from *zone*". The title card remembers the furthest zone you've ever reached ("🗺
-Furthest: Dune Sea (zone 4 of 29)", plus the lap after lap 1). Only flying on into a zone counts: a developer-menu jump
+Furthest: Dune Sea (zone 4 of 30)", plus the lap after lap 1). Only flying on into a zone counts: a developer-menu jump
 doesn't by itself, but flying on from where it put you does.
 
 **Bosses** (`src/enemies.js`, `src/bossmoves.js`, `src/objectives.js`): a crowned boss shows up after every 4 to 7 completed objectives
@@ -309,6 +311,40 @@ health. Shooting off parts weakens them (the crown makes them take more damage, 
 fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thin out their attacks). Each boss adds HP. Defeating one pays 400+ points, gives you a spare plane
 (see Lives) and reshapes the world like any other win.
 
+**The world boss** (`src/planetboss.js`): in the Grumbleglobe zone (zone 25, after Gas Giant) the first objective is
+the planet itself: **Grumbleglobe, the Planet With Opinions**. It takes that stretch's boss slot, but it's not one of
+the 15: it's never in the deck, never rolls a modifier and never comes as twins. A planet with a 160 m radius grows in
+760 m ahead of you. It never moves. It spins.
+
+The planet is solid. Fly into it and you lose a life ("You hugged the planet. It did not hug back."), then come back
+450 m out, facing it. Bullets and orbs stop at its surface, and the pull-up warning sees it. Bare rock takes no
+damage ("That's just rock. Shoot the gadgets!"). The gadgets do, and every hit on one drains the boss bar (gold
+sparkle):
+
+- **6 red turrets** (3 HP): aimed orbs. They only fire within 450 m, and only when you're above their horizon, so the
+  far side never shoots through the planet. The barrel tip glows first.
+- **3 cyan shield generators** (6 HP): while any stands, a bubble guards the eye. Red markers show them.
+- **4 orange magma vents** (3 HP): a column warning along the surface, then an eruption. Shots bounce off a vent
+  while it erupts.
+- **2 yellow sweepers** (6 HP): a 120 m bar spinning over the surface. A barrel roll passes through it.
+- **The eye** (14 HP): almost a third of the bar, and breaking it ends the fight. Once the shield is down the planet
+  stops spinning. When the eye is due, it grinds round to turn its face toward you; the rest of the time it holds
+  still, so you can always reach a gadget. The eye opens for 5 s every 9 s, once the face is within about 40° of you
+  (after 6 s it opens anyway).
+- **The crown** on the north pole (optional): knock it off and every gadget takes 30% more damage.
+
+At 66% it's properly awake: 3 drones come out of its pores, it spins faster, and the turrets fire in pairs. At 33% it
+cracks ("MELTDOWN!"): the eye stays open 6 s, Grudge Rocks come out, the vents erupt more often, and each time the eye
+opens it glares. A thin magenta sight line points at where you'll be in 1 s, then a short, steady beam fires along it
+(no flicker, and it never fills the screen). If it comes from behind you, "Grumbleglobe is glaring at your back.
+Swerve!" warns you.
+
+Fly more than 500 m out to patch up faster; the planet never chases you. Relax Mode puts it to sleep, and it wakes up
+where you left it, broken gadgets still broken. Slow-Mo and Time Freeze work on it, and Homing Bullets curve to the
+nearest gadget you can hurt right now. On lap 2 the gadgets have 1.4× HP. When it goes, its gadgets pop one by one and
+it splits into 8 rubble asteroids (shoot them if they bother you; they can't hurt you for the first 3 s). It pays 1.5×
+a regular boss and a spare plane, and its par is 110 s.
+
 **39 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
 
 - *Hoops:* hoop, tiny precision hoop, timed speed hoop, a hoop that wanders around, a hoop that shrinks until it's gone.
@@ -360,7 +396,7 @@ it; finish under par for a +60 speed bonus. Par is 12 s for a hoop or an altitud
 shrinking hoops, 15 s for the wandering hoop, 18 s for the searchlights, 25 s for the slalom chain, 10 s for a loop,
 8 s for a barrel roll or a bullseye, 30 s for the tour or a photo safari, 40 s for a pizza delivery or a hot potato,
 and 50 s for stars. The speed hoop gets 60% of its clock (17 s); Hold The Line has no par (it always takes its full
-clock); everything else, bosses included, gets 25 s. Hints
+clock); everything else, regular bosses included, gets 25 s (Grumbleglobe gets 110 s). Hints
 cost points (the "hint fee", 12 per persuasion tactic, never below 20 points left), except on the first 3 objectives of a run: "Hints on the
 house". The success banner keeps it short, at most 4 lines for 3.5 s: the points, one detail line (speed bonus, hint
 fee, spare plane), the headline world change and "+K more world changes. Look around!". When a win takes you into a
@@ -374,7 +410,7 @@ one zone, list it in that zone's `noObjectives`.
 **Relax Mode** (`src/main.js`): press `R` or the ☁️ Relax Mode button to take a break. Objectives and enemies leave,
 no new power-ups spawn, the HUD fades, cinema bars slide in and the music turns dreamy (spacey in space) until you leave. The world stops changing, and
 crashing doesn't cost a life, so if you like where you are, stay a while. Press it again ("Back to the action") to return. A boss you left behind comes
-back first.
+back first. Grumbleglobe doesn't leave: it dozes (eye shut, no attacks, no damage) and wakes up when you're back.
 
 **Persuasion engine** (`src/persuasion.js`): a "neglect" meter fills while you're not making progress. It fills faster
 when you fly away and barely moves while you close in. The first tactic comes after 20 s of neglect, then one every
@@ -399,7 +435,7 @@ on a break, and never pulls one closer than where it would wait for you. The gam
   controls.
 - *Desperate:* the objective **walks over to you**, a steering tailwind, a **rainbow road**, a tunnel of practice rings,
   a **paper-plane escort** (a V of 5 that leads the way and waits for you), a **trail of gold coins** (+10 each), an
-  **ultimatum** (30 s, counted down in notifications), the mountains are told to sit down (the terrain flattens), free
+  **ultimatum** (30 s, counted down in notifications), the mountains are told to sit down (the terrain flattens; not in zones without ground), free
   unlimited boost, the objective teleported right in front of you... and finally, after about 3 minutes of ignoring
   it, a **participation trophy**.
 
@@ -445,9 +481,10 @@ finger out of its corner, and nothing happens. The menu pauses the game, silence
 Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, so it's deliberately left off the title
 card.
 
-- **Zones:** jump straight to any of the 29 zones (the next zone change is a full zone's worth of objectives away).
+- **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
-  where there is none, King Drone comes instead and you get a notice. The fort never comes as twins.
+  where there is none, King Drone comes instead and you get a notice. The fort never comes as twins. The
+  **Grumbleglobe** button jumps to its zone and starts the planet fight (it ignores the modifier and Twins).
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.
 - **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode;
@@ -476,7 +513,7 @@ lap)` records one if it's further. `LIVES`, `MAX_LIVES`, `REGEN_DELAY`, `BREATHE
 boost tank (`BOOST_DRAIN`, `BOOST_REGEN`) sit at the top of `src/player.js`, which also exports `LAND` (the landing
 limits) and `Player.landableAt(x, z, y, ground)`, the "could you land here" test the landing and the pull-up warning
 share. `PAR` (par times per type) and `FREE_HINTS` sit above `TYPES` in `src/objectives.js`; each objective gets
-`par` when it starts.
+`par` when it starts, unless its maker set its own (`par` in `objective({...})`, like Grumbleglobe's 110 s).
 
 `G.pullup` is the pull-up warning: `on`, `tti` (seconds to impact, `Infinity` when clear), `shows` (warnings so
 far) and `glow` (the bottom-edge element; its inline `style.opacity`, 0.35–1, shows the urgency); the look-ahead (`PROBE`, `WARN`, `URGENT`) and the close-shave rule (`SHAVE`) sit at the top of
@@ -502,8 +539,9 @@ being far away (a fresh one can spawn past the leash).
 Boss signature moves live in `src/bossmoves.js` (`MOVES`). Each boss def in `BOSSES` names its `move`; `orbit` and
 `lead` are still its fight distance (breakaway, standoff). A move keeps its state in `e.mv`, which a breakaway or the
 boss's death clears, along with its hazards and bodyguards (enemies whose `e.guard` is `{ boss, kind, slot }`; not the same thing as the `guard` TYPES flag below). `G.enemies.warn(pos, r, color,
-t, onFire, { shape, owner, h })` puts down a telegraphed area attack (`shape` is `'disc'`, `'ring'`, `'column'` or
-`'sphere'`; `t` is at least 1 s), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hits bounce off),
+t, onFire, { shape, owner, h, dir })` puts down a telegraphed area attack (`shape` is `'disc'`, `'ring'`, `'column'` or
+`'sphere'`; `t` is at least 1 s; `dir` stands a column along a unit vector instead of straight up, like a planet's
+surface normal), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hits bounce off),
 `split: [type, n]` (breaks into n of another type), `max` (at most this many alive), `pair` (spawns as two joined by a
 string), `latch` (clings to the plane) and `quiet` (no intro). `CEILING` (exported, 18) caps regular enemies alive
 at once, whatever spawns them; boss bodyguards don't check it. `G.enemies.frenzy` is `null`, or during Hold The Line
@@ -512,6 +550,15 @@ and gulls, bees and Grudge Pebbles count a third each toward a wave's cap. In ca
 `src/objectives.js`) finds and marks the loop chamber (or returns `null`), and the loop tuck is `TUCK` (exported from
 `src/player.js`, 1.5×) with `G.player.loopTuck` the current value (the loop's `easier()` raises it by 0.25, up to
 2.2, and it resets when the objective ends).
+
+The world boss lives in `src/planetboss.js`. Its tuning sits at the top: `GLOBE` (size, spawn, spin, face turn,
+respawn, breather, phases, lap and reward), `KINDS` (each gadget's HP, its `worth` on the 100-point bar, score and
+line), `LAYOUT` (where each gadget sits), and `TURRET`, `VENT`, `SWEEP` and `EYE`. A zone with `siege: 'grumbleglobe'`
+starts it as its first objective (`G.objectives.startSiege()`, which the dev-menu button calls). The planet is one
+entry in `G.enemies.list` with `e.planet` set (the `Globe`), which runs its own update; `G.enemies.planet()` returns it
+while it's awake. Each gadget is a boss part with `counted: true` and `mult = worth / hp`, so every hit drains its
+share of the bar. In Relax Mode it waits in `G.objectives.held`; leaving its zone ends the fight
+(`G.objectives.endSiege()`).
 
 The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).

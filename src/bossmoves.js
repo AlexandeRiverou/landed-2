@@ -130,11 +130,13 @@ export class Hazards {
     return m;
   }
 
-  warn(pos, r, color, t, onFire, { shape = 'disc', owner = null, h = 1 } = {}) {
+  // dir: a column stands along this unit vector (default straight up), e.g. a planet's surface normal.
+  warn(pos, r, color, t, onFire, { shape = 'disc', owner = null, h = 1, dir = null } = {}) {
     const mesh = this.mesh(shape);
     mesh.material.color.set(color);
     mesh.material.opacity = 0.2;
     mesh.position.copy(pos);
+    if (dir) mesh.quaternion.setFromUnitVectors(Y, dir); else mesh.quaternion.identity(); // pooled: undo a last tilt
     mesh.scale.set(r, shape === 'column' ? h : r, r);
     const hz = { mesh, shape, pos: mesh.position, r, t: 0, T: t, onFire, owner, born: this.G.time };
     this.list.push(hz);

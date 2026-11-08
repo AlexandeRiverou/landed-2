@@ -130,6 +130,8 @@ export class DevMenu {
     opts.append(modLabel, duoLabel);
     bosses.before(opts);
     for (const [kind, def] of Object.entries(BOSSES)) button(bosses, def.short, () => this.startBoss(kind), def.desc).dataset.boss = kind;
+    // The world boss: its own zone, its own fight (no modifiers, no twins).
+    button(bosses, 'Grumbleglobe', () => this.startSiege(), 'Jump to its zone and start the planet fight').dataset.boss = 'grumbleglobe';
 
     const objectives = section('Objectives');
     for (const type of OBJECTIVE_TYPES) {
@@ -211,6 +213,7 @@ export class DevMenu {
   // ---------- actions ----------
 
   enterZone(i) {
+    if (ZONES[i].siege) { this.clearObjective(); this.G.objectives.cooldown = 4; } // its world boss comes first, as on arrival
     this.G.zones.enter(i);
     this.G.zones.sinceZone = 0; // a full zone's worth of objectives before the journey moves on
     this.close();
@@ -221,6 +224,7 @@ export class DevMenu {
     const G = this.G;
     if (G.relax) G.setRelax(false);
     if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.objectives.dropHeld();
   }
 
   startBoss(kind) {
@@ -231,6 +235,15 @@ export class DevMenu {
     G.objectives.start(obj, 'boss');
     if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs flat land), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
     else if (this.duo.checked && !duo) G.ui.notify(`${def.short} doesn't do twins. Just the one.`, 'info', 3, 2);
+    this.close();
+  }
+
+  startSiege() {
+    const G = this.G, i = ZONES.findIndex((z) => z.siege);
+    this.clearObjective();
+    if (G.zones.index !== i) { G.zones.enter(i); G.zones.sinceZone = 0; }
+    G.objectives.startSiege();
+    if (this.mod.value || this.duo.checked) G.ui.notify('Grumbleglobe doesn\'t do modifiers or twins. It\'s a planet.', 'info', 3, 2);
     this.close();
   }
 

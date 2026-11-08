@@ -49,7 +49,7 @@ export class PullUp {
     const vx = p.forward.x * p.speed + p.wind.x, vy = p.forward.y * p.speed + p.wind.y, vz = p.forward.z * p.speed + p.wind.z;
     for (const t of PROBE) {
       const x = p.pos.x + vx * t, y = p.pos.y + vy * t, z = p.pos.z + vz * t;
-      if (y >= this.floor(x, y, z) + CLEARANCE) continue;
+      if (y >= this.floor(x, y, z) + CLEARANCE && !G.enemies.solidAt({ x, y, z })) continue; // a planet boss is ground too
       if (approach && p.landableAt(x, z, y, G.terrain.surfaceHeight(x, z, y))) continue; // keep looking past it
       tti = t;
       break;
