@@ -171,7 +171,7 @@ whose whole point is its world boss. With `siege` set:
   from Relax, `next()` resumes it with every broken gadget still broken.
 - **Leaving:** `Zones.enter()` into a zone without `siege` calls `Objectives.endSiege()`, which drops the fight
   quietly. A fresh run (`resetRun()`) drops a held one too.
-- **Par:** the objective carries its own `par` (110 s), which `Objectives.start()` keeps instead of the default.
+- **Par:** the objective carries its own `par` (100 s), which `Objectives.start()` keeps instead of the default.
 - **The world:** keep the zone empty around the boss: no asteroids (the planet's rubble adds 8 on defeat), and no
   ground for it to clip into.
 
