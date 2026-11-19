@@ -141,7 +141,7 @@ export const ZONES = [
   },
   {
     // siege: the zone's first objective is this world boss (planetboss.js), whatever the boss pacing says.
-    name: 'Grumbleglobe', blurb: 'A tiny planet with a big frown. It has turrets, a shield and one very angry eye. Please take them away.',
+    name: 'Grumbleglobe', blurb: 'A tiny planet with a big frown, three clingy moons and one very angry eye.',
     world: { palette: 'lunar', floor: -900, seaLevel: -1000, floatingIslands: 0, propDensity: 0.3 },
     sky: 'space', weather: 'stardust', clouds: ['#ffffff', 0], mood: 'ember', asteroids: 0, noGround: true, siege: 'grumbleglobe', lock: SPACE_LOCK,
   },

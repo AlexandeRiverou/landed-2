@@ -1,86 +1,107 @@
 // Grumbleglobe, the Planet With Opinions: the world boss of its own zone (zones.js `siege`). The whole small planet
-// is the boss. It never moves; it spins, and its gadgets do the fighting: red turrets, three cyan shield generators,
-// orange magma vents, yellow sweeper towers, the one angry eye and a crown on the north pole. Every gadget is a boss
-// part (Enemies.damagePart / breakPart): each hit drains the bar by part.mult = worth / hp, so a gadget is worth its
-// share of the bar however hard it is to break. Bare rock is armour 0: shoot it and nothing happens.
+// is the boss, and its face is where the fight is: the one angry eye, four pores around it and the crown on top. The far
+// side is plain rock. It never moves; it turns its face to follow you. Three Moonlets orbit it in open sky, tethered to
+// the eye's shield bubble: pop all three and the shield drops. Every gadget (moons included) is a boss part
+// (Enemies.damagePart / breakPart): each hit drains the bar by part.mult = worth / hp, so a gadget is worth its share of
+// the bar however hard it is to break. Bare rock is armour 0: shoot it and nothing happens.
 // The planet is one entity in Enemies.list (e.planet = the Globe) that runs its own update instead of bossBehave:
-// the sphere is solid (you crash into it; bullets and orbs stop at it), the gadgets attack, phases change at 66% and
-// 33%, and at 0 it breaks up into shootable rubble (Asteroids.spawn). Timers are enemy-time s (Enemies.update's dt, at
-// PACE and the Slow-Mo / Time Freeze scale); collisions and bullets use real time, so they still work frozen.
+// the sphere and its moons are solid (touch them and you bounce off; bullets and orbs stop at the planet), the moons
+// take potshots, the face spits fans of spitballs, the pores burp Grumblings (enemies.js), phase 2 starts when the
+// shield drops and phase 3 at 33%, and at 0 it deflates and bursts into shootable rubble (Asteroids.spawn). Timers are
+// enemy-time s (Enemies.update's dt, at PACE and the Slow-Mo / Time Freeze scale); collisions, bullets and the finale
+// use real time, so they still work frozen.
 import * as THREE from 'three';
 import { makeCrown } from './models.js';
 import { pick, rand } from './texts.js';
-import { makeMarker, PACE } from './enemies.js';
+import { makeMarker, PACE, CEILING } from './enemies.js';
 import { heightAt } from './world.js';
 import { objective } from './objectives.js';
 
 const R = 160; // planet radius (m)
 export const GLOBE = {
   R, ahead: 760, floorGap: 200, top: 1150 - R - 150, // spawn: 760 m ahead at your altitude, clamped between floor and ceiling
-  spin: 0.035, spinAwake: 0.055,                     // rad/s about world up (phase 2+: faster)
-  glare: 0.30,                                       // shield down: no spin; while the eye is due (shut past its time, or twitching) the face turns toward you at up to this (rad/s); otherwise it holds still, so you can always reach a gadget
-  crashPad: 4, ghostPad: 3,                          // closer than R + crashPad crashes; ghost / god mode skims at R + ghostPad
+  track: [0.12, 0.2, 0.3], trackOpen: 0,            // rad/s the face turns toward you (about world up), by phase; while the eye is open it holds its stare
+  crashPad: 4, ghostPad: 3,                          // closer than R + crashPad: you bounce off; ghost / god mode skims at R + ghostPad
   respawn: 450, breather: 500,                       // respawn distance from the centre; farther than breather: a breather
   grow: 1.2,                                         // s to scale in on arrival
-  phases: [0.66, 0.33],                              // bar fractions where phase 2 and 3 start
+  meltdown: 0.33,                                    // bar fraction where phase 3 starts (phase 2 starts when the shield drops)
   lapHp: 1.4, easier: 0.7,                           // gadget hp on lap 2+; the persuasion 'easier' step
   reward: 1.5,                                       // × the regular boss formula
 };
-// The gadgets (count = entries in LAYOUT). worth: how much of the 100-point bar it drains in all; they add up to 112, so
-// a few can be skipped, but never the generators (the eye is shielded until they're gone) nor the eye (82 without it).
+// The gadgets. worth: how much of the 100-point bar it drains in all (moons 34, pores 16, eye 50). The eye is shielded
+// until every moon is gone, and breaking it ends the fight whatever is left of the bar.
 const KINDS = {
-  turret: { hp: 3, worth: 6, score: 40, icon: '🔫', line: 'Turret popped! The planet felt that.' },
-  generator: { hp: 6, worth: 8, score: 60, icon: '🛡', line: 'Shield generator down! {n} to go.' },
-  vent: { hp: 3, worth: 3, score: 40, icon: '🌋', line: 'Vent plugged! Burp denied.' },
-  sweeper: { hp: 6, worth: 5, score: 40, icon: '🌀', line: 'Sweeper snapped! Hair day: ruined.' },
-  eye: { hp: 14, worth: 30, score: 40, line: 'The eye is out! It can\'t see you now. It can still feel you.' },
+  moon: { hp: 10, worth: 34 / 3, score: 80 },
+  pore: { hp: 3, worth: 4, score: 40, line: 'Pore plugged! Fewer opinions.' },
+  eye: { hp: 18, worth: 50, score: 40, line: 'The eye is out! It can\'t see you now. It can still feel you.' },
   crown: { hp: 10, worth: 0, score: 40, line: 'CROWN KNOCKED OFF! Every gadget takes 30% more damage now. The planet is mortified.' },
 };
-// Where they sit: [kind, longitude°, latitude°]. Longitude 0 is the face, turned toward you when it arrives.
-const LAYOUT = [
-  ['eye', 0, 0], ['crown', 0, 90],
-  ['turret', 30, 40], ['turret', 90, -40], ['turret', 150, 40], ['turret', 210, -40], ['turret', 270, 40], ['turret', 330, -40],
-  ['generator', 120, 25], ['generator', 200, -25], ['generator', 280, 25],
-  ['vent', 60, 30], ['vent', 60, -30], ['vent', 240, 30], ['vent', 240, -30],
-  ['sweeper', 40, 0], ['sweeper', -40, 0],
-];
-// Turrets: an aimed orb every `every` s, only at you within `range` m and above its horizon (normal · dir > horizon); the
-// barrel tip glows `wind` s first. At most `perWindow` turrets fire per `every` s. Phase 2+: two shots, `burstGap` apart.
-// Orbs live 7 s (fireOrb's default).
-const TURRET = { speed: 80, dmg: 10, lead: 0.5, every: 3.2, first: 1.5, wind: 0.6, range: 450, horizon: 0.15, perWindow: 3, burstGap: 0.25, color: '#ff4d4d', size: 1.2 };
-// Vents: a column warning (r, h) for `warn` s, then a `blast` s eruption (dmg once) along the surface normal. Only with you
-// within range (phase 3: rangeMad) of it; cooldown cd ± jitter (phase 3 × madK); never two starting within `gap` s.
-const VENT = { r: 14, h: 130, warn: 1.4, blast: 1.2, dmg: 15, range: 260, rangeMad: 320, cd: 7, jitter: 1.5, madK: 0.7, gap: 2 };
-// Sweepers: a `len` m bar spinning `up` m over the surface; touching it (within `hit` m) costs dmg, at most every cd s.
-const SWEEP = { len: 120, up: 22, rate: 0.6, rateAwake: 0.8, dmg: 12, hit: 5, cd: 1.5, whir: 150 };
-// The eye: a shield bubble (r) while any generator stands; then the lid opens `open` s (phase 3: openMad) every `every`
+// Where the surface gadgets sit: [kind, longitude°, latitude°]. Longitude 0 is the face, turned toward you.
+const LAYOUT = [['eye', 0, 0], ['crown', 0, 90], ['pore', 50, 35], ['pore', -50, 35], ['pore', 50, -35], ['pore', -50, -35]];
+// Moonlets: radius r, orbiting MOON.R m from the centre at `speed` rad/s (lap 2+: × lapSpeed), each on its own tilted
+// plane (tilt°), starting 120° apart. A faint orbit ring (ring: tube, segments, opacity) and a cyan tether to the eye's
+// shield (tether: radius, opacity; it fades over `fade` s when its moon pops). Potshots: an aimed orb every `every` s,
+// only at you within `range` m with the planet not in the way; the moon's mouth glows `wind` s first. At most
+// `perWindow` moons fire per `every` s. Lap 2+: two shots, `burstGap` apart.
+const MOON = {
+  R: 290, r: 22, speed: 0.12, lapSpeed: 1.25, tilt: [20, 65, -40],
+  every: 4, first: 1.5, wind: 0.6, range: 380, perWindow: 2, burstGap: 0.25,
+  shot: { speed: 80, dmg: 10, lead: 0.5, color: '#ff4d4d', size: 1.2 },
+  ring: { tube: 0.6, segs: 96, opacity: 0.18 }, tether: { r: 1.2, opacity: 0.55, fade: 0.3 },
+};
+// The three of them: colour and face.
+const MOONS = [{ color: '#7ab8ff', face: 'pouty' }, { color: '#ff9ad0', face: 'smug' }, { color: '#ffe08a', face: 'sleepy' }];
+// Spitballs from the mouth: only with you within `cos` of the face (normal · dir; 70°) and `range` m. Cheeks puff up to
+// `puff` × over `wind` s (with a rising hum), then n orbs (phase 3: nMad) `spread`° apart in a level fan, its centre
+// aimed `lead` of the way to where you'll be when they arrive (like the moons' potshots). Cooldown by phase. Never
+// starts while the eye is twitching or open: that's your turn.
+const SPIT = { wind: 1.0, n: 5, nMad: 7, spread: 12, speed: 100, lead: 0.5, dmg: 8, size: 2.5, color: '#ff9a3a', cd: [6, 4.5, 3.5], first: 3, cos: 0.35, range: 600, puff: 1.4, oFire: 0.4, oShock: 1 };
+// Pores: glow and rumble `warn` s, then burp n Grumblings out along the normal at `out` m/s. Each pore every cd ± jitter
+// s (phase 3: × madK), never two within `gap` s, only with you within `range` m of the centre. Alive at once: cap
+// (phase 3: capMad; lap 2+: +lap; persuasion 'easier': -easier), never past the CEILING; `total` per fight, then they stop.
+// A Grumbling about for over `life` s, or more than `leash` m off the surface, sulks off (no points) to make room.
+const PORE = { warn: 1.0, n: 3, out: 40, cd: 9, jitter: 2, madK: 0.7, gap: 8, range: 450, cap: 6, capMad: 8, lap: 2, easier: 2, total: 24, first: 4, life: 10, leash: 220 };
+// Touching the planet (R + crashPad) or a moon (r + moonPad): you're pushed out to `out` m off it, your nose flicked back
+// out (reflected about the normal, then at least minOut along it), `dmg` hull (never the last 1), `invuln` s of
+// invulnerability. At most one bounce every `cd` s (in between you just skim).
+const BOUNCE = { dmg: 12, invuln: 1.0, cd: 0.5, out: 6, minOut: 0.5, moonPad: 4 };
+// The eye: a shield bubble (r) while any moon stands; then the lid opens `open` s (phase 3: openMad) every `every`
 // s, after `twitch` s of twitching and creaking, but only once the face is within `facing` rad of you (it stays shut
 // until then, `held` s at most: then it opens anyway, and skips that opening's glare if still off you). Phase 3, once
 // per opening: a glare. A thin "laser sight" from the eye (radius sight[0] thickening to sight[1] over glareWarn s),
 // then a steady beam that thick (beamOpacity, no flicker), drawn only up to where it aimed (and stopping camGap m short
 // of the camera), its last `tip` m narrowing to a point; it hits glareOver m past that. Its hit radius is glareR (+ 4 m
-// for the plane), whatever the sight looks like.
-const EYE = { shield: 45, every: 9, open: 5, openMad: 6, twitch: 1, facing: 0.7, held: 6, glareR: 6, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, glareOver: 30, camGap: 50, tip: 40, sight: [2, 4], beamOpacity: 0.7, lidOpen: -1.9 };
-const DRONES = 3, ROCKS = { n: 2, every: 12, max: 2 };
+// for the plane), whatever the sight looks like. A beam that misses you pays `dodge`. Open, the eye bulges `bulge` m out.
+const EYE = { shield: 45, every: 9, open: 5, openMad: 6, twitch: 1, facing: 0.7, held: 6, glareR: 6, glareWarn: 1.2, glareBeam: 0.4, glareDmg: 20, glareAhead: 1, glareOver: 30, camGap: 50, tip: 40, sight: [2, 4], beamOpacity: 0.7, lidOpen: -1.9, dodge: 25, bulge: 20 };
+const HORIZON = 0.15; // the eye only glares at you above its horizon (normal · dir)
+const ROCKS = { n: 2, every: 12, max: 2 };
 const RUBBLE = { n: 8, size: [12, 14], speed: 15, safe: 3 };
-const DYING = { chain: 1.4, split: 1.8 }; // s for every gadget left to go off, one by one; s until it splits
+// The finale: `freeze` s shuddering with an "x" for an eye, then over `shrink` s it shrinks to `to` × (ease-in) while
+// spinning up to `spin` rad/s with a long raspberry (at most `puffs` particles a frame), then it bursts.
+const DEFLATE = { freeze: 0.5, shrink: 1.6, to: 0.35, spin: 3, puffs: 6, shudder: 1.5 };
+// Brow angle (rad about the normal; + is an angry V, - worried) by phase.
+const BROWS = [0.42, 0.62, -0.3];
 
 const TEXT = {
   name: 'Grumbleglobe, the Planet With Opinions',
-  arrive: '⚠ THE WHOLE PLANET IS THE BOSS: Grumbleglobe! It is NOT a morning planet.',
-  phase2: 'Grumbleglobe is properly awake now. It\'s launching drones. From its pores.',
-  phase3: 'MELTDOWN! The planet is cracking. Its eye stays open longer: finish it!',
-  shieldDown: 'SHIELD DOWN! Shoot the eye when it opens. It really hates that.',
-  turned: 'Grumbleglobe turned to glare at you. Rude. Effective.',
+  arrive: '⚠ THE WHOLE PLANET IS THE BOSS: Grumbleglobe! Its moons are its bodyguards. Its eye is its weak spot. Its opinions are everywhere.',
+  moonDown: ['Moon down! It\'s going to tell Mum.', 'Moon down! It wasn\'t even its fault.'],
+  lastMoon: 'Last moon down! The planet is very alone now.',
+  shieldDown: 'SHIELD DOWN! Its moons left. It\'s taking it badly.',
+  phase2: 'No moons, no shield, no chill. Shoot the eye when it opens!',
+  phase3: 'MELTDOWN! It\'s cracking. And getting desperate.',
+  grumblings: 'Grumblings! Tiny opinions with teeth.',
+  noOpinions: 'Grumbleglobe has run out of opinions. Temporarily.',
+  bounce: ['The planet flicked you off. Rude.', 'Grumbleglobe: "Personal space!"', 'Boing. That was your dignity.'],
   glareBack: 'Grumbleglobe is glaring at your back. Swerve!',
   firstEye: 'Right in the eye! It\'s really upset now.',
-  rock: 'That\'s just rock. Shoot the gadgets!',
+  rock: 'That\'s just rock. Shoot the moons, the pores and the eye!',
   far: 'Out of range. The planet is fuming quietly.',
-  crash: 'You hugged the planet. It did not hug back.',
-  easier: 'The planet pulled a tectonic muscle. All gadgets -30% HP.',
+  easier: 'The planet pulled a tectonic muscle. All gadgets -30% HP. Fewer Grumblings.',
   wake: 'Grumbleglobe woke up from its nap. It remembers everything.',
-  breakup: 'Grumbleglobe is falling apart! Shoot the rubble if it bothers you.',
-  taunts: ['Grumbleglobe: "Get off my atmosphere."', '"I\'m not round. I\'m big-boned."', '"I have one moon and it never calls."', '"Do you know how long it took to grow these turrets?"', '"Stop orbiting me. It\'s weird."'],
+  breakup: 'Grumbleglobe is deflating! That sound was the planet. Probably.',
+  taunts: ['Grumbleglobe: "Get off my atmosphere."', '"I\'m not round. I\'m big-boned."', '"My moons are NOT clingy. They\'re supportive."', '"Do you know how long it took to grow these moons?"', '"Stop orbiting me. It\'s weird."'],
+  begging: ['"Okay. Truce? I\'ll stop spinning."', '"I HAD moons. Plural."', '"If you stop now I\'ll tell everyone you won."'],
 };
 
 const Y = new THREE.Vector3(0, 1, 0), TAU = Math.PI * 2, DEG = Math.PI / 180;
@@ -146,57 +167,32 @@ function mount(body, lon, lat) {
   return g;
 }
 
-// Each builder fills a gadget's group and returns its hit shape (a capsule: local points a, b and radius r) and its
-// moving bits. `top`: where its marker floats (m along the normal).
+// Each builder fills a surface gadget's group and returns its hit shape (a capsule: local points a, b and radius r) and
+// its moving bits. `top`: where its marker floats (m along the normal).
 const BUILD = {
-  turret(g) {
-    add(g, new THREE.CylinderGeometry(9, 10, 2, 10), lambert('#4a3a4a'), 0, 1, 0);
-    add(g, new THREE.SphereGeometry(7, 12, 6, 0, TAU, 0, Math.PI / 2), lambert('#ff4d4d', '#ff4d4d', 0.25), 0, 2, 0);
-    const pivot = new THREE.Group();
-    pivot.position.y = 6;
-    pivot.rotation.x = -Math.PI / 2; // the barrel (+Z) points out until it has something to aim at
-    g.add(pivot);
-    add(pivot, new THREE.CylinderGeometry(1.4, 1.9, 12, 8).rotateX(Math.PI / 2).translate(0, 0, 6), lambert('#3a2a3a'));
-    const tip = add(pivot, new THREE.SphereGeometry(2.6, 10, 8), basic('#ff4d4d', 0.0001, true), 0, 0, 12.5);
-    return { a: [0, 4], r: 9, top: 22, pivot, tip };
-  },
-  generator(g) {
-    const cyan = lambert('#5ae0ff', '#5ae0ff', 0.35);
-    add(g, new THREE.CylinderGeometry(6, 8, 4, 10), lambert('#3a4a5a'), 0, 2, 0);
-    add(g, new THREE.CylinderGeometry(2, 3.8, 55, 8), cyan, 0, 27.5, 0);
-    for (const y of [16, 31, 46]) add(g, new THREE.TorusGeometry(5.5, 0.9, 6, 16).rotateX(Math.PI / 2), basic('#bff4ff'), 0, y, 0);
-    add(g, new THREE.SphereGeometry(5, 12, 8), basic('#5ae0ff'), 0, 58, 0);
-    return { a: [0, 58], r: 6.5, top: 72 };
-  },
-  vent(g) {
-    add(g, new THREE.TorusGeometry(9, 2.8, 6, 18).rotateX(Math.PI / 2), lambert('#ff7a2a', '#ff7a2a', 0.3), 0, 1.5, 0);
-    const core = add(g, new THREE.CircleGeometry(8, 18).rotateX(-Math.PI / 2), basic('#3a1a10'), 0, 1.8, 0);
-    const blast = add(g, new THREE.CylinderGeometry(1, 1, 1, 16, 1, true).translate(0, 0.5, 0), basic('#ffb03a', 0.7, true), 0, 0, 0);
-    blast.scale.set(VENT.r, VENT.h, VENT.r);
-    blast.visible = false;
-    return { a: [0, 3], r: 12, top: 18, core, blast };
-  },
-  sweeper(g) {
-    add(g, new THREE.CylinderGeometry(2.5, 4, SWEEP.up, 8), lambert('#8a7a3a'), 0, SWEEP.up / 2, 0);
-    const hub = new THREE.Group();
-    hub.position.y = SWEEP.up;
-    g.add(hub);
-    add(hub, new THREE.SphereGeometry(4, 10, 8), lambert('#ffd23a', '#ffd23a', 0.4));
-    add(hub, new THREE.BoxGeometry(SWEEP.len, 2.2, 2.2), basic('#ffd23a'));
-    for (const x of [-1, 1]) add(hub, new THREE.SphereGeometry(2.4, 8, 6), basic('#fff2a0'), (x * SWEEP.len) / 2, 0, 0);
-    return { a: [0, SWEEP.up + 2], r: 5.5, top: 36, hub };
+  pore(g) {
+    add(g, new THREE.TorusGeometry(8, 2.6, 6, 18).rotateX(Math.PI / 2), lambert('#4a3a5a'), 0, 1.2, 0);
+    const core = add(g, new THREE.CircleGeometry(7.5, 18).rotateX(-Math.PI / 2), basic('#1a0e20'), 0, 1.5, 0);
+    return { a: [0, 3], r: 11, top: 18, core };
   },
   eye(g) {
-    // Local +Y looks out of the face; local -Z is up the planet (toward the north pole).
-    add(g, new THREE.SphereGeometry(16, 20, 14), lambert('#ffffff', '#ffffff', 0.25), 0, 2, 0);
-    add(g, new THREE.CircleGeometry(8, 24).rotateX(-Math.PI / 2), basic('#ff3ad0'), 0, 18.05, 0);
-    add(g, new THREE.CircleGeometry(3.6, 16).rotateX(-Math.PI / 2), basic('#1a0a1a'), 0, 18.15, 0);
+    // Local +Y looks out of the face; local -Z is up the planet (toward the north pole). The ball (with its lid) bulges
+    // out of the socket while the eye is open (animate).
+    const ball = new THREE.Group();
+    g.add(ball);
+    add(g, new THREE.TorusGeometry(17, 3, 6, 20).rotateX(Math.PI / 2), lambert('#4a3a5a'), 0, 1, 0); // the socket's rim
+    add(ball, new THREE.SphereGeometry(16, 20, 14), lambert('#ffffff', '#ffffff', 0.25), 0, 2, 0);
+    add(ball, new THREE.CircleGeometry(8, 24).rotateX(-Math.PI / 2), basic('#ff3ad0'), 0, 18.05, 0);
+    add(ball, new THREE.CircleGeometry(3.6, 16).rotateX(-Math.PI / 2), basic('#1a0a1a'), 0, 18.15, 0);
     const lid = new THREE.Group();
     lid.position.y = 2;
-    g.add(lid);
+    ball.add(lid);
     add(lid, new THREE.SphereGeometry(17.5, 20, 8, 0, TAU, 0, Math.PI / 2), lambert('#7a6a8a', '#2a2030', 1));
+    // The stalk it bulges out on: 1 m tall, stretched to the bulge (animate).
+    const stalk = add(g, new THREE.CylinderGeometry(8, 11, 1, 12).translate(0, 0.5, 0), lambert('#8a5a8a', '#3a1a30', 1), 0, 1, 0);
+    stalk.visible = false;
     const shield = add(g, new THREE.SphereGeometry(EYE.shield, 28, 18), basic('#5ae0ff', 0.2, true), 0, 0, 0);
-    return { a: [2, 10], r: 15, top: 34, lid, shield };
+    return { a: [2, 10], r: 15, top: 34, lid, shield, ball, stalk };
   },
   crown(g) {
     g.add(makeCrown(5));
@@ -204,18 +200,44 @@ const BUILD = {
   },
 };
 
-// The face around the eye (not shootable): an angry V of a brow above it and a frown below, and the "x" it gets at the end.
+// The face around the eye (not shootable): two brows (their angle is its mood), two cheeks that puff up before it spits,
+// a frown that turns into a shocked "O", and the "x" it gets at the end.
 function buildFace(body) {
   const dark = lambert('#2a1a3a');
-  const brow = mount(body, 0, 9);
-  for (const s of [-1, 1]) { const b = add(brow, new THREE.BoxGeometry(22, 5, 6), dark, s * 11, 3, 0); b.rotation.y = s * 0.42; }
+  const brow = mount(body, 0, 9), brows = [];
+  for (const s of [-1, 1]) { const b = add(brow, new THREE.BoxGeometry(22, 5, 6), dark, s * 11, 3, 0); b.rotation.y = s * BROWS[0]; b.userData.side = s; brows.push(b); }
+  const cheekGeo = new THREE.SphereGeometry(13, 14, 8, 0, TAU, 0, Math.PI / 2), cheekMat = lambert('#b07aa8', '#3a1a30', 1);
+  const cheeks = [-1, 1].map((s) => add(mount(body, s * 22, -11), cheekGeo, cheekMat, 0, -3, 0));
   const mouth = mount(body, 0, -16);
   const arc = Math.PI * 0.7;
-  add(mouth, new THREE.TorusGeometry(26, 2.6, 6, 18, arc).rotateZ(Math.PI / 2 - arc / 2).rotateX(-Math.PI / 2), dark, 0, 1, 22);
+  const frown = add(mouth, new THREE.TorusGeometry(26, 2.6, 6, 18, arc).rotateZ(Math.PI / 2 - arc / 2).rotateX(-Math.PI / 2), dark, 0, 1, 22);
+  const o = add(mouth, new THREE.TorusGeometry(9, 2.8, 6, 18).rotateX(-Math.PI / 2), dark, 0, 1.5, 6);
+  add(o, new THREE.CircleGeometry(7, 16).rotateX(-Math.PI / 2), basic('#1a0a1a'), 0, -0.3, 0);
+  o.visible = false;
   const x = mount(body, 0, 0);
   for (const s of [-1, 1]) { const b = add(x, new THREE.BoxGeometry(34, 4, 4), basic('#1a0a1a'), 0, 21, 0); b.rotation.y = s * Math.PI / 4; }
   x.visible = false;
-  return x;
+  return { brows, cheeks, mouth, frown, o, x };
+}
+
+// A Moonlet: a lumpy ball in its colour with a face on its +Z side (it turns to look at you) and a mouth that glows
+// before it fires. Local origin at its centre.
+function buildMoon(k) {
+  const { color, face } = MOONS[k], g = new THREE.Group(), r = MOON.r, dark = basic('#1a0e20');
+  add(g, new THREE.IcosahedronGeometry(r, 1), lambert(color, color, 0.18));
+  const z = r * 0.93, eye = new THREE.SphereGeometry(2.6, 8, 6);
+  for (const s of [-1, 1]) {
+    if (face === 'sleepy') { const b = add(g, new THREE.BoxGeometry(6, 1.2, 1.2), dark, s * 7, 5, z); b.rotation.z = s * -0.15; continue; } // shut, content
+    add(g, eye, dark, s * 7, 5, z);
+    if (face === 'smug') add(g, new THREE.BoxGeometry(7, 1.6, 1.6), basic(color === '#ff9ad0' ? '#c0508a' : color), s * 7, 6.4, z + 1); // heavy lids
+    if (face === 'pouty') { const b = add(g, new THREE.BoxGeometry(6, 1.2, 1.2), dark, s * 7, 9.5, z - 1); b.rotation.z = s * 0.35; }
+  }
+  if (face === 'pouty') add(g, new THREE.TorusGeometry(4, 1, 5, 10, Math.PI), dark, 0, -9, z - 1);        // a frown
+  else if (face === 'smug') { const m = add(g, new THREE.TorusGeometry(5, 1, 5, 10, Math.PI * 0.6), dark, 2, -6, z - 1); m.rotation.z = Math.PI + 0.5; } // a lopsided smirk
+  // The mouth: dark, and where its potshots come from; it glows red while winding up (sleepy's is a little "o").
+  add(g, new THREE.CircleGeometry(face === 'sleepy' ? 2.4 : 3, 12), dark, 0, -6, z + 0.6);
+  const tip = add(g, new THREE.SphereGeometry(4.5, 10, 8), basic(MOON.shot.color, 0.0001, true), 0, -6, z + 2);
+  return { obj: g, tip };
 }
 
 // Glowing cracks for the meltdown: wiggly lines over the surface, hidden until phase 3.
@@ -268,38 +290,68 @@ export class Globe {
     group.position.copy(C);
     group.scale.setScalar(0.01);
     body.rotation.y = Math.atan2(p.pos.x - C.x, p.pos.z - C.z); // face first
-    Object.assign(this, { group, body, rock, grow: 0, phase: 1, dozing: false, dying: -1, far: false, farAt: -99, shieldDown: false });
-    this.xEye = buildFace(body);
+    Object.assign(this, { group, body, rock, grow: 0, phase: 1, dozing: false, dying: -1, far: false, farAt: -99, shieldDown: false, deflateK: 1 });
+    this.face = buildFace(body);
+    this.xEye = this.face.x;
     this.cracks = buildCracks(body);
+    this.lap2 = G.zones.lap > 1;
     // Every gadget (and the crown) is a boss part: hit shape, surface normal (local), and its own state.
-    const hpK = G.zones.lap > 1 ? GLOBE.lapHp : 1;
-    this.parts = LAYOUT.map(([kind, lon, lat]) => {
-      const obj = mount(body, lon, lat), K = KINDS[kind], s = BUILD[kind](obj);
-      const hp = kind === 'crown' ? K.hp : K.hp * hpK;
-      const part = {
+    const hpK = this.lap2 ? GLOBE.lapHp : 1;
+    const part = (obj, kind, s, n) => {
+      const K = KINDS[kind], hp = kind === 'crown' ? K.hp : K.hp * hpK;
+      return {
         obj, name: kind, kind, hp, r: s.r, mult: K.worth / hp, counted: kind !== 'crown', ...s,
         a: new THREE.Vector3(0, s.a[0], 0), b: new THREE.Vector3(0, s.a[1], 0), wa: new THREE.Vector3(), wb: new THREE.Vector3(), mid: new THREE.Vector3(),
-        n: dirOf(lon, lat), wn: new THREE.Vector3(), cd: 0, t: 0, state: 'quiet',
+        n, wn: new THREE.Vector3(), cd: 0, t: 0, state: 'quiet',
       };
-      if (kind === 'turret') part.cd = TURRET.first;
-      if (kind === 'vent') part.cd = rand(2, VENT.cd + VENT.jitter);
-      if (kind === 'generator' || kind === 'eye') {
-        part.marker = makeMarker();
-        part.marker.userData.keep = true; // its material is shared with every enemy marker: disposeTree leaves it alone
-        part.marker.position.y = s.top;
-        obj.add(part.marker);
-      }
+    };
+    const marker = (x, obj, y) => {
+      x.marker = makeMarker();
+      x.marker.userData.keep = true; // its material is shared with every enemy marker: disposeTree leaves it alone
+      x.marker.position.y = y;
+      obj.add(x.marker);
+    };
+    this.parts = LAYOUT.map(([kind, lon, lat]) => {
+      const obj = mount(body, lon, lat), s = BUILD[kind](obj), x = part(obj, kind, s, dirOf(lon, lat));
+      if (kind === 'pore') x.cd = rand(PORE.first, PORE.first + PORE.cd);
+      if (kind === 'eye' || kind === 'pore') marker(x, obj, s.top); // a pore's only while it glows
       const scar = add(body, new THREE.CircleGeometry(kind === 'eye' ? 18 : 10, 10).rotateX(-Math.PI / 2), basic('#2a1e2e'));
-      scar.position.copy(part.n).multiplyScalar(lump(part.n) + 0.3);
-      scar.quaternion.setFromUnitVectors(Y, part.n);
+      scar.position.copy(x.n).multiplyScalar(lump(x.n) + 0.3);
+      scar.quaternion.setFromUnitVectors(Y, x.n);
       scar.visible = false;
-      part.scar = scar;
-      return part;
+      x.scar = scar;
+      return x;
+    });
+    // The moons hang off orbit pivots in `group` (not `body`), so the planet turning its face doesn't drag them along.
+    this.moonA = [];
+    MOON.tilt.forEach((tilt, k) => {
+      const plane = new THREE.Group(), spin = new THREE.Group();
+      plane.rotation.set(tilt * DEG, (k * TAU) / 3, 0, 'YXZ');
+      group.add(plane);
+      plane.add(spin);
+      const ring = add(plane, new THREE.TorusGeometry(MOON.R, MOON.ring.tube, 4, MOON.ring.segs).rotateX(Math.PI / 2), basic(MOONS[k].color, MOON.ring.opacity, true));
+      const { obj, tip } = buildMoon(k);
+      obj.position.x = MOON.R;
+      spin.add(obj);
+      const tether = add(group, new THREE.CylinderGeometry(1, 1, 1, 8, 1, true), basic('#5ae0ff', MOON.tether.opacity, true));
+      const x = part(obj, 'moon', { a: [0, 0], r: MOON.r }, null);
+      Object.assign(x, { name: 'moon', idx: k, spin, ring, tip, tether, fade: -1, cd: MOON.first });
+      marker(x, obj, MOON.r + 14);
+      this.moonA.push((k * TAU) / 3);
+      spin.rotation.y = this.moonA[k];
+      this.parts.push(x);
     });
     this.eye = this.parts.find((x) => x.kind === 'eye');
     this.eye.state = 'wait'; // lid shut while it scales in; then it snaps open and stares (shielded)
-    this.window = { t: 0, n: 0 }; // turret fire window
-    this.lastVent = -99;
+    this.window = { t: 0, n: 0 }; // moon potshot window
+    this.spit = { cd: SPIT.first, wind: 0, n: 0 };
+    this.oT = 0;            // s left showing the shocked "O" mouth
+    this.lastBurp = -99;
+    this.grumbs = [];       // its Grumblings (alive or not; pruned when counted)
+    this.burped = 0;        // Grumblings this fight
+    this.bounceCd = 0;
+    this.bounceN = 0;
+    this.moonsDown = 0;
     this.rocks = [];
     this.rockT = 0;
     this.tauntT = 6;
@@ -326,34 +378,41 @@ export class Globe {
     G.enemies.list.push(this.e);
   }
 
-  get k() { return this.group.scale.x; } // scale while it grows in (1 after)
+  get k() { return this.group.scale.x; } // scale while it grows in (1 after) and while it deflates
   get C() { return this.group.position; }
   left(kind) { return this.parts.filter((x) => x.kind === kind && !x.broken).length; }
-  gens() { return this.left('generator'); }
-  eyeOpen() { return !this.gens() && !this.eye.broken && this.eye.state === 'open' && !this.dozing; }
-  // A gadget you can hurt right now (homing, the objective marker): not the crown, an erupting vent, a shut or shielded eye.
-  hurtable(x) { return !x.broken && x.kind !== 'crown' && !(x.kind === 'vent' && x.state !== 'quiet') && (x.kind !== 'eye' || this.eyeOpen()); }
+  moons() { return this.left('moon'); }
+  eyeOpen() { return !this.moons() && !this.eye.broken && this.eye.state === 'open' && !this.dozing; }
+  // A gadget you can hurt right now (homing): not the crown, nor a shut or shielded eye. (A pore takes hits glowing or
+  // not: plugging one mid-glow calls its burp off.)
+  hurtable(x) { return !x.broken && x.kind !== 'crown' && (x.kind !== 'eye' || this.eyeOpen()); }
 
-  // Within crash distance of the surface?
-  inside(at) { return _c.set(at.x, at.y, at.z).distanceTo(this.C) < R * this.k + GLOBE.crashPad; }
+  // Within bounce distance of the surface or a moon? (The pull-up warning asks: Enemies.solidAt.)
+  inside(at) {
+    _c.set(at.x, at.y, at.z);
+    if (_c.distanceTo(this.C) < R * this.k + GLOBE.crashPad) return true;
+    return this.parts.some((x) => x.kind === 'moon' && !x.broken && _c.distanceTo(x.mid) < MOON.r * this.k + BOUNCE.moonPad);
+  }
 
-  // ---------- per frame (from Enemies.update). True once it has split (Enemies removes it). ----------
+  // ---------- per frame (from Enemies.update). True once it has burst (Enemies removes it). ----------
   update(dt, real) {
     const G = this.G, p = G.player, e = this.e;
     e.t += dt;
     this.grow = Math.min(1, this.grow + real / GLOBE.grow);
-    this.group.scale.setScalar(Math.max(0.01, 1 - (1 - this.grow) ** 3));
-    if (this.dying < 0) this.turn(dt, p);
-    for (const s of this.of('sweeper')) s.hub.rotation.y += dt * (this.phase > 1 ? SWEEP.rateAwake : SWEEP.rate);
+    this.group.scale.setScalar(Math.max(0.01, 1 - (1 - this.grow) ** 3) * this.deflateK);
+    if (this.dying < 0 && !this.dozing) this.turn(dt, p);
+    if (this.dying < 0 && !this.dozing && this.grow >= 1) this.orbit(dt);
     this.group.updateMatrixWorld(true);
     for (const x of this.parts) {
       x.wa.copy(x.a).applyMatrix4(x.obj.matrixWorld);
       x.wb.copy(x.b).applyMatrix4(x.obj.matrixWorld);
       x.mid.addVectors(x.wa, x.wb).multiplyScalar(0.5);
-      x.wn.copy(x.n).applyQuaternion(this.body.quaternion);
+      if (x.n) x.wn.copy(x.n).applyQuaternion(this.body.quaternion);
+      else x.wn.subVectors(x.mid, this.C).normalize(); // a moon: straight out from the planet
     }
+    this.tethers(real);
     const toP = _b.subVectors(p.pos, this.C), dist = toP.length();
-    this.collide(toP, dist);
+    this.collide(toP, dist, real);
     this.blockShots();
     this.bullets(real);
     this.animate(real);
@@ -363,46 +422,110 @@ export class Globe {
     if (this.dozing || this.grow < 1) return false;
     this.phases();
     this.eyeStep(dt);
-    this.sweepers(real);
-    this.turrets(dt);
-    this.vents(dt);
+    this.potshots(dt);
+    this.spitStep(dt, dist);
+    this.sulk();
+    this.pores(dt, dist);
     if (p.dead) return false;
     this.spawns(dt);
-    if (!this.far && (this.tauntT -= dt) <= 0) { this.tauntT = rand(12, 18); G.ui.notify(pick(TEXT.taunts), 'warn', 3.5, 0); }
+    if (!this.far && (this.tauntT -= dt) <= 0) { this.tauntT = rand(12, 18); G.ui.notify(pick(this.phase > 2 ? TEXT.begging : TEXT.taunts), 'warn', 3.5, 0); }
     return false;
   }
 
   of(kind) { return this.parts.filter((x) => x.kind === kind && !x.broken); }
 
-  // It spins while the shield stands; once it's down it stops. Only while the eye is due (shut past its time, or
-  // twitching) does it turn its face (longitude 0, local +Z) toward you, easing in over the last few degrees, with a
-  // grind as it starts; otherwise it holds still, so a far-side gadget never drifts away at your own orbital rate.
+  // The face (longitude 0, local +Z) turns toward you about world up, at up to GLOBE.track[phase] rad/s, easing in over
+  // the last few degrees; while the eye is open it holds its stare (so you can come round at it). faceErr: how far
+  // it's off you (the eye only opens within EYE.facing: eyeStep).
   turn(dt, p) {
-    const b = this.body;
-    if (!this.shieldDown) { b.rotation.y += dt * (this.phase > 1 ? GLOBE.spinAwake : GLOBE.spin); return; }
-    const want = Math.atan2(p.pos.x - this.C.x, p.pos.z - this.C.z), d = Math.atan2(Math.sin(want - b.rotation.y), Math.cos(want - b.rotation.y));
-    this.faceErr = Math.abs(d); // how far the face is off you (rad): the eye only opens within EYE.facing (eyeStep)
-    const x = this.eye, looking = !x.broken && ((x.state === 'shut' && x.t <= 0) || x.state === 'twitch');
-    if (looking) b.rotation.y += clamp(d * 1.5, -GLOBE.glare, GLOBE.glare) * dt;
-    if (looking && !this.looking && x.state === 'shut' && this.faceErr >= EYE.facing) this.G.audio.tone(55, 0.8, { type: 'sawtooth', vol: 0.04, slide: 40 }); // the grind: it's looking for you
-    this.looking = looking;
+    const b = this.body, want = Math.atan2(p.pos.x - this.C.x, p.pos.z - this.C.z), d = Math.atan2(Math.sin(want - b.rotation.y), Math.cos(want - b.rotation.y));
+    const max = this.eye.state === 'open' ? GLOBE.trackOpen : GLOBE.track[this.phase - 1];
+    this.faceErr = Math.abs(d);
+    b.rotation.y += clamp(d * 1.5, -max, max) * dt;
   }
 
-  // The planet is solid: fly into it and you crash (ghost or god mode skims the surface; just respawned too).
-  // Drones and rocks are pushed back out of it.
-  collide(toP, dist) {
-    const G = this.G, p = G.player, Rk = R * this.k;
+  // The moons go round (enemy time: Slow-Mo slows them, Time Freeze and dozing stop them) and look at you.
+  orbit(dt) {
+    const w = MOON.speed * (this.lap2 ? MOON.lapSpeed : 1), pp = this.G.player.pos;
+    for (const x of this.of('moon')) {
+      this.moonA[x.idx] = (this.moonA[x.idx] + w * dt) % TAU;
+      x.spin.rotation.y = this.moonA[x.idx];
+      x.obj.lookAt(pp); // its parents' world matrices are a frame old: close enough for a face
+    }
+  }
+
+  // Each moon's tether, from its centre to the shield bubble's, re-laid every frame (in the group's own frame: it only
+  // has a position and a uniform scale). A popped moon's tether fades out over MOON.tether.fade s.
+  tethers(real) {
+    const k = this.k, eyeAt = this.eye.obj.getWorldPosition(_c);
+    for (const x of this.parts) {
+      if (x.kind !== 'moon') continue;
+      const t = x.tether;
+      if (x.broken) {
+        if (x.fade < 0) { t.visible = false; x.ring.visible = false; continue; }
+        x.fade -= real;
+        t.material.opacity = MOON.tether.opacity * Math.max(0, x.fade / MOON.tether.fade);
+        x.ring.material.opacity = MOON.ring.opacity * Math.max(0, x.fade / MOON.tether.fade);
+        if (x.fade <= 0) x.fade = -1;
+      }
+      const dir = _a.subVectors(eyeAt, x.mid), len = dir.length() / k;
+      dir.normalize();
+      t.position.subVectors(x.mid, this.C).divideScalar(k).addScaledVector(dir, len / 2);
+      t.quaternion.setFromUnitVectors(Y, dir);
+      t.scale.set(MOON.tether.r, len, MOON.tether.r);
+      t.visible = !this.eye.broken;
+    }
+  }
+
+  // The planet and its moons are solid but bouncy: touch one and you're flicked back out (BOUNCE: some hull, never a
+  // life). Ghost or god mode, invulnerable, mid barrel roll, just respawned or within BOUNCE.cd of the last
+  // bounce: you skim along it instead. Drones, rocks and Grumblings are pushed back out of the planet.
+  collide(toP, dist, real) {
+    const G = this.G, p = G.player, Rk = R * this.k, s = p.sizeScale;
     for (const x of G.enemies.list) {
       if (x === this.e || x.dead) continue;
       _a.subVectors(x.pos, this.C);
       if (_a.length() < Rk + x.radius) x.pos.copy(this.C).addScaledVector(_a.normalize(), Rk + x.radius);
     }
-    if (p.dead || dist >= Rk + GLOBE.crashPad * p.sizeScale) return;
-    if (p.god || G.powerups.has('ghost') || p.invuln > 0 || p.grace > 0 || this.dying >= 0) {
-      p.pos.copy(this.C).addScaledVector(toP.normalize(), Rk + GLOBE.ghostPad * p.sizeScale);
-      return;
+    this.bounceCd -= real;
+    if (p.dead) return;
+    let from = null, r = 0;
+    if (dist < Rk + GLOBE.crashPad * s) { from = this.C; r = Rk; }
+    else {
+      for (const x of this.parts) {
+        if (x.kind !== 'moon' || x.broken) continue;
+        const mr = MOON.r * this.k;
+        if (p.pos.distanceTo(x.mid) < mr + BOUNCE.moonPad * s) { from = x.mid; r = mr; break; }
+      }
     }
-    p.crash('ground', TEXT.crash);
+    if (!from) return;
+    const n = _n.subVectors(p.pos, from);
+    if (n.lengthSq() < 1e-6) n.copy(p.forward).negate();
+    n.normalize();
+    const free = p.god || G.powerups.has('ghost') || p.invuln > 0 || p.grace > 0 || p.dodging || this.dying >= 0 || this.bounceCd > 0;
+    if (free) { p.pos.copy(from).addScaledVector(n, r + GLOBE.ghostPad * s); return; }
+    p.pos.copy(from).addScaledVector(n, r + BOUNCE.out * s);
+    p.prevPos.copy(p.pos);
+    this.bounceCd = BOUNCE.cd;
+    const dmg = Math.min(BOUNCE.dmg, p.health - 1); // the planet never takes a life by itself: a bounce leaves you 1 hull
+    if (dmg > 0) p.damage(dmg);
+    p.invuln = Math.max(p.invuln, BOUNCE.invuln);
+    // Flick the nose back out: reflected about the normal, and at least BOUNCE.minOut along it.
+    const f = _a.copy(p.forward).addScaledVector(n, -2 * p.forward.dot(n));
+    if (f.dot(n) < BOUNCE.minOut) {
+      f.addScaledVector(n, -f.dot(n));
+      if (f.lengthSq() < 1e-6) f.set(1, 0, 0).cross(n);
+      if (f.lengthSq() < 1e-6) f.set(0, 0, 1).cross(n);
+      f.normalize().multiplyScalar(Math.sqrt(1 - BOUNCE.minOut ** 2)).addScaledVector(n, BOUNCE.minOut);
+    }
+    p.maneuver = null; // a bounce ends any stunt
+    p.nudgeToward(_c.copy(p.pos).add(f), 99, 1);
+    p.updateAxes();
+    G.audio.tone(180, 0.35, { type: 'sine', vol: 0.12, slide: 320 });
+    G.shake(0.4, 0.25);
+    G.fx.popText(_c.copy(p.pos).addScaledVector(p.forward, 25).addScaledVector(p.up, 6), 'BOING!');
+    G.fx.emit(_c.copy(from).addScaledVector(n, r), 14, { colors: ['#b88aff', '#ffffff'], speed: 30, life: 0.6, size: 6 });
+    G.ui.notify(TEXT.bounce[this.bounceN++ % TEXT.bounce.length], 'warn', 2.5, 1);
   }
 
   // Enemy orbs that reach the sphere stop there: nothing shoots through the planet.
@@ -419,7 +542,7 @@ export class Globe {
   // Your bullets, swept over the last frame (gadgets are small and bullets fast): the first thing each one meets is a
   // gadget (Enemies.damagePart: gold sparkle, the bar drains), the shield bubble or bare rock (a grey tink, nothing).
   bullets(real) {
-    const G = this.G, p = G.player, k = this.k, Rk = R * k, reach = (R + 80) * k, shield = this.gens() > 0 && !this.eye.broken && !this.dozing;
+    const G = this.G, p = G.player, k = this.k, Rk = R * k, reach = (MOON.R + MOON.r + 20) * k, shield = this.moons() > 0 && !this.eye.broken && !this.dozing;
     for (let i = p.bullets.length - 1; i >= 0; i--) {
       const B = p.bullets[i], b1 = B.pos, b0 = _s0.copy(b1).addScaledVector(B.vel, -real);
       if (b1.distanceTo(this.C) > reach && b0.distanceTo(this.C) > reach) continue;
@@ -443,7 +566,7 @@ export class Globe {
   hit(what, at, dmg) {
     const G = this.G;
     const bounce = what === 'rock' || what === 'shield' || this.dozing || this.dying >= 0 || this.grow < 1
-      || (what.kind === 'vent' && what.state !== 'quiet') || (what.kind === 'eye' && !this.eyeOpen());
+      || (what.kind === 'eye' && !this.eyeOpen());
     if (bounce) {
       G.fx.sparkle(at, what === 'shield' ? '#a8f0ff' : '#9aa0a6');
       if (what === 'rock') G.fx.emit(at, 8, { colors: ['#6a5a7a', '#8a7a9a'], speed: 18, life: 0.6, size: 5 }); // a chip off the rock
@@ -465,16 +588,21 @@ export class Globe {
   broke(part) {
     const G = this.G, K = KINDS[part.kind];
     G.fx.explosion(part.mid);
-    part.scar.visible = true;
+    if (part.scar) part.scar.visible = true;
     G.score += K.score;
     G.fx.popText(part.mid, `+${K.score}`);
     if (part.kind === 'crown') this.e.vulnerable = 1.3;
-    if (part.kind === 'vent') this.quiet(part);
-    if (part.kind === 'turret') part.tip.material.opacity = 0;
-    if (part.kind === 'eye') this.e.hp = 0; // the finisher: the chain explosion (startDying) takes whatever's left
-    const n = this.left(part.kind);
-    if (part.kind === 'generator' && n === 0) return; // eyeStep announces the shield going down
-    G.ui.notify(K.line.replace('{n}', n), 'good', 3, 1);
+    if (part.kind === 'pore') this.quiet(part);
+    if (part.kind === 'eye') { this.e.hp = 0; return; } // the finisher: the deflate (startDying) takes whatever's left
+    if (part.kind === 'moon') {
+      part.fade = MOON.tether.fade;
+      part.tip.material.opacity = 0.0001;
+      this.oT = SPIT.oShock; // the face is shocked
+      const n = this.moons();
+      G.ui.notify(n ? TEXT.moonDown[this.moonsDown++ % TEXT.moonDown.length] : TEXT.lastMoon, 'good', 3, 1);
+      return; // eyeStep announces the shield going down
+    }
+    G.ui.notify(K.line, 'good', 3, 1);
   }
 
   // ---------- attacks ----------
@@ -484,114 +612,167 @@ export class Globe {
     const p = this.G.player;
     out.subVectors(p.pos, x.mid);
     const d = out.length();
-    return d < range && x.wn.dot(out) > TURRET.horizon * d;
+    return d < range && x.wn.dot(out) > HORIZON * d;
   }
 
-  // Each turret's x.cd counts down to its next shot; the last TURRET.wind s of it the barrel tip glows (and a rising tone
-  // plays). It only winds up while it sees you and the window has room; losing sight of you calls the shot off.
-  turrets(dt) {
+  // Can this moon see you? Within range, with the planet not in the way.
+  moonSees(x) {
+    const p = this.G.player;
+    return p.pos.distanceTo(x.mid) < MOON.range && segSphere(x.mid, p.pos, this.C, R * this.k) === Infinity;
+  }
+
+  // Each moon's x.cd counts down to its next shot; the last MOON.wind s of it its mouth glows (and a rising tone plays).
+  // It only winds up while it sees you and the window has room; losing sight of you calls the shot off.
+  potshots(dt) {
     const G = this.G, p = G.player, W = this.window;
-    if ((W.t += dt) >= TURRET.every) { W.t = 0; W.n = 0; }
-    for (const x of this.of('turret')) {
-      const vis = !p.dead && this.sees(x, TURRET.range);
-      if (vis) { x.pivot.lookAt(p.pos); if (!x.seen) { x.seen = true; x.cd = Math.max(x.cd, TURRET.first); } }
+    if ((W.t += dt) >= MOON.every) { W.t = 0; W.n = 0; }
+    for (const x of this.of('moon')) {
+      const vis = !p.dead && this.moonSees(x);
+      if (vis && !x.seen) { x.seen = true; x.cd = Math.max(x.cd, MOON.first); }
       x.cd -= dt;
       if (x.shots > 0) { // mid-burst: the second shot of the pair
-        if (x.cd <= 0) { if (vis) this.fire(x); x.shots--; x.cd = TURRET.every; }
-      } else if (x.wind > 0 && !vis) { x.wind = 0; x.cd = TURRET.wind; } // lost you: it glows again before it fires
+        if (x.cd <= 0) { if (vis) this.fire(x); x.shots--; x.cd = MOON.every; }
+      } else if (x.wind > 0 && !vis) { x.wind = 0; x.cd = MOON.wind; } // lost you: it glows again before it fires
       else if (x.wind > 0) {
-        if ((x.wind -= dt) <= 0) { this.fire(x); x.shots = this.phase > 1 ? 1 : 0; x.cd = x.shots ? TURRET.burstGap : TURRET.every; }
-      } else if (x.cd <= TURRET.wind) {
-        x.cd = TURRET.wind; // waiting for you, or for room in the window
-        if (vis && x.seen && W.n < TURRET.perWindow) {
+        if ((x.wind -= dt) <= 0) { this.fire(x); x.shots = this.lap2 ? 1 : 0; x.cd = x.shots ? MOON.burstGap : MOON.every; }
+      } else if (x.cd <= MOON.wind) {
+        x.cd = MOON.wind; // waiting for you, or for room in the window
+        if (vis && x.seen && W.n < MOON.perWindow) {
           W.n++;
-          x.wind = TURRET.wind;
-          G.audio.tone(420, TURRET.wind, { type: 'sine', vol: 0.04, slide: 700 });
+          x.wind = MOON.wind;
+          G.audio.tone(420, MOON.wind, { type: 'sine', vol: 0.04, slide: 700 });
         }
       }
-      x.tip.material.opacity = x.wind > 0 ? 0.35 + 0.65 * (1 - x.wind / TURRET.wind) : x.shots > 0 ? 0.8 : 0.0001;
-      x.tip.scale.setScalar(x.wind > 0 ? 1 + 0.6 * (1 - x.wind / TURRET.wind) : 1);
+      x.tip.material.opacity = x.wind > 0 ? 0.35 + 0.65 * (1 - x.wind / MOON.wind) : x.shots > 0 ? 0.8 : 0.0001;
+      x.tip.scale.setScalar(x.wind > 0 ? 1 + 0.6 * (1 - x.wind / MOON.wind) : 1);
     }
   }
 
   fire(x) {
-    const G = this.G, p = G.player, from = x.tip.getWorldPosition(new THREE.Vector3());
-    const t = from.distanceTo(p.pos) / (TURRET.speed * PACE); // real s to reach you: orbs fly at PACE
-    const to = p.pos.clone().addScaledVector(p.forward, p.speed * t * TURRET.lead).sub(from);
-    G.enemies.fireOrb(from, to, TURRET.speed, TURRET.dmg, TURRET.color, TURRET.size).owner = this.e;
+    const G = this.G, p = G.player, S = MOON.shot, from = x.tip.getWorldPosition(new THREE.Vector3());
+    const t = from.distanceTo(p.pos) / (S.speed * PACE); // real s to reach you: orbs fly at PACE
+    const to = p.pos.clone().addScaledVector(p.forward, p.speed * t * S.lead).sub(from);
+    G.enemies.fireOrb(from, to, S.speed, S.dmg, S.color, S.size).owner = this.e;
     G.audio.tone(160, 0.2, { type: 'square', vol: 0.05, slide: -60 });
     this.e.attacks++;
   }
 
-  vents(dt) {
-    const G = this.G, p = G.player, mad = this.phase > 2, range = mad ? VENT.rangeMad : VENT.range;
-    for (const x of this.of('vent')) {
+  // Is the face toward you (within SPIT.cos and SPIT.range)? Then it may spit.
+  facesYou(dist) {
+    const p = this.G.player;
+    return dist < SPIT.range && _a.subVectors(p.pos, this.C).normalize().dot(this.eye.wn) > SPIT.cos;
+  }
+
+  // The spit fan: cheeks puff up for SPIT.wind s with a rising "mmmMMM", then a level fan of orbs at where you are. Its
+  // turn only: never starts while the eye is twitching or open.
+  spitStep(dt, dist) {
+    const G = this.G, p = G.player, s = this.spit, x = this.eye;
+    if (s.wind > 0) {
+      if ((s.wind -= dt) <= 0) { s.wind = 0; this.spitFire(); }
+      return;
+    }
+    if ((s.cd -= dt) > 0 || p.dead || this.far || x.state === 'twitch' || x.state === 'open' || !this.facesYou(dist)) return;
+    s.wind = SPIT.wind;
+    s.n = this.phase > 2 ? SPIT.nMad : SPIT.n;
+    s.startedAt = this.e.t; // (for the smoke test)
+    G.audio.tone(110, SPIT.wind, { type: 'sawtooth', vol: 0.04, slide: 220 });
+    this.e.attacks++;
+  }
+
+  spitFire() {
+    const G = this.G, p = G.player, s = this.spit;
+    s.cd = SPIT.cd[this.phase - 1];
+    this.oT = Math.max(this.oT, SPIT.oFire);
+    if (p.dead || this.dozing) return;
+    const from = this.face.o.getWorldPosition(new THREE.Vector3()).addScaledVector(this.eye.wn, 10);
+    const t = from.distanceTo(p.pos) / (SPIT.speed * PACE); // real s to reach you: orbs fly at PACE
+    const aim = _a.copy(p.pos).addScaledVector(p.forward, p.speed * t * SPIT.lead).sub(from).normalize();
+    // The fan turns about "up" as seen along the aim (world up made square to it), so it stays level.
+    const axis = _b.copy(Y).addScaledVector(aim, -aim.dot(Y));
+    if (axis.lengthSq() < 1e-4) axis.set(1, 0, 0);
+    axis.normalize();
+    for (let i = 0; i < s.n; i++) {
+      const dir = aim.clone().applyAxisAngle(axis, (i - (s.n - 1) / 2) * SPIT.spread * DEG);
+      G.enemies.fireOrb(from, dir, SPIT.speed, SPIT.dmg, SPIT.color, SPIT.size).owner = this.e;
+    }
+    s.fired = (s.fired || 0) + 1;
+    G.audio.tone(140, 0.25, { type: 'square', vol: 0.06, slide: -80 });
+    G.audio.noise(0.2, { vol: 0.08, freq: 700 });
+  }
+
+  // A Grumbling that has been about over PORE.life s (enemy time) or strayed over PORE.leash m from the surface sulks
+  // off (a puff, no points), freeing its slot for the next burp.
+  sulk() {
+    const G = this.G, far = R * this.k + PORE.leash;
+    for (const x of this.alive()) {
+      if (x.stateT <= PORE.life && x.pos.distanceTo(this.C) <= far) continue;
+      G.fx.emit(x.pos, 8, { colors: ['#7a6a8a', '#b8a8c8'], speed: 14, life: 0.5, size: 5 });
+      G.enemies.removeEnemy(x);
+    }
+  }
+
+  // Grumblings (enemies.js) from this planet still about.
+  alive() { return (this.grumbs = this.grumbs.filter((x) => !x.dead)); }
+  grumbCap() { return (this.phase > 2 ? PORE.capMad : PORE.cap) + (this.lap2 ? PORE.lap : 0) - (this.easy ? PORE.easier : 0); }
+
+  // Pores: quiet → glow (PORE.warn s, a rumble) → a burp of Grumblings → quiet, on a jittered cooldown. Only with you
+  // near, room under the caps, and Grumblings left in this fight's budget.
+  pores(dt, dist) {
+    const G = this.G, p = G.player, mad = this.phase > 2;
+    for (const x of this.of('pore')) {
       if (x.state === 'quiet') {
         x.cd -= dt;
-        if (x.cd > 0 || p.dead || this.e.t - this.lastVent < VENT.gap || p.pos.distanceTo(x.wa) > range) continue;
-        this.lastVent = this.e.t;
-        x.state = 'warn';
-        x.hz = G.enemies.warn(_a.copy(x.wa).addScaledVector(x.wn, VENT.h / 2), VENT.r, '#ff7a2a', VENT.warn, () => this.blast(x), { shape: 'column', owner: this.e, h: VENT.h, dir: x.wn });
-        G.audio.tone(55, VENT.warn, { type: 'sawtooth', vol: 0.05, slide: 30 }); // the rumble
+        if (x.cd > 0 || p.dead || this.far || dist > PORE.range || this.e.t - this.lastBurp < PORE.gap) continue;
+        if (this.burped >= PORE.total || this.alive().length >= this.grumbCap()) continue;
+        this.lastBurp = this.e.t;
+        Object.assign(x, { state: 'glow', t: PORE.warn });
+        G.audio.tone(60, PORE.warn, { type: 'sawtooth', vol: 0.05, slide: 40 }); // the rumble
         this.e.attacks++;
-      } else if (x.state === 'warn') {
-        x.hz.pos.copy(x.wa).addScaledVector(x.wn, VENT.h / 2); // the column rides the spin
-        x.hz.mesh.quaternion.setFromUnitVectors(Y, x.wn);
-      } else if (x.state === 'blast') {
-        x.t -= dt;
-        // Once per eruption, if you're in the column (a barrel roll still dodges it: Player.damage).
-        if (!x.burnt && pointSeg(p.pos, x.wa, _a.copy(x.wa).addScaledVector(x.wn, VENT.h)) < VENT.r + 4 * p.sizeScale) { x.burnt = true; p.damage(VENT.dmg); }
-        if (x.t <= 0) { this.quiet(x); x.cd = (VENT.cd + rand(-VENT.jitter, VENT.jitter)) * (mad ? VENT.madK : 1); }
+      } else if (x.state === 'glow' && (x.t -= dt) <= 0) {
+        this.burp(x);
+        this.quiet(x);
+        x.cd = (PORE.cd + rand(-PORE.jitter, PORE.jitter)) * (mad ? PORE.madK : 1);
       }
     }
   }
 
-  blast(x) {
+  burp(x) {
+    const G = this.G, E = G.enemies, k = this.k;
+    const n = Math.min(PORE.n, PORE.total - this.burped, this.grumbCap() - this.alive().length, CEILING - E.regulars().length);
+    for (let i = 0; i < n; i++) {
+      const at = x.wa.clone().addScaledVector(x.wn, 5 * k).add(_a.set(rand(-2, 2), rand(-2, 2), rand(-2, 2)));
+      const g = E.spawn('grumbling', at);
+      g.vel.copy(x.wn).multiplyScalar(PORE.out).add(_a.set(rand(-8, 8), rand(-8, 8), rand(-8, 8)));
+      this.grumbs.push(g);
+      this.burped++;
+    }
+    if (n > 0) {
+      G.fx.emit(x.wa, 16, { colors: ['#7a6a8a', '#ff9a3a'], speed: 25, life: 0.6, size: 6 });
+      G.audio.tone(90, 0.25, { type: 'square', vol: 0.06, slide: -40 }); // *burp*
+      this.tip('grumblings', TEXT.grumblings, 'warn');
+    }
+    if (this.burped >= PORE.total) this.tip('noOpinions', TEXT.noOpinions, 'good');
+  }
+
+  // A pore goes quiet (it's plugged, the planet dozes off or dies): no glow, no burp.
+  quiet(x) { x.state = 'quiet'; x.t = 0; x.marker.visible = false; }
+
+  // Its Grumblings pop all at once (it dozes off, it dies, the fight is called off).
+  popGrumblings() {
     const G = this.G;
-    if (x.broken || this.dozing) return;
-    Object.assign(x, { state: 'blast', t: VENT.blast, burnt: false, hz: null });
-    x.blast.visible = true;
-    G.audio.whoosh();
-    G.audio.noise(0.9, { vol: 0.12, freq: 420 });
-    if (G.player.pos.distanceTo(x.wa) < 200) G.shake(0.5, 0.3); // no shake with reduced motion (main.js)
+    for (const x of this.alive()) { G.fx.emit(x.pos, 8, { colors: ['#7a6a8a', '#ffffff'], speed: 18, life: 0.5, size: 5 }); G.enemies.removeEnemy(x); }
+    this.grumbs.length = 0;
   }
 
-  // A vent goes quiet (its eruption ends, it's plugged, the planet dozes off): no column, no hazard.
-  quiet(x) {
-    if (x.hz) { x.hz.onFire = null; x.hz.t = x.hz.T; x.hz = null; } // released unfired on the next Hazards.update
-    x.state = 'quiet';
-    x.blast.visible = false;
-  }
-
-  sweepers(real) {
-    const G = this.G, p = G.player;
-    for (const x of this.of('sweeper')) {
-      const A = _a.set(-SWEEP.len / 2, 0, 0).applyMatrix4(x.hub.matrixWorld), B = _c.set(SWEEP.len / 2, 0, 0).applyMatrix4(x.hub.matrixWorld);
-      x.cd -= real;
-      if (!p.dead && x.cd <= 0 && !p.dodging && p.invuln <= 0 && pointSeg(p.pos, A, B) < SWEEP.hit * p.sizeScale) {
-        x.cd = SWEEP.cd;
-        p.damage(SWEEP.dmg);
-        this.e.attacks++;
-      }
-      if ((x.whirT = (x.whirT || 0) - real) <= 0 && p.pos.distanceTo(x.wb) < SWEEP.whir) { x.whirT = 0.4; G.audio.tone(130, 0.35, { type: 'sawtooth', vol: 0.015, slide: 30 }); }
-    }
-  }
-
-  // The eye: stares out of its bubble while any generator stands; then shut → twitch (1 s, creaking) → open, on a cycle.
+  // The eye: stares out of its bubble while any moon stands; then shut → twitch (1 s, creaking) → open, on a cycle.
   // It holds shut past its time until the face looks your way (faceErr < EYE.facing), so it never opens on empty sky;
   // but never more than EYE.held s (x.t runs on below 0), so a chase round the far side can't keep it shut for good.
   eyeStep(dt) {
     const G = this.G, x = this.eye;
     if (x.broken) return;
     if (x.state === 'wait') x.state = 'stare'; // grown in: it snaps open
-    if (this.gens()) return;
-    if (!this.shieldDown) {
-      this.shieldDown = true;
-      G.ui.notify(TEXT.shieldDown, 'good', 4, 2);
-      G.ui.notify(TEXT.turned, 'info', 3, 1);
-      G.audio.zap();
-      Object.assign(x, { state: 'shut', t: 2 });
-    }
+    if (this.moons()) return;
+    if (!this.shieldDown) this.dropShield();
     x.t -= dt;
     if (x.state === 'shut' && x.t <= 0 && (this.faceErr < EYE.facing || x.t <= -EYE.held)) {
       Object.assign(x, { state: 'twitch', t: EYE.twitch, forced: this.faceErr >= EYE.facing });
@@ -603,6 +784,36 @@ export class Globe {
       if (this.phase > 2 && !x.glared && !G.player.dead) { x.glared = true; if (!(x.forced && this.faceErr > EYE.facing)) this.glareAt(); }
       if (x.t <= 0) Object.assign(x, { state: 'shut', t: EYE.every - EYE.twitch - (this.phase > 2 ? EYE.openMad : EYE.open) });
     }
+  }
+
+  // The last moon popped: the bubble shatters and phase 2 starts, whatever the bar says.
+  dropShield() {
+    const G = this.G, x = this.eye;
+    this.shieldDown = true;
+    G.fx.emit(x.obj.getWorldPosition(_a), 80, { colors: ['#5ae0ff', '#bff4ff', '#ffffff'], speed: 70, life: 1.2, size: 6 });
+    G.audio.zap();
+    G.shake(0.6, 0.4);
+    G.ui.notify(TEXT.shieldDown, 'good', 4, 2);
+    this.oT = SPIT.oShock;
+    Object.assign(x, { state: 'shut', t: 2 });
+    this.enter(2);
+  }
+
+  // Phase 3 "Meltdown": once the shield is down and the bar is at 33% or less.
+  phases() {
+    if (this.phase === 2 && this.e.hp / this.e.maxHp <= GLOBE.meltdown) this.enter(3);
+  }
+
+  enter(phase) {
+    const G = this.G;
+    this.phase = phase;
+    if (phase === 2) { G.ui.notify(TEXT.phase2, 'bad', 4, 1); return; }
+    G.audio.zap();
+    G.shake(0.8, 0.4);
+    G.ui.notify(TEXT.phase3, 'bad', 4, 2);
+    this.e.enraged = true;
+    this.cracks.visible = true;
+    this.rockT = 3;
   }
 
   // Phase 3, once per opening: a thin sight line from the eye to where you'll be in 1 s (it thickens as it charges:
@@ -667,23 +878,13 @@ export class Globe {
     this.G.audio.zap();
   }
 
-  phases() {
-    const G = this.G, f = this.e.hp / this.e.maxHp;
-    const want = f <= GLOBE.phases[1] ? 3 : f <= GLOBE.phases[0] ? 2 : 1;
-    if (want <= this.phase) return;
-    this.phase = want;
-    G.audio.zap();
-    G.shake(0.8, 0.4);
-    if (want === 2) {
-      G.ui.notify(TEXT.phase2, 'bad', 4, 2);
-      const at = this.surfaceToward(G.player.pos, 15);
-      for (let k = 0; k < DRONES; k++) G.enemies.spawn('drone', at.clone().add(_a.set(rand(-20, 20), rand(-10, 10), rand(-20, 20))));
-    } else {
-      G.ui.notify(TEXT.phase3, 'bad', 4, 2);
-      this.e.enraged = true;
-      this.cracks.visible = true;
-      this.rockT = 3;
-    }
+  // A glare beam ran out without touching you: +25, like dodging any boss's big move (bossmoves.js dodgeEnd).
+  dodged() {
+    const G = this.G, p = G.player;
+    G.score += EYE.dodge;
+    G.fx.popText(p.pos.clone().addScaledVector(p.forward, 25).add(_a.set(0, 6, 0)), `+${EYE.dodge} Dodge!`);
+    G.audio.tone(990, 0.14, { type: 'triangle', vol: 0.06 });
+    G.audio.tone(1320, 0.18, { type: 'triangle', vol: 0.05, delay: 0.09 });
   }
 
   // The surface point under you (plus `up` m).
@@ -709,17 +910,32 @@ export class Globe {
   // ---------- looks ----------
 
   animate(real) {
-    const G = this.G, x = this.eye, t = this.e.t, ease = 1 - Math.exp(-real * 10);
-    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.25 * Math.abs(Math.sin(t * 12)) : 0; // ~3.8 Hz
+    const G = this.G, x = this.eye, t = this.e.t, ease = 1 - Math.exp(-real * 10), F = this.face;
+    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.35 * Math.abs(Math.sin(t * 6)) : 0; // ~1.9 Hz wobble, no flashing
     x.lid.rotation.x += ((this.dozing || this.dying >= 0 ? 0 : lid) - x.lid.rotation.x) * ease;
-    x.shield.visible = this.gens() > 0 && !x.broken;
-    x.shield.material.opacity = 0.16 + 0.05 * Math.sin(t * 2 * TAU / 2);
-    for (const v of this.of('vent')) {
-      v.core.material.color.set(v.state === 'quiet' ? '#3a1a10' : '#ff9a3a');
-      if (v.blast.visible) v.blast.material.opacity = 0.6 + 0.1 * Math.sin(t * 12); // under 2 Hz: no flashing
+    // Open, it bulges out of its socket (easier to hit from the side); its hit capsule goes with it.
+    const bulge = x.state === 'open' && !this.dozing && this.dying < 0 ? EYE.bulge : 0;
+    x.ball.position.y += (bulge - x.ball.position.y) * ease * 0.6;
+    x.stalk.scale.y = Math.max(0.01, x.ball.position.y);
+    x.stalk.visible = x.ball.position.y > 0.5;
+    x.a.y = 2 + x.ball.position.y;
+    x.b.y = 10 + x.ball.position.y;
+    x.shield.visible = this.moons() > 0 && !x.broken;
+    x.shield.material.opacity = 0.16 + 0.05 * Math.sin(t * TAU * 0.5); // 0.5 Hz
+    // The face: brows by mood, cheeks puffing over a spit wind-up, the "O" when shocked or spitting.
+    const brow = BROWS[this.phase - 1];
+    for (const b of F.brows) b.rotation.y += (b.userData.side * brow - b.rotation.y) * ease * 0.5;
+    const puff = this.spit.wind > 0 ? 1 + (SPIT.puff - 1) * (1 - this.spit.wind / SPIT.wind) : 1;
+    for (const c of F.cheeks) c.scale.setScalar(this.spit.wind > 0 ? puff : c.scale.x + (1 - c.scale.x) * ease);
+    this.oT -= real;
+    F.o.visible = this.oT > 0 && this.dying < 0;
+    F.frown.visible = !F.o.visible;
+    for (const v of this.of('pore')) {
+      const k = v.state === 'glow' ? 1 - v.t / PORE.warn : 0; // a steady ramp, no flashing
+      v.core.material.color.setRGB(0.1 + 0.9 * k, 0.055 + 0.55 * k, 0.125 + 0.1 * k);
     }
     if (this.phase > 2) {
-      const k = 0.5 + 0.5 * Math.sin(t * 4);
+      const k = 0.5 + 0.5 * Math.sin(t * 4); // ~0.64 Hz
       this.cracks.children[0].material.opacity = 0.55 + 0.45 * k;
       this.rock.emissive.setRGB(0.16 + 0.12 * k, 0.05, 0.06);
     }
@@ -727,56 +943,81 @@ export class Globe {
     if (this.beamT > 0) {
       this.beamT -= real;
       const p = G.player;
-      if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { this.beamHit = true; p.damage(EYE.glareDmg); }
-      if (this.beamT <= 0) this.glare.visible = this.glareTip.visible = false;
+      // Only a hit that cost hull counts: a barrel roll (or invulnerability) through the beam is still a dodge.
+      if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { const h = p.health; p.damage(EYE.glareDmg); this.beamHit = p.dead || p.health < h; }
+      if (this.beamT <= 0) {
+        this.glare.visible = this.glareTip.visible = false;
+        if (!this.beamHit && !p.dead && this.dying < 0) this.dodged();
+      }
     }
-    // Red markers only where to shoot: the generators while the shield is up, the eye once it's open. Not on the far side.
+    // Red markers only where to shoot: the moons while the shield is up, the eye once it's open (not from behind).
     const cam = G.camera.position;
     for (const p of this.parts) {
       if (!p.marker) continue;
-      const want = p.kind === 'generator' ? !this.dozing && this.dying < 0 : this.eyeOpen();
-      p.marker.visible = want && this.grow >= 1 && _a.subVectors(cam, p.mid).dot(p.wn) > 0;
+      const want = p.kind === 'moon' ? !this.dozing && this.dying < 0 : p.kind === 'pore' ? p.state === 'glow' : this.eyeOpen() && _a.subVectors(cam, p.mid).dot(p.wn) > 0;
+      p.marker.visible = want && this.grow >= 1;
     }
   }
 
   // ---------- the end ----------
 
+  // The eye broke (or the bar ran out): it freezes with an "x" for an eye, then deflates like a punctured balloon.
   startDying() {
     const G = this.G;
     this.dying = 0;
     this.e.hp = 0;
     G.enemies.hazards.clear(this.e);
-    for (const v of this.of('vent')) this.quiet(v);
+    for (const v of this.of('pore')) this.quiet(v);
+    this.spit.wind = 0;
     this.glare.visible = this.glareTip.visible = this.sightTip.visible = false;
     this.beamT = 0;
     this.sight = null;
+    this.popGrumblings();
     this.chain = this.parts.filter((x) => !x.broken).sort(() => Math.random() - 0.5);
-    this.chainGap = (DYING.chain - 0.2) / Math.max(1, this.chain.length);
-    this.chainAt = 0.2;
+    this.chainGap = (DEFLATE.shrink - 0.2) / Math.max(1, this.chain.length);
+    this.chainAt = DEFLATE.freeze + 0.1;
     this.xEye.visible = true;
     G.ui.notify(TEXT.breakup, 'good', 3, 1);
     G.audio.zap();
     G.shake(1, 0.5);
   }
 
-  // Its gadgets go off one by one, then it splits into rubble. True when it's gone.
+  // Shudder, then shrink and spin up with a raspberry while what's left of its gadgets pops, then burst. True when gone.
   crumble(real) {
-    const G = this.G;
+    const G = this.G, D = DEFLATE, b = this.body;
     this.dying += real;
-    while (this.chain.length && this.dying >= this.chainAt) {
+    const t = this.dying;
+    if (t < D.freeze) b.position.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(D.shudder);
+    else {
+      b.position.set(0, 0, 0);
+      if (!this.raspberry) {
+        this.raspberry = true;
+        G.audio.tone(220, D.shrink, { type: 'sawtooth', vol: 0.08, slide: -160 });
+        for (let k = 0; k < 5; k++) G.audio.noise(0.14, { vol: 0.08, freq: 500, delay: k * 0.3 });
+      }
+      const u = Math.min(1, (t - D.freeze) / D.shrink);
+      this.deflateK = 1 - (1 - D.to) * u * u;
+      this.group.scale.setScalar(this.deflateK);
+      b.rotation.y += D.spin * u * real;
+      // Air rushing out of the eye socket.
+      G.fx.emit(this.eye.obj.getWorldPosition(_a), D.puffs, { colors: ['#b88aff', '#8a7a9a', '#ffffff'], speed: 50, life: 0.6, size: 6 });
+    }
+    while (this.chain.length && t >= this.chainAt) {
       const x = this.chain.shift();
       x.broken = true;
       x.obj.visible = false;
-      x.scar.visible = true;
+      if (x.scar) x.scar.visible = true;
+      if (x.kind === 'moon') x.fade = MOON.tether.fade;
       G.fx.explosion(x.mid);
       G.audio.pop();
       this.chainAt += this.chainGap;
     }
-    if (this.dying < DYING.split) return false;
-    for (let k = 0; k < RUBBLE.n; k++) {
-      const y = 1 - (2 * (k + 0.5)) / RUBBLE.n, r = Math.sqrt(1 - y * y), a = k * 2.39996, dir = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
-      G.zones.asteroids.spawn(this.C.clone().addScaledVector(dir, R * 0.5), rand(...RUBBLE.size), dir.multiplyScalar(RUBBLE.speed), RUBBLE.safe);
-      G.fx.explosion(_a.copy(this.C).addScaledVector(dir, R * 0.8));
+    if (t < D.freeze + D.shrink) return false;
+    const k = this.k;
+    for (let i = 0; i < RUBBLE.n; i++) {
+      const y = 1 - (2 * (i + 0.5)) / RUBBLE.n, r = Math.sqrt(1 - y * y), a = i * 2.39996, dir = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
+      G.zones.asteroids.spawn(this.C.clone().addScaledVector(dir, R * k * 0.5), rand(...RUBBLE.size), dir.multiplyScalar(RUBBLE.speed), RUBBLE.safe);
+      G.fx.explosion(_a.copy(this.C).addScaledVector(dir, R * k * 0.8));
     }
     G.fx.emit(this.C, 160, { colors: ['#6a5a7a', '#8a7a9a', '#ff7a2a', '#5ae0ff'], speed: 120, life: 2.5, size: 12 });
     G.fx.confetti(this.C);
@@ -798,46 +1039,57 @@ export class Globe {
     p.updateAxes();
   }
 
-  // The nearest gadget you can hurt right now, else null (Homing Bullets).
-  homeAt(from) {
+  nearest(pool, to) {
     let best = null, bd = Infinity;
-    for (const x of this.parts) {
-      if (!this.hurtable(x)) continue;
-      const d = x.mid.distanceToSquared(from);
-      if (d < bd) { bd = d; best = x; }
-    }
+    for (const x of pool) { const d = x.mid.distanceToSquared(to); if (d < bd) { bd = d; best = x; } }
+    return best;
+  }
+
+  // Homing Bullets: the nearest moon while the shield stands, then the open eye or a pore. Never the crown or a shut
+  // eye. Null if there's nothing to hurt right now.
+  homeAt(from) {
+    const moons = this.of('moon'), best = this.nearest(moons.length ? moons : this.parts.filter((x) => this.hurtable(x)), from);
     return best ? this.home.copy(best.mid) : null;
   }
 
-  // The objective marker: a generator while the shield is up, then the eye, then whatever's left.
+  // The objective marker: the nearest moon while the shield is up, then the eye, then whatever's left.
   target() {
-    const pp = this.G.player.pos, gens = this.of('generator');
-    const pool = gens.length ? gens : !this.eye.broken ? [this.eye] : this.parts.filter((x) => !x.broken && x.kind !== 'crown');
-    let best = null, bd = Infinity;
-    for (const x of pool) { const d = x.mid.distanceToSquared(pp); if (d < bd) { bd = d; best = x; } }
+    const moons = this.of('moon');
+    const pool = moons.length ? moons : !this.eye.broken ? [this.eye] : this.parts.filter((x) => !x.broken && x.kind !== 'crown');
+    const best = this.nearest(pool, this.G.player.pos);
     return this.target0.copy(best ? best.mid : this.C);
   }
 
   bar() {
-    const e = this.e, gens = this.gens();
-    return { name: TEXT.name, hp: Math.max(0, e.hp), maxHp: e.maxHp, enraged: e.enraged, away: this.far, note: gens ? `shield: ${gens}` : this.eyeOpen() ? 'eye open!' : '' };
+    const e = this.e, moons = this.moons();
+    return { name: TEXT.name, hp: Math.max(0, e.hp), maxHp: e.maxHp, enraged: e.enraged, away: this.far, note: moons ? `moons: ${moons}` : this.eyeOpen() ? 'eye open!' : this.eye.broken ? '' : 'eye shut' };
   }
 
-  progress() { return ['generator', 'turret', 'vent', 'sweeper'].map((k) => `${KINDS[k].icon}${this.left(k)}`).join(' '); }
+  // The objective card's progress line: what to do now, and the pores left.
+  progress() {
+    const moons = this.moons(), pores = this.left('pore');
+    const now = moons ? `🌙 ${moons} moon${moons > 1 ? 's' : ''} left` : this.eyeOpen() ? '👁 EYE OPEN: shoot it!' : '👁 Eye shut: dodge!';
+    return pores ? `${now} · pores ${pores}` : now;
+  }
 
-  // Persuasion 'easier': every gadget -30% hp, worth the same (so the bar can still be emptied).
-  easier() { for (const x of this.parts) if (!x.broken && x.counted) { x.hp *= GLOBE.easier; x.mult /= GLOBE.easier; } }
+  // Persuasion 'easier': every gadget -30% hp, worth the same (so the bar can still be emptied); fewer Grumblings.
+  easier() {
+    this.easy = true;
+    for (const x of this.parts) if (!x.broken && x.counted) { x.hp *= GLOBE.easier; x.mult /= GLOBE.easier; }
+  }
 
-  // Relax mode: it dozes (eye shut, no attacks, nothing hurts it) until you come back.
+  // Relax mode: it dozes (eye shut, moons still, no attacks, nothing hurts it) until you come back. Its Grumblings pop.
   doze(on) {
     this.dozing = on;
     if (!on) return;
     this.G.enemies.hazards.clear(this.e);
-    for (const v of this.of('vent')) this.quiet(v);
-    for (const t of this.of('turret')) { t.wind = 0; t.shots = 0; t.tip.material.opacity = 0.0001; }
+    for (const v of this.of('pore')) this.quiet(v);
+    for (const m of this.of('moon')) { m.wind = 0; m.shots = 0; m.tip.material.opacity = 0.0001; }
+    this.spit.wind = 0;
     this.glare.visible = this.glareTip.visible = this.sightTip.visible = false;
     this.beamT = 0;
     this.sight = null;
+    this.popGrumblings();
   }
 }
 
@@ -850,12 +1102,12 @@ export function mkSiege(G, level) {
   return objective({
     type: 'boss', boss: 'grumbleglobe', siege: true, needsEnemies: true, noun: 'Grumbleglobe', globe, wakeText: TEXT.wake,
     reward: Math.round((400 + level * 100) * GLOBE.reward),
-    par: 110, // s: a fair fight's length (objectives.js keeps an objective's own par; other bosses get 25)
+    par: 100, // s: a fair fight's length (objectives.js keeps an objective's own par; other bosses get 25)
     title: 'BOSS: Grumbleglobe',
-    desc: 'The whole planet is the boss. Shoot its gadgets: turrets, vents, sweepers and the 3 cyan shield generators, then its eye. Bare rock does nothing.',
+    desc: 'The whole planet is the boss. Pop its 3 moons to drop the shield, then hit its eye when it opens. Bare rock does nothing.',
     caps: new Set(['easier']),
     signText: ['THE PLANET', 'IS THE BOSS →'],
-    hints: ['Shoot the gadgets, not the rock. Gold sparkles mean it counted.', 'Knock out the 3 cyan shield generators and the eye opens up. Hit it while it\'s open.', 'Barrel roll (double-tap left or right) straight through a yellow sweeper beam.', 'Fly more than 500 m out to patch up. The planet never chases you.'],
+    hints: ['Moons first: their cyan tethers hold the shield.', 'Cheeks puffing? It\'s about to spit. Slide sideways.', 'Eye open means your turn. Eye shut means its turn.', 'Barrel roll through the glare for a bonus.', 'Shoot the glowing pores to stop the Grumblings.'],
     target() { return globe.target(); },
     onUpdate(dt, G) {
       const b = globe.bar();
@@ -866,6 +1118,6 @@ export function mkSiege(G, level) {
     },
     easier() { globe.easier(); return TEXT.easier; },
     doze(on) { globe.doze(on); },
-    dispose(G) { G.ui.bossBar(null); if (!e.dead) G.enemies.removeEnemy(e); },
+    dispose(G) { G.ui.bossBar(null); globe.popGrumblings(); if (!e.dead) G.enemies.removeEnemy(e); },
   });
 }

@@ -163,7 +163,8 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
 
 - **Umbrella Goon:** bullets bounce off its umbrella. Circle round and shoot it in the back.
 - **Grudge Rock:** a mossy boulder off a floating island, with a flower on top and a very cross face. It takes 4 hits,
-  then breaks into 3 small, fast Grudge Pebbles that dive straight at you. They don't break any further.
+  then breaks into 3 small, fast Grudge Pebbles that dive straight at you. They don't break any further, and they puff
+  instead of exploding.
 - **Sniper Owl:** a red line means it's aiming. 1.5 s later it fires where you'll be. A stunt or a sharp turn
   (35° or more) breaks the lock. Never more than 2 at once.
 - **Kite Twins:** two kites joined by a long string, and the string hurts. Go over or under it, or shoot one kite
@@ -314,36 +315,46 @@ fort's barrel cuts its mortars, the octopus's tentacles and the crab's claws thi
 **The world boss** (`src/planetboss.js`): in the Grumbleglobe zone (zone 25, after Gas Giant) the first objective is
 the planet itself: **Grumbleglobe, the Planet With Opinions**. It takes that stretch's boss slot, but it's not one of
 the 15: it's never in the deck, never rolls a modifier and never comes as twins. A planet with a 160 m radius grows in
-760 m ahead of you. It never moves. It spins.
+760 m ahead of you. It never moves. Its face turns to follow you, slowly.
 
-The planet is solid. Fly into it and you lose a life ("You hugged the planet. It did not hug back."), then come back
-450 m out, facing it. Bullets and orbs stop at its surface, and the pull-up warning sees it. Bare rock takes no
-damage ("That's just rock. Shoot the gadgets!"). The gadgets do, and every hit on one drains the boss bar (gold
-sparkle):
+The planet and its moons are solid, but they're not deadly. Touch one and you bounce off ("BOING!"): 12 hull (never your
+last point), 1 s of invulnerability, and no life lost. God and ghost modes skim past; the Mega Plane bounces too.
+Bullets and orbs stop at the surface, and the pull-up warning sees it. Bare rock takes no damage ("That's just rock.
+Shoot the moons, the pores and the eye!"). If you do run out of hull, you lose a life as usual and come back 450 m out,
+facing it. Every hit on a gadget drains the boss bar (gold sparkle). Work from the outside in:
 
-- **6 red turrets** (3 HP): aimed orbs. They only fire within 450 m, and only when you're above their horizon, so the
-  far side never shoots through the planet. The barrel tip glows first.
-- **3 cyan shield generators** (6 HP): while any stands, a bubble guards the eye. Red markers show them.
-- **4 orange magma vents** (3 HP): a column warning along the surface, then an eruption. Shots bounce off a vent
-  while it erupts.
-- **2 yellow sweepers** (6 HP): a 120 m bar spinning over the surface. A barrel roll passes through it.
-- **The eye** (14 HP): almost a third of the bar, and breaking it ends the fight. Once the shield is down the planet
-  stops spinning. When the eye is due, it grinds round to turn its face toward you; the rest of the time it holds
-  still, so you can always reach a gadget. The eye opens for 5 s every 9 s, once the face is within about 40° of you
-  (after 6 s it opens anyway).
+- **3 Moonlets** (10 HP each: pouty blue, smug pink, sleepy yellow): they orbit 290 m out on tilted, faint orbit rings,
+  each tethered by a cyan line to the eye's shield. They take potshots at you (the mouth glows 0.6 s first, only
+  within 380 m, never through the planet, at most 2 per 4 s). On lap 2 they orbit 1.25× faster and fire two-shot
+  bursts. Pop the last one and the shield shatters.
+- **4 pores** (3 HP): each glows red for 1 s, then burps 3 **Grumblings**: tiny, squeaky, 1 HP, 5 points. They cut in
+  ahead of your nose, spread out and bite (a clump bites at most once per 0.3 s). One that hangs about 10 s or strays
+  220 m sulks off for no points. Pores burp at least 8 s apart and only within 450 m, with 6 Grumblings alive at most
+  (8 in phase 3). After 24 in one fight the planet "runs out of opinions". Plugging pores thins them out.
+- **The eye** (18 HP): half the bar, and breaking it ends the fight. It's shielded until the moons are gone. It opens
+  for 5 s every 9 s (it bulges 20 m out on a stalk), once the face is within about 40° of you. While it's open the
+  face holds still and the planet won't spit.
 - **The crown** on the north pole (optional): knock it off and every gadget takes 30% more damage.
 
-At 66% it's properly awake: 3 drones come out of its pores, it spins faster, and the turrets fire in pairs. At 33% it
-cracks ("MELTDOWN!"): the eye stays open 6 s, Grudge Rocks come out, the vents erupt more often, and each time the eye
-opens it glares. A thin magenta sight line points at where you'll be in 1 s, then a short, steady beam fires along it
-(no flicker, and it never fills the screen). If it comes from behind you, "Grumbleglobe is glaring at your back.
-Swerve!" warns you.
+The face is the show. It tracks you (faster each phase), its brows show its mood (worried in phase 3), and before a
+spit its cheeks puff up for 1 s. Then it fires a fan of 5 orange orbs (7 in phase 3), 12° apart, led half-way to where
+you'll be. It only spits when you're within 70° of the face and 600 m, every 6 s (4.5 s, then 3.5 s later on), and
+never while the eye twitches or is open: that is your turn.
+
+Shooting the last moon starts phase 2. At 33% it cracks ("MELTDOWN!") for phase 3: the eye stays open 6 s, Grudge Rocks
+come out, and each time it opens it glares. A thin magenta sight line points at where you'll be in 1 s, then a short,
+steady beam fires along it (no flicker, and it never fills the screen). If it comes from behind you, "Grumbleglobe is
+glaring at your back. Swerve!" warns you. A glare that misses you (a barrel roll through it counts) pays +25 "Dodge!".
+
+The progress line reads `🌙 3 moons left · pores 4`, then `👁 Eye shut: dodge!` or `👁 EYE OPEN: shoot it!` (plus
+` · pores N`). The boss bar note says `moons: N`, `eye shut` or `eye open!`.
 
 Fly more than 500 m out to patch up faster; the planet never chases you. Relax Mode puts it to sleep, and it wakes up
 where you left it, broken gadgets still broken. Slow-Mo and Time Freeze work on it, and Homing Bullets curve to the
-nearest gadget you can hurt right now. On lap 2 the gadgets have 1.4× HP. When it goes, its gadgets pop one by one and
-it splits into 8 rubble asteroids (shoot them if they bother you; they can't hurt you for the first 3 s). It pays 1.5×
-a regular boss and a spare plane, and its par is 110 s.
+nearest gadget you can hurt right now. On lap 2 the gadgets have 1.4× HP. When the eye goes, the planet deflates: an
+"x" eye, a 0.5 s shudder, then it shrinks to a third of its size while spinning up with a long raspberry. Then it
+bursts into 8 rubble asteroids and confetti (shoot them if they bother you; they can't hurt you for the first 3 s). It
+pays 1.5× a regular boss and a spare plane, and its par is 100 s.
 
 **39 objective types** (`src/objectives.js`, `src/challenges.js`, `src/quests.js`):
 
@@ -396,7 +407,7 @@ it; finish under par for a +60 speed bonus. Par is 12 s for a hoop or an altitud
 shrinking hoops, 15 s for the wandering hoop, 18 s for the searchlights, 25 s for the slalom chain, 10 s for a loop,
 8 s for a barrel roll or a bullseye, 30 s for the tour or a photo safari, 40 s for a pizza delivery or a hot potato,
 and 50 s for stars. The speed hoop gets 60% of its clock (17 s); Hold The Line has no par (it always takes its full
-clock); everything else, regular bosses included, gets 25 s (Grumbleglobe gets 110 s). Hints
+clock); everything else, regular bosses included, gets 25 s (Grumbleglobe gets 100 s). Hints
 cost points (the "hint fee", 12 per persuasion tactic, never below 20 points left), except on the first 3 objectives of a run: "Hints on the
 house". The success banner keeps it short, at most 4 lines for 3.5 s: the points, one detail line (speed bonus, hint
 fee, spare plane), the headline world change and "+K more world changes. Look around!". When a win takes you into a
@@ -513,7 +524,7 @@ lap)` records one if it's further. `LIVES`, `MAX_LIVES`, `REGEN_DELAY`, `BREATHE
 boost tank (`BOOST_DRAIN`, `BOOST_REGEN`) sit at the top of `src/player.js`, which also exports `LAND` (the landing
 limits) and `Player.landableAt(x, z, y, ground)`, the "could you land here" test the landing and the pull-up warning
 share. `PAR` (par times per type) and `FREE_HINTS` sit above `TYPES` in `src/objectives.js`; each objective gets
-`par` when it starts, unless its maker set its own (`par` in `objective({...})`, like Grumbleglobe's 110 s).
+`par` when it starts, unless its maker set its own (`par` in `objective({...})`, like Grumbleglobe's 100 s).
 
 `G.pullup` is the pull-up warning: `on`, `tti` (seconds to impact, `Infinity` when clear), `shows` (warnings so
 far) and `glow` (the bottom-edge element; its inline `style.opacity`, 0.35–1, shows the urgency); the look-ahead (`PROBE`, `WARN`, `URGENT`) and the close-shave rule (`SHAVE`) sit at the top of
@@ -543,7 +554,8 @@ t, onFire, { shape, owner, h, dir })` puts down a telegraphed area attack (`shap
 `'sphere'`; `t` is at least 1 s; `dir` stands a column along a unit vector instead of straight up, like a planet's
 surface normal), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hits bounce off),
 `split: [type, n]` (breaks into n of another type), `max` (at most this many alive), `pair` (spawns as two joined by a
-string), `latch` (clings to the plane) and `quiet` (no intro). `CEILING` (exported, 18) caps regular enemies alive
+string), `latch` (clings to the plane) and `quiet` (no intro, and a small puff instead of a big explosion). Grumblings (`weight: 0`) only come from
+Grumbleglobe's pores. `CEILING` (exported, 18) caps regular enemies alive
 at once, whatever spawns them; boss bodyguards don't check it. `G.enemies.frenzy` is `null`, or during Hold The Line
 `{ wave, easier, burst, score }`; `WAVES` (exported) has each wave's spawn interval, cap, and flank/overhead chances,
 and gulls, bees and Grudge Pebbles count a third each toward a wave's cap. In caves, `loopDome(G)` (exported from
@@ -551,14 +563,15 @@ and gulls, bees and Grudge Pebbles count a third each toward a wave's cap. In ca
 `src/player.js`, 1.5×) with `G.player.loopTuck` the current value (the loop's `easier()` raises it by 0.25, up to
 2.2, and it resets when the objective ends).
 
-The world boss lives in `src/planetboss.js`. Its tuning sits at the top: `GLOBE` (size, spawn, spin, face turn,
-respawn, breather, phases, lap and reward), `KINDS` (each gadget's HP, its `worth` on the 100-point bar, score and
-line), `LAYOUT` (where each gadget sits), and `TURRET`, `VENT`, `SWEEP` and `EYE`. A zone with `siege: 'grumbleglobe'`
-starts it as its first objective (`G.objectives.startSiege()`, which the dev-menu button calls). The planet is one
-entry in `G.enemies.list` with `e.planet` set (the `Globe`), which runs its own update; `G.enemies.planet()` returns it
-while it's awake. Each gadget is a boss part with `counted: true` and `mult = worth / hp`, so every hit drains its
-share of the bar. In Relax Mode it waits in `G.objectives.held`; leaving its zone ends the fight
-(`G.objectives.endSiege()`).
+The world boss lives in `src/planetboss.js`. Its tuning sits at the top: `GLOBE` (size, spawn, face tracking, bounce
+pads, respawn, breather, phases, lap and reward), `KINDS` (each gadget's HP, its `worth` on the 100-point bar, score
+and line), `LAYOUT` (where the eye, crown and pores sit), and `MOON`/`MOONS`, `SPIT`, `PORE`, `BOUNCE`, `EYE`, `DEFLATE`
+and `BROWS`. A zone with `siege: 'grumbleglobe'` starts it as its first objective (`G.objectives.startSiege()`, which
+the dev-menu button calls). The planet is one entry in `G.enemies.list` with `e.planet` set (the `Globe`), which runs
+its own update; `G.enemies.planet()` returns it while it's awake. Each gadget, moons included, is a boss part with
+`counted: true` and `mult = worth / hp`, so every hit drains its share of the bar. The Grumbling (`TYPES.grumbling`
+in `src/enemies.js`) is pore-only: `weight: 0`, with its lead, spread and bite gap in `GRUMBLE_*`. In Relax Mode the
+planet waits in `G.objectives.held`; leaving its zone ends the fight (`G.objectives.endSiege()`).
 
 The whole `G.secrets` API, and how to add a
 secret, is in [`docs/secrets.md`](docs/secrets.md) (spoilers).
