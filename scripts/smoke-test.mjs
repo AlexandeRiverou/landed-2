@@ -2385,6 +2385,7 @@ try {
         const drone = E.spawn('drone', p.pos.clone().add(new V(0, 0, 300)), { quiet: true });
         const gone = E.spawn('drone', p.pos.clone().add(new V(0, 0, -300)), { quiet: true });
         E.removeEnemy(gone);
+        for (const e of E.list.filter((x) => x.type === 'mine')) E.removeEnemy(e); // 'no mines' really means none
         E.intro('no mines', false, { type: 'mine' });
         E.intro('gone one', false, { e: gone });
         E.intro('drone here', false, { type: 'drone' });

@@ -50,7 +50,7 @@ const SWARMS = { gull: 4, bee: 6 };
 // EASIER_CHASE (× your base speed).
 const W1 = ['drone', 'mine', 'gull'], W2 = [...W1, 'bee', 'grudgeRock', 'umbrella', 'ufo'], W3 = [...W2, 'blimp', 'jelly', 'kites', 'sniperOwl'];
 export const WAVES = [
-  { time: 12, roster: 5, cap: 4, every: [1.6, 2.0], flank: 0.25, above: 0, chase: 0.85, only: W1, spread: [50, 90] },
+  { time: 12, roster: 5, cap: 4, every: [1.1, 1.4], flank: 0.25, above: 0, chase: 0.85, only: W1, spread: [50, 90] },
   { time: 15, roster: 7, cap: 5, every: [1.0, 1.3], flank: 0.35, above: 0, chase: 0.9, only: W2, shooter: true },
   { time: 18, roster: 9, cap: 7, every: [0.8, 1.1], flank: 0.35, above: 0.2, chase: 0.95, only: W3, shooter: true, bonus: true },
   { time: 20, roster: 11, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1, only: null, burst: true, bonus: true },
