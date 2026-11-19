@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
+import { WAVES, GARY } from './enemies.js';
 import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, loopDome, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -357,52 +358,153 @@ export function mkPest(G) {
   });
 }
 
-// Hold The Line ("The Rush"): four waves, each bigger (enemies.js WAVES has the spawn rates and caps). A wave starts
-// at this share of the clock (8, 20 and 32 s of 40). Getting shot down knocks SLIP s off the clock; the second time,
-// the enemies go easier on you by themselves.
-const WAVE_AT = [0, 0.2, 0.5, 0.8], SLIP = 15;
-const WAVE_TEXT = ['Wave 1 of 4. They\'re warming up.', 'Wave 2! They brought friends.', 'Wave 3! Okay, this is a lot.', 'FINAL WAVE! Everybody, at once!'];
+// Hold The Line ("The Rush"): five waves, each harder (enemies.js WAVES has their clocks, rosters and spawn rates).
+// A beacon marks "the line" where it starts. Before each wave a big callout counts down (PREPARE FOR WAVE n, then
+// 3, 2, 1: PREP s, then BEAT s each), and GO! starts it. A wave ends when its clock runs out, or early when everything
+// it sent is down (CLEAR_PAY × the wave number in points). Either way the leftovers puff away and the hull gets MEND;
+// the result shows for RESULT s, then the next countdown. Further than LINE_R m (flat) from the beacon the clock
+// waits for you. Wave 5 brings elite Gary (GARY): down him and the line holds at once. Shot down, the wave starts over
+// from its countdown; the second time, the enemies go easier on you by themselves.
+const LINE_R = 450, PREP = 1, BEAT = 0.8, GO_SHOW = 0.6, RESULT = 1.5, CLEAR_PAY = 40, MEND = 25;
+const TICKS = [440, 523, 659]; // Hz: 3, 2, 1 (rising)
+const WAVE_TEXT = [
+  'Warm-up. They\'re stretching.', 'They brought friends. One of them shoots.', 'Crossfire. Weave like you mean it.',
+  'Pincer! Left, right and centre.', 'FINAL WAVE: Gary\'s here. Gary brought everyone.',
+];
+const BEACON_H = 300;
+
+// The line: a tall see-through column of light standing on the ground (cut short under a roof).
+function makeBeacon(G, at) {
+  const ground = groundAt(G, at.x, at.z), h = Math.max(20, Math.min(BEACON_H, G.terrain.ceilingHeight(at.x, at.z, at.y) - ground));
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, h, 12, 1, true), new THREE.MeshBasicMaterial({ color: '#ffc23a', transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  m.position.set(at.x, ground + h / 2, at.z);
+  G.scene.add(m);
+  return m;
+}
 
 export function mkSurvive(G) {
-  let need = 40, time = 0, top = 0, deaths = 0, down = false;
-  const F = (G.enemies.frenzy = { wave: 1, easier: 0, burst: false, score: G.score }); // score: the cap bonus counts the score you came in with
-  G.enemies.spawnTimer = Math.min(G.enemies.spawnTimer, 0.5);
+  const E = G.enemies, N = WAVES.length;
+  let deaths = 0, gary = null, won = false, warned = 0;
+  // phase 'count' (t: s into the countdown), 'wave' (clock: s survived), 'result', 'down' (shot down, waiting to respawn).
+  const F = (E.frenzy = { wave: 1, phase: 'count', t: 0, clock: 0, step: -1, easier: 0, burst: false, first: false, spent: 0, cleared: false, score: G.score, restart: false });
+  const beacon = makeBeacon(G, G.player.pos);
+  E.clearRegulars(); // the stage is cleared for wave 1
+  const call = (title, sub, secs) => G.ui.callout(title, sub, secs);
+  const count = (n, restart) => Object.assign(F, { wave: n, phase: 'count', t: 0, clock: 0, step: -1, restart });
+  // Wave n starts: its clock and roster from zero, its first group ahead, Gary in wave 5.
+  const go = () => {
+    const W = WAVES[F.wave - 1];
+    Object.assign(F, { phase: 'wave', clock: 0, spent: 0, first: true, burst: !!W.burst });
+    E.spawnTimer = 0;
+    call('GO!', '', GO_SHOW);
+    G.audio.ding(1.2);
+    if (W.gary) gary = E.spawnGary();
+  };
+  // Leftovers puff away (no points); Gary goes too.
+  const clearOut = () => { E.clearRegulars(); gary = null; G.ui.bossBar(null); };
+  const downed = () => gary && (gary.dead || gary.state === 'falling');
+  // The line held: every regular left pops into confetti (no points), and the sky stays quiet for a moment.
+  const hold = (obj) => {
+    won = true;
+    if (gary && !gary.dead && !gary.paid && gary.state === 'falling') E.payout(gary); // shot out of the sky, not yet down
+    G.ui.bossBar(null);
+    G.ui.notify('THE LINE HELD!', 'good', 3, 1);
+    call('THE LINE HELD!', '', 2.5);
+    for (const e of E.regulars()) { G.fx.confetti(e.pos); E.removeEnemy(e); }
+    E.calm(6);
+    obj.progress = `🛡 WAVE ${F.wave}/${N} · HELD!`;
+    return 'done';
+  };
+  const away = () => Math.hypot(G.player.pos.x - beacon.position.x, G.player.pos.z - beacon.position.z) > LINE_R;
   return objective({
-    type: 'survive', reward: 250, noun: 'the onslaught', virtual: true, needsEnemies: true,
+    type: 'survive', reward: 350, noun: 'the onslaught', virtual: true, needsEnemies: true, line: beacon,
     title: pick(['Hold The Line', 'Survive The Rush Hour', 'Enemy Party (You Are The Piñata)']),
-    desc: `Enemies come in waves, and they get bigger. Survive ${need} seconds. Every kill patches your hull a little. Shooting back is strongly encouraged.`,
+    desc: `${N} waves, each worse than the last. Stay near the beacon and outlast each wave, or shoot down everything in it to clear it early. Every kill patches your hull a little.`,
     caps: new Set(['easier']),
     signText: ['SURVIVE!', '(GOOD LUCK)'],
-    hints: ['Keep moving: weaving makes you harder to hit.', 'Kills patch your hull.', 'Your hull repairs itself if you avoid hits for 10 seconds.'],
+    hints: ['Keep moving: weaving makes you harder to hit.', 'Kills patch your hull.', 'Stay near the beacon: away from it, the wave clock waits.'],
+    // Away from the line: the beacon. Else the nearest enemy, or the beacon if the sky is empty.
+    target() {
+      const p = G.player.pos;
+      if (!away()) {
+        let best = null, bd = Infinity;
+        for (const e of E.regulars()) { const d = e.pos.distanceToSquared(p); if (d < bd) { bd = d; best = e; } }
+        if (best) return best.pos;
+      }
+      return _b.set(beacon.position.x, p.y, beacon.position.z);
+    },
     onUpdate(dt, G) {
-      if (G.player.dead) {
-        if (!down) {
-          down = true;
-          time = Math.max(0, time - SLIP);
-          G.ui.notify(`Shot down! The clock slipped back ${SLIP} seconds.`, 'bad', 3);
+      const p = G.player, head = `🛡 WAVE ${F.wave}/${N}`;
+      this.progressed = true;
+      if (gary) G.ui.bossBar(downed() ? null : { name: GARY.name, hp: gary.hp, maxHp: gary.maxHp });
+      if (downed() && F.phase === 'wave') return hold(this); // Gary's down: the line holds, whatever's left
+      if (p.dead) {
+        if (F.phase !== 'down') {
+          // Shot down: the wave starts over from its countdown once you're back (after a wave's result: the next one).
+          clearOut();
+          if (F.phase === 'result') F.wave++;
+          F.restart = F.phase !== 'result';
+          F.phase = 'down';
           if (++deaths === 2) { this.easier(); G.ui.notify('The enemies saw that. They feel a bit bad about it.', 'info', 4, 1); }
         }
-      } else { down = false; time += dt; this.progressed = true; }
-      F.wave = WAVE_AT.findLastIndex((k) => time >= k * need) + 1;
-      if (F.wave > top) {
-        top = F.wave;
-        G.ui.notify(WAVE_TEXT[top - 1], 'warn', 3, 1);
-        if (top === 4) F.burst = true;
+        this.progress = `${head} · SHOT DOWN`;
+        return null;
       }
-      this.progress = `🛡 ${time.toFixed(0)} / ${need}s · WAVE ${F.wave}/4`;
-      if (time < need) return null;
-      // The line held: every regular enemy pops into confetti (no points), and the sky stays quiet for a moment.
-      G.ui.notify('THE LINE HELD!', 'good', 3, 1);
-      for (const e of G.enemies.list.filter((x) => !x.quest)) { G.fx.confetti(e.pos); G.enemies.removeEnemy(e); }
-      G.enemies.calm(6);
-      return 'done';
+      if (F.phase === 'down') count(F.wave, F.restart);
+      if (F.phase === 'count') {
+        F.t += dt;
+        const step = F.t < PREP ? 0 : Math.min(3, 1 + Math.floor((F.t - PREP) / BEAT));
+        if (step !== F.step) {
+          F.step = step;
+          const sub = F.restart ? `Wave ${F.wave} again, from the top.` : WAVE_TEXT[F.wave - 1];
+          if (step === 0) call(`PREPARE FOR WAVE ${F.wave}`, sub, PREP + 0.1);
+          else { call(String(4 - step), sub, BEAT + 0.1); G.audio.tone(TICKS[step - 1], 0.12, { type: 'triangle', vol: 0.15 }); }
+        }
+        if (F.t >= PREP + 3 * BEAT) go();
+        this.progress = `${head} · GET READY`;
+        return null;
+      }
+      if (F.phase === 'result') {
+        F.t += dt;
+        if (F.t >= RESULT) count(F.wave + 1, false);
+        this.progress = `${head} · ${F.cleared ? 'CLEARED!' : 'SURVIVED'}`;
+        return null;
+      }
+      // A wave. Away from the line its clock waits (the enemies don't).
+      const out = away(), need = E.waveTime();
+      if (out && warned !== F.wave) { warned = F.wave; G.ui.notify('The line is back that way. The clock waits for you.', 'warn', 3, 1); }
+      if (!out) F.clock += dt;
+      const alive = E.ofWave(F.wave), left = Math.ceil(Math.max(0, E.roster() - F.spent) + E.unitsOf(alive) - 1e-6);
+      this.progress = out ? `${head} · ⏸ BACK TO THE LINE` : `${head} · ${Math.ceil(Math.max(0, need - F.clock))}s · ${left} left`;
+      F.cleared = F.spent >= E.roster() && !alive.length;
+      if (F.clock < need && !F.cleared) return null;
+      if (F.wave === N) {
+        if (gary && !gary.dead) { G.fx.emit(gary.pos, 10, { colors: ['#ffffff', '#ffd0f4'], speed: 20, life: 0.8, size: 6 }); E.removeEnemy(gary); G.ui.notify('Gary remembers a dentist appointment. He leaves.', 'info', 3, 1); }
+        gary = null;
+        return hold(this);
+      }
+      // Wave over: a bonus for clearing it, a patch for the hull either way, and a breather.
+      const bonus = F.cleared ? CLEAR_PAY * F.wave : 0;
+      G.score += bonus;
+      p.health = Math.min(p.maxHealth, p.health + MEND);
+      clearOut();
+      call(F.cleared ? `WAVE ${F.wave} CLEARED! +${bonus}` : `WAVE ${F.wave} SURVIVED`, `+${MEND} hull`, RESULT);
+      if (F.cleared) G.audio.ding(1);
+      Object.assign(F, { phase: 'result', t: 0 });
+      return null;
     },
     easier() {
-      need = Math.max(20, need - 8);
       F.easier++;
-      return `Survival time cut to ${need} seconds, and the waves are a bit smaller. The enemies are getting tired too.`;
+      return 'Waves are shorter and smaller now. The enemies are getting tired too.';
     },
-    dispose(G) { G.enemies.frenzy = null; },
+    dispose(G) {
+      E.frenzy = null;
+      if (gary && !gary.dead) E.removeEnemy(gary);
+      G.ui.bossBar(null);
+      if (!won) G.ui.callout(null);
+      G.scene.remove(beacon);
+      disposeTree(beacon);
+    },
   });
 }
 

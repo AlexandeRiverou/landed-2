@@ -223,7 +223,7 @@ try {
       res.par.at10 = finish(obj, { t: 10 });
       res.par.at14 = finish(start('hoop'), { t: 14 });
       res.par.timed = start('timed').par;
-      // Hold The Line runs a fixed 40 s clock: no par line on its card, and no speed bonus however it ends.
+      // Hold The Line runs on its wave clocks: no par line on its card, and no speed bonus however it ends.
       obj = start('survive');
       G.step(1 / 30);
       res.par.survive = { par: obj.par, card: document.getElementById('obj-par').textContent, done: finish(obj, { t: 1 }).lines.join() };
@@ -2191,14 +2191,15 @@ try {
     return out;
   }, FLAT);
 
-  // Hold The Line ("The Rush": four waves, a clock that slips back when you're shot down) and the five newer regular
-  // enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
-  // world changes for completing an objective are held back, and score, lives and god mode are put back afterwards.
+  // Hold The Line ("The Rush": five waves with countdowns, a beacon whose ring holds the clock, a restart when you're
+  // shot down) and the five newer regular enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth).
+  // Simulated, with nothing else around; world changes for completing an objective are held back, and score, lives and
+  // god mode are put back afterwards.
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
-    const { CEILING } = await import('./src/enemies.js');
+    const { CEILING, WAVES } = await import('./src/enemies.js');
     const V = p.pos.constructor, UP = new V(0, 1, 0);
-    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify };
+    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify, callout: G.ui.callout };
     G.mutations.celebrate = () => [];
     if (G.relax) G.setRelax(false);
     const notes = [];
@@ -2217,52 +2218,163 @@ try {
     // safe: no damage (grace always: the ground pushes the plane up instead of crashing it).
     const step = (n, safe = true) => { for (let k = 0; k < n; k++) { if (safe) p.invuln = 99; p.grace = 99; G.step(1 / 30); } };
     const regulars = () => E.list.filter((e) => !e.quest).length;
-    const clock = () => { const m = /🛡 (\d+) \/ (\d+)s · WAVE (\d)\/4/.exec(G.objectives.current?.progress || ''); return m && { t: +m[1], need: +m[2], wave: +m[3] }; };
+    const calls = []; // every callout shown: [title, sub]
+    G.ui.callout = (t, sub = '', ...a) => { if (t !== null) calls.push([t, sub]); return saved.callout.call(G.ui, t, sub, ...a); };
+    const progress = () => { const m = /^🛡 WAVE (\d)\/(\d) · (.*)$/.exec(G.objectives.current?.progress || ''); return m && { wave: +m[1], of: +m[2], rest: m[3] }; };
+    const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+    // A pilot who never shoots but stays near the line: past 250 m from the beacon it turns back toward it.
+    const pilot = (o) => { const b = o.line.position; if (flat(p.pos, b) > 250) { p.nudgeToward(new V(b.x, p.pos.y, b.z), 1.5, 1 / 30); p.updateAxes(); } };
 
-    // Hold The Line: waves 1-4 in the progress text, never more than CEILING regulars, a death knocks 15 s off the
-    // clock, the second one makes it easier, and at the end everything pops (no points) within a second.
+    // Hold The Line, never shooting (safe): PREPARE FOR WAVE 1, 3, 2, 1, GO! before anything spawns; five waves, each
+    // with its countdown and flavour line, each sending more than the last (new types in waves 2 and 3), never more than
+    // CEILING regulars; done within ~115 s; at the end everything pops (no points) within a second.
     G.score = 800;
     G.objectives.startType('survive');
-    const obj = G.objectives.current;
-    const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward });
-    const track = () => { const c = clock(); if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave); htl.maxRegulars = Math.max(htl.maxRegulars, regulars()); };
-    for (let k = 0; k < 30 * 22; k++) { step(1); track(); }
-    htl.progress = obj.progress;
-    const before = clock();
-    p.invuln = 0;
-    p.damage(1e4);
-    step(1, false);
-    htl.slip = { before: before.t, after: clock().t, dead: p.dead, toast: notes.some((t) => /clock slipped back 15 seconds/.test(t)) };
-    step(30 * 3);
-    const easier0 = E.frenzy.easier, need0 = clock().need;
-    p.invuln = 0;
-    p.damage(1e4);
-    step(1, false);
-    htl.second = { easier: E.frenzy.easier - easier0, need0, need: clock().need, toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
+    let obj = G.objectives.current;
+    const F = E.frenzy;
+    const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward, countSpawns: 0, perWave: {}, progress: [] });
+    const track = () => {
+      const c = progress();
+      if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave);
+      if (c && /left$/.test(c.rest) && !htl.progress.some((t) => t.startsWith(`🛡 WAVE ${c.wave}/`))) htl.progress.push(G.objectives.current.progress); // one per wave
+      htl.maxRegulars = Math.max(htl.maxRegulars, regulars());
+      if (F.phase === 'count') htl.countSpawns += regulars();
+      if (F.phase === 'wave') {
+        const w = (htl.perWave[F.wave] ||= { roster: E.roster(), spent: 0, types: [] });
+        w.spent = +F.spent.toFixed(2);
+        for (const e of E.list) if (e.wave === F.wave && !w.types.includes(e.type)) w.types.push(e.type);
+      }
+    };
+    const c0 = calls.length;
+    for (let k = 0; k < 30 * 3 && F.phase === 'count'; k++) { step(1); track(); }
+    htl.opening = { calls: calls.slice(c0).map((c) => c[0]), shown: document.getElementById('wave-call').classList.contains('show'), title: document.querySelector('#wave-call .call-title').textContent };
+    for (let k = 0; k < 30 * 20 && F.phase === 'count'; k++) { pilot(obj); step(1); track(); }
+    htl.opening.calls = calls.slice(c0).map((c) => c[0]);
+    htl.opening.at = +obj.t.toFixed(2);
     let addedAtEnd = null, scorePrev = G.score;
     const complete = G.objectives.complete;
     G.objectives.complete = function (f) { addedAtEnd = G.score - scorePrev; return complete.call(this, f); };
-    for (let k = 0; k < 30 * 60 && G.objectives.current === obj; k++) { scorePrev = G.score; step(1); track(); }
+    for (let k = 0; k < 30 * 150 && G.objectives.current === obj; k++) { scorePrev = G.score; pilot(obj); step(1); track(); }
     G.objectives.complete = complete;
     htl.done = G.objectives.current !== obj;
+    htl.total = +obj.t.toFixed(1);
     htl.addedAtEnd = addedAtEnd;
     htl.held = notes.includes('THE LINE HELD!');
+    htl.dentist = notes.some((t) => /dentist/.test(t));
+    // Each wave after the first opens with its own countdown: PREPARE FOR WAVE n (with its flavour line), 3, 2, 1, GO!
+    htl.countdowns = [2, 3, 4, 5].map((n) => { const i = calls.findIndex((c) => c[0] === `PREPARE FOR WAVE ${n}`); return i >= 0 && calls.slice(i, i + 5).map((c) => c[0]).join() === `PREPARE FOR WAVE ${n},3,2,1,GO!` && calls[i][1].length > 10; });
     step(30);
     htl.after1s = regulars();
     htl.frenzyAfter = E.frenzy;
     htl.ceiling = CEILING;
-    // Relax Mode: no spawns, even with a frenzy set.
+    htl.beaconGone = !obj.line.parent;
+
+    // Shot down mid-wave (wave 2): the wave starts over from its countdown (same wave, clock back to 0, "Wave 2 again,
+    // from the top."); the second time it gets easier by itself (one easier step, a shorter wave clock).
     G.objectives.startType('survive');
+    obj = G.objectives.current;
+    const F2 = E.frenzy;
+    Object.assign(F2, { wave: 2, phase: 'count', t: 0, step: -1 });
+    for (let k = 0; k < 30 * 12 && !(F2.phase === 'wave' && F2.clock > 5); k++) { pilot(obj); step(1); }
+    const before = { wave: F2.wave, clock: +F2.clock.toFixed(1) };
+    const n0 = calls.length;
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    const dead = p.dead;
+    for (let k = 0; k < 30 * 10 && F2.phase !== 'count'; k++) step(1);
+    htl.restart = { before, dead, wave: F2.wave, clock: F2.clock, phase: F2.phase, regulars: regulars(), line: calls.slice(n0).some((c) => c[1] === 'Wave 2 again, from the top.') };
+    for (let k = 0; k < 30 * 10 && !(F2.phase === 'wave' && F2.clock > 2); k++) { pilot(obj); step(1); }
+    const easier0 = F2.easier, need0 = E.waveTime();
+    p.invuln = 0;
+    p.damage(1e4);
+    step(1, false);
+    htl.second = { easier: F2.easier - easier0, need0, need: E.waveTime(), toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
+    for (let k = 0; k < 30 * 10 && F2.phase !== 'wave'; k++) step(1);
+
+    // Away from the line (over LINE_R = 450 m from the beacon): the clock waits, the HUD says so, the arrow points home.
+    const home = obj.line.position.clone();
+    step(30);
+    const awayAt = p.pos.clone().sub(home).setY(0).normalize().multiplyScalar(600).add(home);
+    p.pos.x = awayAt.x; p.pos.z = awayAt.z; p.prevPos.copy(p.pos);
+    step(2);
+    const clockOut = F2.clock;
     step(60);
+    const t = obj.target();
+    htl.away = { clock0: clockOut, clock: F2.clock, hud: obj.progress, target: +flat(t, home).toFixed(1), toast: notes.some((n) => /The clock waits for you/.test(n)) };
+    p.pos.x = home.x; p.pos.z = home.z; p.prevPos.copy(p.pos);
+    step(30);
+    htl.away.back = F2.clock - clockOut;
+
+    // Shooting down everything a wave sends clears it early: WAVE n CLEARED! +40n, and +25 hull.
+    let jump = null;
+    for (let k = 0; k < 30 * 30 && F2.phase === 'wave'; k++) {
+      for (const e of E.ofWave(F2.wave)) E.kill(E.list.indexOf(e), true);
+      p.health = 40;
+      const s0 = G.score, wave = F2.wave;
+      step(1);
+      if (F2.phase === 'result') jump = { wave, score: G.score - s0, hull: p.health - 40, clock: +F2.clock.toFixed(1), need: +E.waveTime().toFixed(1), call: calls.at(-1)[0] };
+    }
+    htl.clear = jump;
+    // The types each wave may send (sampled): wave 1 only drones, mines and gulls; new ones in waves 2 and 3.
+    htl.mix = [1, 2, 3, 4, 5].map((n) => { F2.wave = n; const s = new Set(); for (let k = 0; k < 3000; k++) s.add(E.pickType(WAVES[n - 1].only)); return [...s]; });
+    G.objectives.suspend();
+
+    // Wave 5: elite Gary, with his boss bar. Shooting him down ends it at once: THE LINE HELD!, the rest pop for no points.
+    G.objectives.startType('survive');
+    obj = G.objectives.current;
+    const F5 = E.frenzy;
+    Object.assign(F5, { wave: 5, phase: 'count', t: 0, step: -1 });
+    for (let k = 0; k < 30 * 10 && F5.phase !== 'wave'; k++) step(1);
+    step(60);
+    const gary = E.list.find((e) => e.elite);
+    const bar = document.getElementById('boss-bar');
+    htl.gary = { found: !!gary, hp: gary?.maxHp, bar: !bar.classList.contains('hidden') && document.getElementById('boss-name').textContent, regulars: regulars() };
+    const s0 = G.score, held0 = notes.filter((n) => n === 'THE LINE HELD!').length;
+    let pays = 0;
+    const payout = E.payout;
+    E.payout = function (e) { pays += e.elite ? 0 : 1; return payout.call(this, e); };
+    G.objectives.complete = function (f) { htl.gary.paid = G.score - s0; return complete.call(this, f); };
+    E.kill(E.list.indexOf(gary), true);
+    step(1);
+    G.objectives.complete = complete;
+    E.payout = payout;
+    htl.gary.done = G.objectives.current !== obj;
+    htl.gary.held = notes.filter((n) => n === 'THE LINE HELD!').length > held0;
+    htl.gary.others = pays;
+    htl.gary.barAfter = !bar.classList.contains('hidden');
+    htl.gary.score = gary.def.score;
+    step(30);
+    htl.gary.after1s = regulars();
+
+    // Reduced motion: the callout fades in, no pop.
+    G.comfort.reducedMotion = true;
+    G.ui.callout('3', 'test', 1);
+    htl.calm = { pop: document.getElementById('wave-call').classList.contains('pop'), shown: document.getElementById('wave-call').classList.contains('show') };
+    G.comfort.reducedMotion = false;
+    G.ui.callout('3', 'test', 1);
+    htl.calm.popNormally = document.getElementById('wave-call').classList.contains('pop');
+    G.ui.callout(null);
+
+    // Relax Mode mid-wave: enemies, callout, boss bar and beacon all go; nothing spawns, even with a frenzy set.
+    G.objectives.startType('survive');
+    obj = G.objectives.current;
+    Object.assign(E.frenzy, { wave: 5, phase: 'count', t: 0, step: -1 });
+    for (let k = 0; k < 30 * 10 && E.frenzy.phase !== 'wave'; k++) step(1);
+    step(30);
+    const busy = { regulars: regulars(), bar: !bar.classList.contains('hidden') };
+    G.ui.callout('GO!', '', 5);
     G.setRelax(true);
-    E.frenzy = { wave: 4, easier: 0, burst: true, score: 0 };
+    out.relax = { busy, cleared: regulars(), call: document.getElementById('wave-call').classList.contains('show'), bar: !bar.classList.contains('hidden'), beacon: !!obj.line.parent };
+    E.frenzy = { wave: 4, phase: 'wave', easier: 0, burst: true, spent: 0, score: 0 };
     E.spawnTimer = 0;
     step(150);
-    out.relax = { regulars: regulars(), objective: !!G.objectives.current };
+    out.relax = { ...out.relax, regulars: regulars(), objective: !!G.objectives.current };
     E.frenzy = null;
     G.setRelax(false);
     quiet();
     clear();
+    G.objectives.cooldown = 1e9; // Relax Mode (suspend) set it to 3 s: no new objective may start (and pay) mid-test
 
     // The new regular enemies. Each spawns with its intro (once), and a scripted aim pilot shoots it down within 15 s:
     // it flies at the nearest, firing (round the back of an Umbrella Goon; barrel-rolling off a moth).
@@ -2464,6 +2576,7 @@ try {
     Object.assign(G.objectives, { completed: saved.completed, cooldown: saved.cooldown });
     G.mutations.celebrate = saved.celebrate;
     G.ui.notify = saved.notify;
+    G.ui.callout = saved.callout;
     E.spawnTimer = 6;
     p.god = saved.god;
     p.lives = saved.lives;
@@ -3611,11 +3724,20 @@ try {
     [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
     // ---- Hold The Line ("The Rush") and the newer regular enemies (see the RUSH block)
-    [(({ htl: h }) => [1, 2, 3, 4].every((w) => h.waves.includes(w)) && /· WAVE \d\/4$/.test(h.progress) && h.reward === 250)(RUSH), `Hold The Line: "WAVE n/4" in the progress text, and the waves reach 4 (${JSON.stringify(RUSH.htl.waves)})`],
-    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 8, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
-    [(({ slip: s }) => s.dead && s.toast && Math.abs(s.before - s.after - 15) <= 1)(RUSH.htl), `Hold The Line: getting shot down knocks the clock back 15 s (${JSON.stringify(RUSH.htl.slip)})`],
-    [(({ second: s }) => s.easier === 1 && s.need === s.need0 - 8 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself (${JSON.stringify(RUSH.htl.second)})`],
-    [(({ htl: h }) => h.done && h.held && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined })})`],
+    [(({ htl: h }) => [1, 2, 3, 4, 5].every((w) => h.waves.includes(w)) && h.progress.length === 5 && h.progress.every((t) => /^🛡 WAVE \d\/5 · \d+s · \d+ left$/.test(t)) && h.reward === 350)(RUSH), `Hold The Line: "WAVE n/5 · <secs>s · <k> left" in the progress text, and the waves reach 5 (${JSON.stringify({ waves: RUSH.htl.waves, progress: RUSH.htl.progress })})`],
+    [(({ opening: o, countSpawns: c }) => o.calls.slice(0, 5).join() === 'PREPARE FOR WAVE 1,3,2,1,GO!' && o.shown && c === 0 && o.at >= 3 && o.at <= 4)(RUSH.htl), `Hold The Line: it opens with PREPARE FOR WAVE 1, 3, 2, 1, GO! (big, centred), and nothing spawns during any countdown (${JSON.stringify({ ...RUSH.htl.opening, countSpawns: RUSH.htl.countSpawns })})`],
+    [RUSH.htl.countdowns.every(Boolean), `Hold The Line: waves 2-5 each open with PREPARE FOR WAVE n (and a flavour line), 3, 2, 1, GO! (${JSON.stringify(RUSH.htl.countdowns)})`],
+    [(({ perWave: w, mix: m }) => [1, 2, 3, 4, 5].every((n) => w[n] && w[n].spent <= w[n].roster + 1.5) && [5, 8, 10, 12, 10].every((r, i) => w[i + 1].roster === r) && w[5].types.includes('rival') && m[0].every((t) => ['drone', 'mine', 'gull'].includes(t)) && m[1].some((t) => !m[0].includes(t)) && m[2].some((t) => !m[1].includes(t)) && m[3].length >= m[2].length)(RUSH.htl), `Hold The Line: each wave sends more than the last (5/8/10/12/10 + Gary) and stops when its roster is spent, with new types in waves 2 and 3 (${JSON.stringify({ perWave: RUSH.htl.perWave, mix: RUSH.htl.mix })})`],
+    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 6, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
+    [RUSH.htl.done && RUSH.htl.total <= 116 && RUSH.htl.total >= 100, `Hold The Line: never shooting, it's over in about 115 s (${RUSH.htl.total} s)`],
+    [(({ restart: r }) => r.dead && r.wave === r.before.wave && r.before.clock > 3 && r.clock === 0 && r.phase === 'count' && r.regulars === 0 && r.line)(RUSH.htl), `Hold The Line: getting shot down restarts the current wave from its countdown ("Wave 2 again, from the top."), clock back to 0 (${JSON.stringify(RUSH.htl.restart)})`],
+    [(({ second: s }) => s.easier === 1 && s.need < s.need0 - 1 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself, with a shorter wave clock (${JSON.stringify(RUSH.htl.second)})`],
+    [(({ away: a }) => a.clock === a.clock0 && /· ⏸ BACK TO THE LINE$/.test(a.hud) && a.target < 1 && a.toast && a.back > 0.5)(RUSH.htl), `Hold The Line: over 450 m from the beacon the wave clock waits, the HUD says BACK TO THE LINE and the arrow points home (${JSON.stringify(RUSH.htl.away)})`],
+    [(({ clear: c }) => c && c.clock < c.need && c.score === 40 * c.wave && c.hull >= 25 && c.hull < 25.5 && c.call === `WAVE ${c.wave} CLEARED! +${40 * c.wave}`)(RUSH.htl), `Hold The Line: shooting down everything a wave sends clears it early, for +40 × the wave and +25 hull (${JSON.stringify(RUSH.htl.clear)})`],
+    [(({ gary: g }) => g.found && g.hp === 12 && /Rival Pilot Gary \(Big Day\)/.test(g.bar) && g.done && g.held && g.paid === 3 * g.score && g.others === 0 && !g.barAfter && g.after1s === 0)(RUSH.htl), `Hold The Line: wave 5 brings elite Gary with a boss bar; downing him (×3 points) ends it at once, THE LINE HELD!, the rest pop for nothing (${JSON.stringify(RUSH.htl.gary)})`],
+    [(({ htl: h }) => h.done && h.held && h.dentist && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null && h.beaconGone)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them, and the beacon goes (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined, perWave: undefined, progress: undefined })})`],
+    [(({ calm: c }) => c.shown && !c.pop && c.popNormally)(RUSH.htl), `Hold The Line: with reduced motion the callout fades in, no pop (${JSON.stringify(RUSH.htl.calm)})`],
+    [(({ relax: r }) => r.busy.regulars > 0 && r.busy.bar && r.cleared === 0 && !r.call && !r.bar && !r.beacon)(RUSH), `Hold The Line: Relax Mode mid-wave clears the enemies, the callout, the boss bar and the beacon (${JSON.stringify(RUSH.relax)})`],
     [RUSH.relax.regulars === 0 && !RUSH.relax.objective, 'Hold The Line: nothing spawns in Relax Mode'],
     [Object.values(RUSH.types).every((r) => r.spawned >= 1 && r.intro === 1 && r.extra), `new enemies: each one spawns and shows its intro once (${JSON.stringify(RUSH.types)})`],
     [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
