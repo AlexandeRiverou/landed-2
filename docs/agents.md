@@ -20,14 +20,14 @@ You can also call a specialist directly for a one-off job, e.g. "use the securit
 
 ## The team
 
-| Role | Defined in | Does | Can edit |
-|---|---|---|---|
-| **Orchestrator** | `.claude/skills/orchestrate/SKILL.md` | Understands the request, writes the execution plan, briefs the others, verifies their work, runs the checks, commits, opens the PR, updates the preview, watches the PR | Git, GitHub (the only one) |
-| **Game Designer** (senior) | `.claude/agents/game-designer.md` | Speaks for the player: writes design briefs before gameplay work, playtests and reviews changes for fun, feel, balance, clarity and tone (SHIP / SHIP WITH TWEAKS / REWORK), pitches ideas and audits areas on request | Nothing (read-only; playtests in headless Chromium) |
-| **Developer** (senior) | `.claude/agents/developer.md` | Implements game changes and the smoke-test checks that prove them | `src/` (including `src/desktop.js`, the desktop bridge), `index.html`, `style.css`, game checks in `scripts/smoke-test.mjs` |
-| **DevOps** | `.claude/agents/devops.md` | Owns build, test harness, CI/CD and releases; diagnoses red CI | `.github/workflows/`, `scripts/`, `package.json`, `electron/` (desktop / Steam build) |
-| **Security** (senior) | `.claude/agents/security.md` | Reviews every diff before the PR opens; returns findings and a PASS / PASS WITH NOTES / BLOCK verdict | Nothing (read-only) |
-| **Documenter** | `.claude/agents/documenter.md` | Keeps README, CLAUDE.md, docs and the title card's controls in sync; drafts the PR description | Markdown, title card controls, comments |
+| Role | Defined in | Model | Does | Can edit |
+|---|---|---|---|---|
+| **Orchestrator** | `.claude/skills/orchestrate/SKILL.md` | main session's | Understands the request, writes the execution plan, briefs the others, verifies their work, runs the checks, commits, opens the PR, updates the preview, watches the PR | Git, GitHub (the only one) |
+| **Game Designer** (senior) | `.claude/agents/game-designer.md` | Fable | Speaks for the player: writes design briefs before gameplay work, playtests and reviews changes for fun, feel, balance, clarity and tone (SHIP / SHIP WITH TWEAKS / REWORK), pitches ideas and audits areas on request | Nothing (read-only; playtests in headless Chromium) |
+| **Developer** (senior) | `.claude/agents/developer.md` | Opus | Implements game changes and the smoke-test checks that prove them | `src/` (including `src/desktop.js`, the desktop bridge), `index.html`, `style.css`, game checks in `scripts/smoke-test.mjs` |
+| **DevOps** | `.claude/agents/devops.md` | Haiku | Owns build, test harness, CI/CD and releases; diagnoses red CI | `.github/workflows/`, `scripts/`, `package.json`, `electron/` (desktop / Steam build) |
+| **Security** (senior) | `.claude/agents/security.md` | Haiku | Reviews every diff before the PR opens; returns findings and a PASS / PASS WITH NOTES / BLOCK verdict | Nothing (read-only) |
+| **Documenter** | `.claude/agents/documenter.md` | Haiku | Keeps README, CLAUDE.md, docs and the title card's controls in sync; drafts the PR description | Markdown, title card controls, comments |
 
 The Orchestrator is a skill rather than a subagent because, in Claude Code, only the main session can start agents.
 The specialists are subagents: each runs in its own context with only the tools its role needs.
@@ -92,6 +92,7 @@ commits.
 
 ## Changing the team
 
-Agents are plain Markdown files with YAML frontmatter (`name`, `description`, `tools`, `model`). Edit a file and the
+Agents are plain Markdown files with YAML frontmatter (`name`, `description`, `tools`, `model`). `model` is an alias
+(`fable`, `opus`, `sonnet`, `haiku`) or `inherit` to use the main session's model. Edit a file and the
 change applies to the next session. To add a role, add `.claude/agents/<role>.md`, then add it to the Orchestrator's
 table in `.claude/skills/orchestrate/SKILL.md` and to this page.
