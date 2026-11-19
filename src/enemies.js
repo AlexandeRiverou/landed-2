@@ -51,17 +51,24 @@ const SWARMS = { gull: 4, bee: 6 };
 const W1 = ['drone', 'mine', 'gull'], W2 = [...W1, 'bee', 'grudgeRock', 'umbrella', 'ufo'], W3 = [...W2, 'blimp', 'jelly', 'kites', 'sniperOwl'];
 export const WAVES = [
   { time: 12, roster: 5, cap: 4, every: [1.6, 2.0], flank: 0.25, above: 0, chase: 0.85, only: W1, spread: [50, 90] },
-  { time: 15, roster: 8, cap: 5, every: [1.3, 1.7], flank: 0.35, above: 0, chase: 0.9, only: W2, shooter: true },
-  { time: 18, roster: 10, cap: 7, every: [1.1, 1.4], flank: 0.35, above: 0.2, chase: 0.95, only: W3, shooter: true, bonus: true },
-  { time: 20, roster: 12, cap: 8, every: [0.9, 1.2], flank: 0.4, above: 0.2, chase: 1, only: null, burst: true, bonus: true },
-  { time: 24, roster: 10, cap: 8, every: [0.9, 1.2], flank: 0.4, above: 0.2, chase: 1.05, only: null, gary: true, bonus: true },
+  { time: 15, roster: 8, cap: 5, every: [1.0, 1.3], flank: 0.35, above: 0, chase: 0.9, only: W2, shooter: true },
+  { time: 18, roster: 10, cap: 7, every: [0.8, 1.1], flank: 0.35, above: 0.2, chase: 0.95, only: W3, shooter: true, bonus: true },
+  { time: 20, roster: 12, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1, only: null, burst: true, bonus: true },
+  { time: 24, roster: 10, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1.05, only: null, gary: true, bonus: true },
 ];
 const RUSH_FREE = W3;
 const EASIER_SLOW = 1.25, EASIER_CAP = 2, EASIER_TIME = 0.8, EASIER_ROSTER = 2, EASIER_CHASE = 0.05;
 const SHOOTERS = ['ufo', 'blimp', 'cannon', 'sniperOwl'];
-// The final wave's elite: Rival Pilot Gary, bigger (scale), tougher (hp; his propeller takes prop hits to shoot off),
-// worth score × his usual points, and `ahead` m in front of you when the wave starts. A guess: 8-15 s of focused fire.
-export const GARY = { hp: 12, prop: 8, scale: 1.35, score: 3, ahead: 300, name: 'Rival Pilot Gary (Big Day)' };
+// The final wave's elite: Rival Pilot Gary, bigger (scale), tougher (hp; his propeller takes prop hits to shoot off,
+// and like a boss's that only slows him and costs him a tenth of his hp: propText says so), worth score × his usual
+// points, and `ahead` m in front of you when the wave starts. intro: his own line when he turns up. Aimed at 8-15 s of
+// focused fire from a good shot.
+export const GARY = {
+  hp: 42, prop: 8, scale: 1.35, score: 3, ahead: 300, name: 'Rival Pilot Gary (Big Day)',
+  intro: 'Gary\'s having a Big Day. Gary is unbearable on Big Days.', propText: 'Gary\'s propeller is gone. He\'s flapping his arms.',
+};
+// Hold The Line: new-enemy intros wait their turn, one every INTRO_GAP s (real time), so they don't pile up mid-wave.
+const INTRO_GAP = 4;
 // Never more regular (non-quest) enemies than this at once, whatever spawns them. Small fry count a third each
 // toward a wave's cap.
 export const CEILING = 18;
@@ -337,6 +344,8 @@ export class Enemies {
     this.orbGeo = new THREE.SphereGeometry(1.6, 8, 6);
     this.orbMat = new THREE.MeshBasicMaterial({ color: '#7aff5a' });
     this.introduced = new Set();
+    this.intros = []; // intro lines waiting their turn (Hold The Line, see INTRO_GAP)
+    this.introCd = 0;
     this.nibbleAt = -99; // when a Grumbling last bit you (see GRUMBLE_GAP)
     this.orbMats = new Map();
     this.breather = false; // every boss alive has lost you or is coming back (not waiting): see player.js regen
@@ -758,12 +767,19 @@ export class Enemies {
     e.marker = makeMarker();
     this.G.scene.add(e.marker);
     this.list.push(e);
-    if (!e.quest && !def.quiet && !this.introduced.has(type)) {
+    if (!e.quest && !def.quiet && !opts.quiet && !this.introduced.has(type)) {
       this.introduced.add(type);
-      this.G.ui.notify(def.intro || `New enemy spotted: ${def.name}. It seems upset about something.`, 'warn', 4, 1);
+      this.intro(def.intro || `New enemy spotted: ${def.name}. It seems upset about something.`);
     }
     if (def.pair && !opts.twin) this.pairUp(e, opts);
     return e;
+  }
+
+  // A new-enemy intro: at once, or in Hold The Line queued (first: to the front), shown one at a time by update()
+  // (Hold The Line drops what's left when it ends).
+  intro(text, first = false) {
+    if (!this.frenzy) { this.G.ui.notify(text, 'warn', 4, 1); return; }
+    if (first) this.intros.unshift(text); else this.intros.push(text);
   }
 
   // Kite Twins: a second kite across your path from the first, and the string between them (see drawString).
@@ -831,7 +847,8 @@ export class Enemies {
     const pos = p.pos.clone().addScaledVector(f, GARY.ahead);
     const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), waterLine());
     pos.y = Math.min(Math.max(p.pos.y, g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
-    const e = this.spawn('rival', pos, { scale: GARY.scale });
+    const e = this.spawn('rival', pos, { scale: GARY.scale, quiet: true });
+    this.intro(GARY.intro, true); // his own line, not the everyday Gary's
     Object.assign(e, { hp: GARY.hp, maxHp: GARY.hp, elite: true, wave: this.frenzy?.wave });
     for (const part of e.mesh.userData.parts || []) if (part.name === 'prop') part.hp = GARY.prop;
     return e;
@@ -904,7 +921,12 @@ export class Enemies {
     if ((W ? this.active() : this.regulars().length) >= max) return;
     const needShooter = W?.shooter && !this.list.some((e) => !e.quest && SHOOTERS.includes(e.type));
     // A shooter from the wave's list if one's due (else any shooter), else anything on the list, else anything at all.
-    const only = W?.only, type = (needShooter && (this.pickType(only ? SHOOTERS.filter((k) => only.includes(k)) : SHOOTERS) || this.pickType(SHOOTERS))) || this.pickType(only) || this.pickType();
+    const only = W?.only;
+    let type = (needShooter && (this.pickType(only ? SHOOTERS.filter((k) => only.includes(k)) : SHOOTERS) || this.pickType(SHOOTERS))) || this.pickType(only) || this.pickType();
+    // Less than one left on the roster: no pair (two at once would take it more than 1 past). Swarms get trimmed
+    // (placeGroup).
+    if (W && TYPES[type]?.pair && this.roster() - F.spent < 1) type = this.pickType((only || Object.keys(TYPES)).filter((k) => !TYPES[k].pair));
+    if (!type) return;
     const r = Math.random(), first = F?.first;
     if (F) F.first = false; // a wave's first group comes from ahead, where you see it
     this.spawnGroup(type, !W || first ? 'front' : r < W.above && !this.roofed(p.pos) ? 'above' : r < W.above + W.flank ? 'flank' : 'front');
@@ -926,7 +948,9 @@ export class Enemies {
   // spawnGroup's placing: where the group appears, and how many of it (a swarm, a pair, one).
   placeGroup(type, def, from, side) {
     const G = this.G, p = G.player;
-    const room = CEILING - this.regulars().length, n = SWARMS[type] || (def.pair ? 2 : 1);
+    // In a wave a swarm is no bigger than what's left of its roster (so the last group never takes it 1 past it).
+    const F = this.frenzy, left = F ? Math.ceil((this.roster() - (F.spent || 0)) / (SMALL[type] || 1) - 1e-6) : Infinity;
+    const room = CEILING - this.regulars().length, n = Math.max(1, Math.min(SWARMS[type] || (def.pair ? 2 : 1), def.pair ? 2 : left));
     if (room < (def.pair ? 2 : 1)) return;
     const f = flatForward(p, _v);
     let d = this.frenzy ? rand(...RUSH_AHEAD) : rand(300, 500), lateral = this.frenzy ? (Math.random() < 0.5 ? -1 : 1) * rand(...(WAVES[this.frenzy.wave - 1]?.spread || [0, RUSH_SPREAD])) : rand(-130, 130);
@@ -963,6 +987,8 @@ export class Enemies {
     const G = this.G, p = G.player, real = dt;
     dt *= PACE * G.powerups.enemyTimeScale(); // Slow-Mo / Time Freeze power-ups
     this.calmTimer = Math.max(0, this.calmTimer - dt);
+    this.introCd -= real;
+    if (this.intros.length && this.introCd <= 0) { this.G.ui.notify(this.intros.shift(), 'warn', 4, 1); this.introCd = INTRO_GAP; }
     this.maybeSpawn(dt);
 
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -1094,8 +1120,9 @@ export class Enemies {
     G.fx.popText(_pp, e.boss ? '+40' : '+10');
     switch (part.name) {
       case 'rotor': if (e.boss) e.hp -= e.maxHp * 0.06; else if (n >= 2) e.state = 'falling'; break;
-      // A boss doesn't drop out of the sky from one part: it slows down and takes a chunk of damage instead.
-      case 'prop': if (e.boss) { e.slow = 0.7; e.hp -= e.maxHp * 0.1; } else e.state = 'falling'; break;
+      // A boss (or Hold The Line's elite Gary) doesn't drop out of the sky from one part: it slows down and takes a
+      // chunk of damage instead.
+      case 'prop': if (e.boss || e.elite) { e.slow = 0.7; e.hp -= e.maxHp * 0.1; } else e.state = 'falling'; break;
       case 'gondola': e.noBombs = true; break;
       case 'barrel': e.disarmed = true; if (e.boss) e.hp -= e.maxHp * 0.1; break;
       case 'fin': if (e.boss) e.hp -= e.maxHp * 0.03; break;
@@ -1106,8 +1133,8 @@ export class Enemies {
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
-    const text = (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
-    if (text && (e.boss || ['prop', 'gondola', 'barrel', 'rotor'].includes(part.name))) G.ui.notify(text, 'good', 3, e.boss ? 1 : 0);
+    const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
+    if (text && (e.boss || ['prop', 'gondola', 'barrel', 'rotor'].includes(part.name))) G.ui.notify(text, 'good', 3, e.boss || e.elite ? 1 : 0);
   }
 
   behave(e, toP, dist, dt) {
