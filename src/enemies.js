@@ -1,9 +1,10 @@
 // Enemies: chasing drones, spiky balloon mines, dive-bombing seagulls, orb-spitting UFOs,
 // grumpy storm clouds, bee swarms, ad blimps, sky jellyfish, ground cannons, Rival Pilot Gary,
-// umbrella goons, grudge rocks, sniper owls, kite twins, clingy moths, and (quest-only) evil pigeons.
+// umbrella goons, grudge rocks, sniper owls, kite twins, clingy moths, (quest-only) evil pigeons and (from
+// Grumbleglobe's pores only) Grumblings.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MOVES as BOSS_MOVES, Hazards, guardStep, animateBoss, endMoves, dropBoss, daze } from './bossmoves.js';
@@ -25,6 +26,8 @@ const TYPES = {
   umbrella: { hp: 3, radius: 6, dmg: 12, speed: 30, make: makeUmbrella, score: 90, minScore: 250, weight: 1, kamikaze: false, guard: true, name: 'Umbrella Goon', intro: 'An Umbrella Goon. Bullets bounce off the front. It is very proud of its umbrella.' },
   grudgeRock: { hp: 4, radius: 9, dmg: 15, speed: 14, make: makeGrudgeRock, score: 60, minScore: 120, weight: 1.2, kamikaze: false, split: ['pebble', 3], name: 'Grudge Rock', intro: 'A Grudge Rock! Break it and you get several smaller rocks. They keep the grudge.' },
   pebble: { hp: 1, radius: 3, dmg: 10, speed: 48, make: makePebble, score: 10, minScore: 0, weight: 0, kamikaze: true, quiet: true, name: 'Grudge Pebble' },
+  // squeak: a short high squeak instead of the explosion when it pops. Only Grumbleglobe's pores make these (planetboss.js).
+  grumbling: { hp: 1, radius: 4, dmg: 8, speed: 44, make: makeGrumbling, score: 5, minScore: Infinity, weight: 0, kamikaze: true, quiet: true, squeak: true, name: 'Grumbling' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
   kites: { hp: 2, radius: 5, dmg: 12, speed: 26, make: makeKite, score: 50, minScore: 200, weight: 1, kamikaze: false, pair: true, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. Do not fly through the string. Go over. Or under.' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
@@ -1142,6 +1145,7 @@ export class Enemies {
         steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(0, Math.sin(e.t * 1.5) * 6, 0)), 0.8);
         break;
       case 'pebble':
+      case 'grumbling':
         // Scatters from the break for 0.8 s (real), then homes in.
         if (e.stateT < 0.8 * PACE) e.vel.multiplyScalar(Math.exp(-dt * 1.5));
         else steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(Math.sin(e.t * 7) * 8, Math.cos(e.t * 6) * 5, 0)), 2.5);
@@ -1336,7 +1340,7 @@ export class Enemies {
     if (e.type === 'cannon' || e.type === 'jelly') return;
     if (e.type === 'mine' || e.type === 'storm') e.mesh.rotation.y += dt * 0.4;
     if (e.type === 'ufo') e.mesh.rotation.y += dt * 1.5;
-    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
+    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock' || e.type === 'grumbling') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
     else if (e.vel.lengthSq() > 1 && e.type !== 'mine' && e.type !== 'ufo') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
   }
 
@@ -1370,7 +1374,8 @@ export class Enemies {
       G.stats.kills++;
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
     } else if (byPlayer && !e.paid) this.payout(e);
-    G.audio.explode();
+    if (e.def.squeak) G.audio.tone(1400, 0.08, { type: 'square', vol: 0.05, slide: 600 });
+    else G.audio.explode();
     this.remove(i);
     // A Grudge Rock breaks into pebbles (and a puff of grit) that scatter, then home in (never past the CEILING).
     if (e.def.split && !e.boss) {

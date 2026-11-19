@@ -798,6 +798,17 @@ export function makePebble() {
   return g;
 }
 
+// A Grumbling: a lumpy little rock the colour of Grumbleglobe that its pores burp out, with one dark angry brow.
+// Up to a dozen fly at once, so they all share one set of geometry and materials (userData.keep: disposeTree skips them).
+let GRUMBLING = null;
+export function makeGrumbling() {
+  GRUMBLING ||= { body: Dod(4), brow: Box(4.4, 0.9, 0.9), rock: lam('#7a6a8a'), dark: basic('#2a1a3a') };
+  const g = new THREE.Group(), G = GRUMBLING;
+  add(g, G.body, G.rock, { s: [1, 0.85, 1.05] }).userData.keep = true;
+  add(g, G.brow, G.dark, { y: 1.6, z: 3.6, rz: 0.25 }).userData.keep = true;
+  return g;
+}
+
 // The pigeon, recoloured as a brown owl (yellow eyes), with a telescope.
 export function makeOwl(hat) {
   const g = makePigeon(hat), RECOLOR = { '7a84a0': '#8a5a32', '5a6a8a': '#6a4426', '6a7490': '#7a4e2a', ff2020: '#ffd23a' };
