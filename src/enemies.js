@@ -51,9 +51,9 @@ const SWARMS = { gull: 4, bee: 6 };
 const W1 = ['drone', 'mine', 'gull'], W2 = [...W1, 'bee', 'grudgeRock', 'umbrella', 'ufo'], W3 = [...W2, 'blimp', 'jelly', 'kites', 'sniperOwl'];
 export const WAVES = [
   { time: 12, roster: 5, cap: 4, every: [1.6, 2.0], flank: 0.25, above: 0, chase: 0.85, only: W1, spread: [50, 90] },
-  { time: 15, roster: 8, cap: 5, every: [1.0, 1.3], flank: 0.35, above: 0, chase: 0.9, only: W2, shooter: true },
-  { time: 18, roster: 10, cap: 7, every: [0.8, 1.1], flank: 0.35, above: 0.2, chase: 0.95, only: W3, shooter: true, bonus: true },
-  { time: 20, roster: 12, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1, only: null, burst: true, bonus: true },
+  { time: 15, roster: 7, cap: 5, every: [1.0, 1.3], flank: 0.35, above: 0, chase: 0.9, only: W2, shooter: true },
+  { time: 18, roster: 9, cap: 7, every: [0.8, 1.1], flank: 0.35, above: 0.2, chase: 0.95, only: W3, shooter: true, bonus: true },
+  { time: 20, roster: 11, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1, only: null, burst: true, bonus: true },
   { time: 24, roster: 10, cap: 8, every: [0.7, 0.9], flank: 0.4, above: 0.2, chase: 1.05, only: null, gary: true, bonus: true },
 ];
 const RUSH_FREE = W3;
@@ -68,7 +68,8 @@ export const GARY = {
   intro: 'Gary\'s having a Big Day. Gary is unbearable on Big Days.', propText: 'Gary\'s propeller is gone. He\'s flapping his arms.',
 };
 // Hold The Line: new-enemy intros wait their turn, one every INTRO_GAP s (real time), so they don't pile up mid-wave.
-const INTRO_GAP = 4;
+// At most INTRO_MAX wait (the oldest goes), and one whose enemy is gone by its turn is skipped.
+const INTRO_GAP = 4, INTRO_MAX = 4;
 // Never more regular (non-quest) enemies than this at once, whatever spawns them. Small fry count a third each
 // toward a wave's cap.
 export const CEILING = 18;
@@ -344,7 +345,8 @@ export class Enemies {
     this.orbGeo = new THREE.SphereGeometry(1.6, 8, 6);
     this.orbMat = new THREE.MeshBasicMaterial({ color: '#7aff5a' });
     this.introduced = new Set();
-    this.intros = []; // intro lines waiting their turn (Hold The Line, see INTRO_GAP)
+    this.intros = []; // intro lines waiting their turn (Hold The Line, see INTRO_GAP): { text, type, e, n }
+    this.introN = 0; // queue order, to find the oldest
     this.introCd = 0;
     this.nibbleAt = -99; // when a Grumbling last bit you (see GRUMBLE_GAP)
     this.orbMats = new Map();
@@ -769,17 +771,26 @@ export class Enemies {
     this.list.push(e);
     if (!e.quest && !def.quiet && !opts.quiet && !this.introduced.has(type)) {
       this.introduced.add(type);
-      this.intro(def.intro || `New enemy spotted: ${def.name}. It seems upset about something.`);
+      this.intro(def.intro || `New enemy spotted: ${def.name}. It seems upset about something.`, false, { type });
     }
     if (def.pair && !opts.twin) this.pairUp(e, opts);
     return e;
   }
 
   // A new-enemy intro: at once, or in Hold The Line queued (first: to the front), shown one at a time by update()
-  // (Hold The Line drops what's left when it ends).
-  intro(text, first = false) {
+  // (Hold The Line drops what's left when it ends). about: { type } (any of that type alive) or { e } (that one enemy):
+  // what must still be alive when its turn comes. Over INTRO_MAX waiting, the oldest goes.
+  intro(text, first = false, about = {}) {
     if (!this.frenzy) { this.G.ui.notify(text, 'warn', 4, 1); return; }
-    if (first) this.intros.unshift(text); else this.intros.push(text);
+    const q = { text, type: about.type, e: about.e, n: this.introN++ };
+    if (first) this.intros.unshift(q); else this.intros.push(q);
+    if (this.intros.length > INTRO_MAX) this.intros.splice(this.intros.indexOf(this.intros.reduce((a, b) => (b.n < a.n ? b : a))), 1);
+  }
+
+  // Is a queued intro still worth showing (its enemy, or one of its type, still alive)?
+  introLive(q) {
+    if (q.e) return !q.e.dead && this.list.includes(q.e);
+    return !q.type || this.list.some((x) => x.type === q.type && !x.dead);
   }
 
   // Kite Twins: a second kite across your path from the first, and the string between them (see drawString).
@@ -848,9 +859,9 @@ export class Enemies {
     const g = Math.max(G.terrain.surfaceHeight(pos.x, pos.z), waterLine());
     pos.y = Math.min(Math.max(p.pos.y, g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
     const e = this.spawn('rival', pos, { scale: GARY.scale, quiet: true });
-    this.intro(GARY.intro, true); // his own line, not the everyday Gary's
     Object.assign(e, { hp: GARY.hp, maxHp: GARY.hp, elite: true, wave: this.frenzy?.wave });
     for (const part of e.mesh.userData.parts || []) if (part.name === 'prop') part.hp = GARY.prop;
+    this.intro(GARY.intro, true, { e }); // his own line, not the everyday Gary's (shown while he's alive)
     return e;
   }
 
@@ -988,7 +999,10 @@ export class Enemies {
     dt *= PACE * G.powerups.enemyTimeScale(); // Slow-Mo / Time Freeze power-ups
     this.calmTimer = Math.max(0, this.calmTimer - dt);
     this.introCd -= real;
-    if (this.intros.length && this.introCd <= 0) { this.G.ui.notify(this.intros.shift(), 'warn', 4, 1); this.introCd = INTRO_GAP; }
+    while (this.intros.length && this.introCd <= 0) { // skip intros whose enemies are gone
+      const q = this.intros.shift();
+      if (this.introLive(q)) { this.G.ui.notify(q.text, 'warn', 4, 1); this.introCd = INTRO_GAP; }
+    }
     this.maybeSpawn(dt);
 
     for (let i = this.list.length - 1; i >= 0; i--) {

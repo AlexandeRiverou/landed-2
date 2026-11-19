@@ -364,8 +364,9 @@ export function mkPest(G) {
 // wave skips straight to 3), and GO! starts it. A wave ends when its clock runs out, or early when everything
 // it sent is down (CLEAR_PAY × the wave number in points). Either way the leftovers puff away and the hull gets MEND;
 // the result shows for RESULT s, then the next countdown. Further than LINE_R m (flat) from the beacon the clock
-// waits for you (the first time each wave, a big TURN BACK callout says so). Wave 5 brings elite Gary (GARY): down
-// him and the line holds at once. Shot down, the wave starts over from its countdown; the second time, the enemies go
+// waits for you (a big TURN BACK callout says so, again every TURN_AGAIN s while you stay away); after MOVE_AFTER s
+// out there in all during one wave, the line gives up and moves under you (THE LINE MOVED), so nobody waits forever.
+// Wave 5 brings elite Gary (GARY): down him and the line holds at once. Shot down, the wave starts over from its countdown; the second time, the enemies go
 // easier on you by themselves.
 export const LINE_R = 550; // m (flat) from the beacon: past it the wave clock waits
 const PREP = 1, BEAT = 0.8, GO_SHOW = 0.6, RESULT = 1.5, CLEAR_PAY = 40, MEND = 25;
@@ -375,9 +376,13 @@ const WAVE_TEXT = [
   'Pincer! Left, right and centre.', 'FINAL WAVE: Gary\'s here. Gary brought everyone.',
 ];
 const TURN_SHOW = 2.5; // s the TURN BACK callout shows
+const TURN_AGAIN = 8; // s after a TURN BACK callout before it may show again (same wave)
+const MOVE_AFTER = 12; // s outside the line in all during one wave: then the beacon moves under you
+const MOVED_SHOW = 2.5; // s the THE LINE MOVED callout shows
 // The beacon column: BEACON_H m tall (less under a roof), BEACON_R m wide (radius: seen from 400 m), BEACON_DIM opaque
 // near it, brightening to BEACON_LIT from BEACON_NEAR × LINE_R out to the edge, so it stands out when you need it.
-const BEACON_H = 300, BEACON_R = 3, BEACON_DIM = 0.45, BEACON_LIT = 0.9, BEACON_NEAR = 0.8;
+// Within BEACON_CLOSE m it fades down to BEACON_GHOST, so a column planted right under you never fills the screen.
+const BEACON_H = 300, BEACON_R = 3, BEACON_DIM = 0.45, BEACON_LIT = 0.9, BEACON_NEAR = 0.8, BEACON_CLOSE = 60, BEACON_GHOST = 0.06;
 
 // The line: a tall see-through column of light (a unit-tall cylinder, stretched by plantBeacon).
 function makeBeacon(G, at) {
@@ -395,7 +400,8 @@ function plantBeacon(G, m, at) {
 
 export function mkSurvive(G) {
   const E = G.enemies, N = WAVES.length;
-  let deaths = 0, gary = null, won = false, warned = 0;
+  let deaths = 0, gary = null, won = false;
+  let outT = 0, sinceTurn = Infinity; // this wave: s spent outside the line, s since the last TURN BACK
   // phase 'count' (t: s into the countdown), 'wave' (clock: s survived), 'result', 'down' (shot down, waiting to respawn).
   const F = (E.frenzy = { wave: 1, phase: 'count', t: 0, clock: 0, step: -1, easier: 0, burst: false, first: false, spent: 0, cleared: false, score: G.score, restart: false });
   const beacon = makeBeacon(G, G.player.pos);
@@ -410,6 +416,8 @@ export function mkSurvive(G) {
   const go = () => {
     const W = WAVES[F.wave - 1];
     Object.assign(F, { phase: 'wave', clock: 0, spent: 0, first: true, burst: !!W.burst });
+    outT = 0;
+    sinceTurn = Infinity;
     E.spawnTimer = 0;
     call('GO!', '', GO_SHOW);
     G.audio.ding(1.2);
@@ -451,8 +459,10 @@ export function mkSurvive(G) {
     },
     onUpdate(dt, G) {
       const p = G.player, head = `🛡 WAVE ${F.wave}/${N}`;
-      this.progressed = true;
-      beacon.material.opacity = THREE.MathUtils.mapLinear(THREE.MathUtils.clamp(off() / LINE_R, BEACON_NEAR, 1), BEACON_NEAR, 1, BEACON_DIM, BEACON_LIT);
+      this.progressed = F.phase !== 'wave' || !away(); // out past the line mid-wave isn't progress (persuasion may nag)
+      const d = off();
+      beacon.material.opacity = d < BEACON_CLOSE ? THREE.MathUtils.mapLinear(d, 0, BEACON_CLOSE, BEACON_GHOST, BEACON_DIM)
+        : THREE.MathUtils.mapLinear(THREE.MathUtils.clamp(d / LINE_R, BEACON_NEAR, 1), BEACON_NEAR, 1, BEACON_DIM, BEACON_LIT);
       if (gary) G.ui.bossBar(downed() ? null : { name: GARY.name, hp: gary.hp, maxHp: gary.maxHp });
       if (downed() && F.phase === 'wave') return hold(this); // Gary's down: the line holds, whatever's left
       if (p.dead) {
@@ -487,9 +497,17 @@ export function mkSurvive(G) {
         this.progress = `${head} · ${F.cleared ? 'CLEARED!' : 'SURVIVED'}`;
         return null;
       }
-      // A wave. Away from the line its clock waits (the enemies don't).
-      const out = away(), need = E.waveTime();
-      if (out && warned !== F.wave) { warned = F.wave; call('TURN BACK', 'The clock waits for you.', TURN_SHOW); } // no countdown runs mid-wave
+      // A wave. Away from the line its clock waits (the enemies don't); away too long, the line comes to you.
+      let out = away();
+      const need = E.waveTime();
+      sinceTurn += dt;
+      if (out && (outT += dt) >= MOVE_AFTER) {
+        plantBeacon(G, beacon, p.pos);
+        outT = 0;
+        out = false;
+        call('THE LINE MOVED', 'Fine. The line comes to you.', MOVED_SHOW);
+      }
+      if (out && sinceTurn > TURN_AGAIN) { sinceTurn = 0; call('TURN BACK', 'The clock waits for you.', TURN_SHOW); } // no countdown runs mid-wave
       if (!out) F.clock += dt;
       const alive = E.ofWave(F.wave), left = Math.ceil(Math.max(0, E.roster() - F.spent) + E.unitsOf(alive) - 1e-6);
       this.progress = out ? `${head} · PAUSED · BACK TO THE LINE` : `${head} · ${Math.ceil(Math.max(0, need - F.clock))}s · ${left} left`;

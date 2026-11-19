@@ -2333,7 +2333,8 @@ try {
       const there = p.pos.clone().sub(old).setY(0).normalize().multiplyScalar(400).add(old);
       p.pos.x = there.x; p.pos.z = there.z; p.prevPos.copy(p.pos);
       for (let k = 0; k < 30 * 5 && F2.phase !== 'count'; k++) step(1);
-      htl.replant = { phase: F2.phase, moved: +flat(obj.line.position, old).toFixed(1), under: +flat(obj.line.position, p.pos).toFixed(1), standing: Math.abs(obj.line.position.y - obj.line.scale.y / 2 - groundAt(G, obj.line.position.x, obj.line.position.z)) < 0.01 };
+      step(1); // the opacity follows on the next frame: right under you the column is only a faint ghost
+      htl.replant = { ghost: +obj.line.material.opacity.toFixed(2), phase: F2.phase, moved: +flat(obj.line.position, old).toFixed(1), under: +flat(obj.line.position, p.pos).toFixed(1), standing: Math.abs(obj.line.position.y - obj.line.scale.y / 2 - groundAt(G, obj.line.position.x, obj.line.position.z)) < 0.01 };
       // The types each wave may send (sampled): wave 1 only drones, mines and gulls; new ones in waves 2 and 3.
       htl.mix = [1, 2, 3, 4, 5].map((n) => { F2.wave = n; const s = new Set(); for (let k = 0; k < 3000; k++) s.add(E.pickType(WAVES[n - 1].only)); return [...s]; });
       G.objectives.suspend();
@@ -2370,18 +2371,51 @@ try {
       step(30);
       htl.gary.after1s = regulars();
 
-      // Flying dead straight from the start (never turning, never shooting): past LINE_R in wave 1 the clock waits and a
-      // TURN BACK callout shows (once); turning back for the beacon, the clock runs again and wave 1 ends.
+      // The intro queue (mid-Hold The Line): at most 4 wait, the oldest goes (a first-in-line one too); at its turn an
+      // intro whose enemy type has nobody alive (or whose one enemy, like Gary, is gone) is skipped for the next.
+      G.objectives.startType('survive');
+      {
+        E.intros.length = 0;
+        E.introCd = 1e9;
+        for (let i = 1; i <= 6; i++) E.intro(`q${i}`, false, { type: 'drone' });
+        const capped = E.intros.map((q) => q.text).join();
+        E.intro('qF', true, { type: 'drone' });
+        const first = E.intros.map((q) => q.text).join();
+        E.intros.length = 0;
+        const drone = E.spawn('drone', p.pos.clone().add(new V(0, 0, 300)), { quiet: true });
+        const gone = E.spawn('drone', p.pos.clone().add(new V(0, 0, -300)), { quiet: true });
+        E.removeEnemy(gone);
+        E.intro('no mines', false, { type: 'mine' });
+        E.intro('gone one', false, { e: gone });
+        E.intro('drone here', false, { type: 'drone' });
+        E.intro('after', false, { type: 'drone' });
+        const n1 = intros.length;
+        E.introCd = 0;
+        step(1);
+        htl.queue = { capped, first, shown: intros.slice(n1).map(([, t]) => t).join(), left: E.intros.map((q) => q.text).join(), alive: !drone.dead };
+      }
+      quiet();
+      clear();
+
+      // Flying dead straight from the start (never turning, never shooting): past LINE_R in wave 1 the clock waits, and
+      // a TURN BACK callout shows, again 8+ s later; after 12 s out the line moves under the plane (THE LINE MOVED), the
+      // clock runs again, and wave 1 ends without ever turning back.
       G.objectives.startType('survive');
       obj = G.objectives.current;
       const FS = E.frenzy, c2 = calls.length;
-      let outAt = null;
-      for (let k = 0; k < 30 * 45 && FS.wave === 1 && FS.phase !== 'result'; k++) {
-        if (outAt === null && FS.phase === 'wave' && /PAUSED · BACK TO THE LINE$/.test(obj.progress)) outAt = +FS.clock.toFixed(1);
-        if (outAt !== null) pilot(obj);
+      let outAt = null, outT0 = null, moved = null, cs = calls.length;
+      const turnAt = [];
+      for (let k = 0; k < 30 * 90 && FS.wave === 1 && FS.phase !== 'result'; k++) {
+        if (outAt === null && FS.phase === 'wave' && /PAUSED · BACK TO THE LINE$/.test(obj.progress)) { outAt = +FS.clock.toFixed(1); outT0 = G.time; }
         step(1);
+        for (const c of calls.slice(cs)) {
+          if (c[0] === 'TURN BACK' && !moved) turnAt.push(G.time);
+          if (c[0] === 'THE LINE MOVED' && !moved) moved = { after: +(G.time - outT0).toFixed(2), sub: c[1], under: +flat(obj.line.position, p.pos).toFixed(1), clock: FS.clock, hud: obj.progress };
+        }
+        cs = calls.length;
+        if (moved && moved.clock1 === undefined && G.time - outT0 >= moved.after + 1) moved.clock1 = +(FS.clock - moved.clock).toFixed(2);
       }
-      htl.straight = { outAt, phase: FS.phase, wave: FS.wave, at: +obj.t.toFixed(1), turn: calls.slice(c2).filter((c) => c[0] === 'TURN BACK').length };
+      htl.straight = { outAt, moved, phase: FS.phase, wave: FS.wave, at: +obj.t.toFixed(1), turn: calls.slice(c2).filter((c) => c[0] === 'TURN BACK').length, turnsBeforeMove: turnAt.length, turnGap: turnAt.length > 1 ? +(turnAt[1] - turnAt[0]).toFixed(2) : null };
       quiet();
       clear();
 
@@ -3776,14 +3810,16 @@ try {
     [(({ htl: h }) => [1, 2, 3, 4, 5].every((w) => h.waves.includes(w)) && h.progress.length === 5 && h.progress.every((t) => /^🛡 WAVE \d\/5 · \d+s · \d+ left$/.test(t)) && h.reward === 350)(RUSH), `Hold The Line: "WAVE n/5 · <secs>s · <k> left" in the progress text, and the waves reach 5 (${JSON.stringify({ waves: RUSH.htl.waves, progress: RUSH.htl.progress })})`],
     [(({ opening: o, countSpawns: c }) => o.calls.slice(0, 5).join() === 'PREPARE FOR WAVE 1,3,2,1,GO!' && o.shown && c === 0 && o.at >= 3 && o.at <= 4)(RUSH.htl), `Hold The Line: it opens with PREPARE FOR WAVE 1, 3, 2, 1, GO! (big, centred), and nothing spawns during any countdown (${JSON.stringify({ ...RUSH.htl.opening, countSpawns: RUSH.htl.countSpawns })})`],
     [RUSH.htl.countdowns.every(Boolean), `Hold The Line: waves 2-5 each open with PREPARE FOR WAVE n (and a flavour line), 3, 2, 1, GO! (${JSON.stringify(RUSH.htl.countdowns)})`],
-    [(({ perWave: w, mix: m }) => [1, 2, 3, 4, 5].every((n) => w[n] && w[n].spent <= w[n].roster + 1 + 1e-6) && [5, 8, 10, 12, 10].every((r, i) => w[i + 1].roster === r) && w[5].types.includes('rival') && m[0].every((t) => ['drone', 'mine', 'gull'].includes(t)) && m[1].some((t) => !m[0].includes(t)) && m[2].some((t) => !m[1].includes(t)) && m[3].length >= m[2].length)(RUSH.htl), `Hold The Line: each wave sends more than the last (5/8/10/12/10 + Gary) and stops when its roster is spent (its last group never takes it more than 1 past it), with new types in waves 2 and 3 (${JSON.stringify({ perWave: RUSH.htl.perWave, mix: RUSH.htl.mix })})`],
+    [(({ perWave: w, mix: m }) => [1, 2, 3, 4, 5].every((n) => w[n] && w[n].spent <= w[n].roster + 1 + 1e-6) && [5, 7, 9, 11, 10].every((r, i) => w[i + 1].roster === r) && w[5].types.includes('rival') && m[0].every((t) => ['drone', 'mine', 'gull'].includes(t)) && m[1].some((t) => !m[0].includes(t)) && m[2].some((t) => !m[1].includes(t)) && m[3].length >= m[2].length)(RUSH.htl), `Hold The Line: each wave sends more than the last (5/7/9/11/10 + Gary) and stops when its roster is spent (its last group never takes it more than 1 past it), with new types in waves 2 and 3 (${JSON.stringify({ perWave: RUSH.htl.perWave, mix: RUSH.htl.mix })})`],
     [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 6, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
     [RUSH.htl.done && RUSH.htl.total <= 116 && RUSH.htl.total >= 100, `Hold The Line: never shooting, it's over in about 115 s (${RUSH.htl.total} s)`],
     [(({ restart: r }) => r.dead && r.wave === r.before.wave && r.before.clock > 3 && r.clock === 0 && r.phase === 'count' && r.regulars === 0 && r.line && r.calls.startsWith('3,2,1,GO!') && !/PREPARE/.test(r.calls))(RUSH.htl), `Hold The Line: getting shot down restarts the current wave from its countdown, straight to 3, 2, 1 ("Wave 2 again, from the top."), clock back to 0 (${JSON.stringify(RUSH.htl.restart)})`],
     [(({ second: s }) => s.easier === 1 && s.need < s.need0 - 1 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself, with a shorter wave clock (${JSON.stringify(RUSH.htl.second)})`],
     [(({ away: a }) => a.clock === a.clock0 && /· PAUSED · BACK TO THE LINE$/.test(a.hud) && a.target < 1 && a.turn === 1 && a.back > 0.5 && a.dim < 0.5 && a.lit >= 0.85)(RUSH.htl), `Hold The Line: past LINE_R from the beacon the wave clock waits, a TURN BACK callout shows once, the HUD says PAUSED · BACK TO THE LINE, the beacon lights up and the arrow points home (${JSON.stringify(RUSH.htl.away)})`],
-    [(({ planted: w, replant: r }) => [1, 2, 3, 4, 5].every((n) => w[n] <= 10) && r.phase === 'count' && r.moved >= 350 && r.under <= 10 && r.standing)(RUSH.htl), `Hold The Line: every countdown plants the beacon under the plane, standing on the ground (${JSON.stringify({ planted: RUSH.htl.planted, replant: RUSH.htl.replant })})`],
-    [(({ straight: s }) => s.outAt !== null && s.outAt < 12 && s.turn === 1 && s.wave === 1 && s.phase === 'result')(RUSH.htl), `Hold The Line: flying dead straight, wave 1's clock waits past LINE_R with a TURN BACK callout (once), and turning back finishes the wave (${JSON.stringify(RUSH.htl.straight)})`],
+    [(({ planted: w, replant: r }) => [1, 2, 3, 4, 5].every((n) => w[n] <= 10) && r.phase === 'count' && r.moved >= 350 && r.under <= 10 && r.standing && r.ghost <= 0.15)(RUSH.htl), `Hold The Line: every countdown plants the beacon under the plane, standing on the ground, faded so it doesn't fill the screen (${JSON.stringify({ planted: RUSH.htl.planted, replant: RUSH.htl.replant })})`],
+    [(({ straight: s }) => s.outAt !== null && s.outAt < 12 && s.turnsBeforeMove === 2 && s.turnGap > 8 && s.turnGap < 8.2 && s.wave === 1 && s.phase === 'result')(RUSH.htl), `Hold The Line: flying dead straight, wave 1's clock waits past LINE_R with a TURN BACK callout, shown again 8 s later while still away, and the wave still finishes without turning back (${JSON.stringify(RUSH.htl.straight)})`],
+    [(({ straight: { moved: m } }) => m && m.after >= 11.9 && m.after <= 12.1 && m.sub === 'Fine. The line comes to you.' && m.under <= 10 && !/PAUSED/.test(m.hud) && m.clock1 > 0.9)(RUSH.htl), `Hold The Line: after 12 s outside the line in a wave, the beacon moves under the plane, THE LINE MOVED shows, and the wave clock runs again (${JSON.stringify(RUSH.htl.straight.moved)})`],
+    [(({ queue: q }) => q.capped === 'q3,q4,q5,q6' && q.first === 'qF,q4,q5,q6' && q.shown === 'drone here' && q.left === 'after' && q.alive)(RUSH.htl), `Hold The Line: at most 4 intros wait (the oldest goes), and one whose enemy is gone by its turn is skipped (${JSON.stringify(RUSH.htl.queue)})`],
     [(({ intros: i }) => i.n >= 3 && i.gap >= 3.9)(RUSH.htl), `Hold The Line: new-enemy intros come one at a time, at least 4 s apart (${JSON.stringify(RUSH.htl.intros)})`],
     [(({ clear: c }) => c && c.clock < c.need && c.score === 40 * c.wave && c.hull >= 25 && c.hull < 25.5 && c.call === `WAVE ${c.wave} CLEARED! +${40 * c.wave}`)(RUSH.htl), `Hold The Line: shooting down everything a wave sends clears it early, for +40 × the wave and +25 hull (${JSON.stringify(RUSH.htl.clear)})`],
     [(({ gary: g }) => g.found && g.hp === 42 && g.intro && !g.prop.falling && g.prop.slow === 0.7 && Math.abs(g.prop.lost - 4.2) < 0.01 && g.prop.wave && g.prop.toast && /Rival Pilot Gary \(Big Day\)/.test(g.bar) && g.done && g.held && g.paid === 3 * g.score && g.others === 0 && !g.barAfter && g.after1s === 0)(RUSH.htl), `Hold The Line: wave 5 brings elite Gary (42 hp, his own intro) with a boss bar; shooting off his propeller only slows him and costs 10% hp; downing him (×3 points) ends it at once, THE LINE HELD!, the rest pop for nothing (${JSON.stringify(RUSH.htl.gary)})`],
