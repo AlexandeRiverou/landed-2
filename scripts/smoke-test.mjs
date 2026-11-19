@@ -2602,7 +2602,7 @@ try {
     g.fire = (x) => { const d = p.pos.distanceTo(x.mid); fired.push({ d: Math.round(d), glow: x.glowFrom != null ? +(G.time - x.glowFrom).toFixed(2) : null, x, blocked: (() => { const c = g.C, a = x.mid, b = p.pos, ab = new V().subVectors(b, a), s = Math.max(0, Math.min(1, new V().subVectors(c, a).dot(ab) / ab.lengthSq())); return a.clone().addScaledVector(ab, s).distanceTo(c) < 160 * g.k; })() }); return fire(x); };
     const glowWatch = () => { for (const x of moons) { if (x.wind > 0 && x.glowFrom == null) x.glowFrom = G.time; if (!(x.wind > 0) && !(x.shots > 0)) x.glowFrom = null; } };
     const fans = [], spitFire = g.spitFire.bind(g);
-    g.spitFire = () => { const n0 = E.shots.length, wind = +(e.t - g.spit.startedAt).toFixed(2), state = eye.state, puff = +g.face.cheeks[0].scale.x.toFixed(2); spitFire(); fans.push({ wind, orbs: E.shots.slice(n0).filter((s) => s.mesh.material.color.getHexString() === 'ff9a3a').length, state, puff, phase: g.phase }); };
+    g.spitFire = () => { const n0 = E.shots.length, ns = E.shots.length, wind = +(e.t - g.spit.startedAt).toFixed(2), state = eye.state, puff = +g.face.cheeks[0].scale.x.toFixed(2); spitFire(); const mine = E.shots.slice(ns).filter((s) => s.mesh.material.color.getHexString() === 'ff9a3a'); fans.push({ wind, orbs: mine.length, speed: mine.length ? Math.round(mine[0].vel.length()) : 0, state, puff, phase: g.phase }); };
     const spitStarts = [], spitStep = g.spitStep.bind(g);
     g.spitStep = (dt, dist) => { const w = g.spit.wind; spitStep(dt, dist); if (!(w > 0) && g.spit.wind > 0) spitStarts.push({ state: eye.state, phase: g.phase, cos: +new V().subVectors(p.pos, g.C).normalize().dot(eye.wn).toFixed(2) }); };
     const R = 160;
@@ -2651,24 +2651,29 @@ try {
       for (let k = 0; k < 30 * 8; k++) { p.pos.copy(g.C).addScaledVector(eye.wn, 600); p.prevPos.copy(p.pos); p.speed = 0.001; step(1); poreWatch(); }
       out.pores = { farBurps: spawned.length };
     }
-    // Near (440 m, in front): pores due all the time. The first 15 s nobody shoots them (they pile up to the cap); then
-    // they're shot every 2 s, so the 30 run out.
+    // Near (340 m, in front): pores due all the time. The first 4 s even the 4 s gap between burps is skipped, so they
+    // pile up to the cap; after 15 s they're also shot every 2 s, so the 24 run out. A pore's red marker shows only
+    // while it glows.
     {
       let maxAlive = 0, n = 0;
-      const burped0 = g.burped; // (some came out during the orbit above)
+      g.burped = 0; g.tips.noOpinions = false; // (the orbit above spent the budget already: a fresh one)
+      const burped0 = g.burped;
       const n0 = notes.length;
       const v0 = [];
-      for (let k = 0; k < 30 * 90 && g.burped < 30; k++) {
+      let markerGlow = false, markerQuiet = false;
+      for (let k = 0; k < 30 * 90 && g.burped < 24; k++) {
         for (const q of pores) if (!q.broken && q.state === 'quiet') q.cd = Math.min(q.cd, 0);
-        p.pos.copy(g.C).addScaledVector(eye.wn, 440); p.prevPos.copy(p.pos); p.speed = 0.001; p.health = p.maxHealth;
+        if (k < 30 * 4) g.lastBurp = -99;
+        p.pos.copy(g.C).addScaledVector(eye.wn, 340); p.prevPos.copy(p.pos); p.speed = 0.001; p.health = p.maxHealth;
         step(1); poreWatch();
+        for (const q of pores) { if (q.state === 'glow' && q.marker.visible) markerGlow = true; if (q.state === 'quiet' && q.marker.visible) markerQuiet = true; }
         if (spawned.length && !v0.length) v0.push(...spawned.map((s) => +s.x.vel.clone().normalize().dot(pores.reduce((b, q) => (q.wa.distanceTo(s.at) < b.wa.distanceTo(s.at) ? q : b)).wn).toFixed(2)));
         maxAlive = Math.max(maxAlive, g.alive().length);
         if (++n > 30 * 15 && n % 60 === 0) for (const x of grumblings()) { x.hp = 0; } // shot down
       }
       for (let k = 0; k < 30 * 8; k++) { for (const q of pores) if (!q.broken) q.cd = 0; step(1); poreWatch(); } // spent: no more
       Object.assign(out.pores, {
-        burped: g.burped, spawned: spawned.length, burped0, maxAlive, near: Math.max(...spawned.map((s) => s.near)), minGlow: Math.min(...spawned.map((s) => s.glowFor ?? 0)), outward: Math.min(...v0),
+        burped: g.burped, spawned: spawned.length, burped0, maxAlive, markerGlow, markerQuiet, near: Math.max(...spawned.map((s) => s.near)), minGlow: Math.min(...spawned.map((s) => s.glowFor ?? 0)), outward: Math.min(...v0),
         firstTip: notes.includes('Grumblings! Tiny opinions with teeth.'), spent: notes.slice(n0).includes('Grumbleglobe has run out of opinions. Temporarily.'),
       });
       for (const x of grumblings()) E.removeEnemy(x);
@@ -2689,6 +2694,48 @@ try {
       E.removeEnemy(y);
       out.pores.pop = { dead: x.dead, score: G.score - s0, squeak: tones.includes(1400), booms, shared, disposed }; // removing one leaves the shared geometry and materials alone
       G.audio.tone = tone; G.audio.explode = explode;
+    }
+    // Grumblings cut across in front of your nose (where you'll be in 1 s), each to its own spot (they don't stack),
+    // at 52; one about for over 10 s, or over 220 m off the surface, sulks off: no points, its slot freed.
+    {
+      park(); level(0); p.speed = p.baseSpeed;
+      const a = spawn('grumbling', p.pos.clone().add(new V(150, 0, -100))), b = spawn('grumbling', a.pos.clone());
+      a.seed = 0; b.seed = 3; // (spots 3 rad apart round the aim point)
+      let lead = 1, gap = Infinity;
+      for (let k = 0; k < 30 * 3; k++) {
+        p.pos.addScaledVector(p.forward, -p.speed / 30); // (park() would undo the flight: keep it level, flying on)
+        step(1);
+        if (k >= 30 * 1.5 && !a.dead && !b.dead) {
+          const want = p.pos.clone().addScaledVector(p.forward, p.speed).sub(a.pos).normalize();
+          lead = Math.min(lead, a.vel.clone().normalize().dot(want)); gap = a.pos.distanceTo(b.pos);
+        }
+      }
+      out.pores.steer = { lead: +lead.toFixed(2), gap: +gap.toFixed(1), speed: E.list.find((x) => x.type === 'grumbling')?.def.speed };
+      for (const x of grumblings()) E.removeEnemy(x);
+      p.pos.copy(g.C).addScaledVector(eye.wn, 600); p.prevPos.copy(p.pos); p.speed = 0.001;
+      const old = spawn('grumbling', g.C.clone().addScaledVector(eye.wn, 200)), stray = spawn('grumbling', g.C.clone().addScaledVector(eye.wn, 400)), fresh = spawn('grumbling', g.C.clone().addScaledVector(eye.wn, 200));
+      g.grumbs.push(old, stray, fresh);
+      old.stateT = 10.5;
+      const s0 = G.score;
+      step(1);
+      out.pores.sulk = { old: old.dead, stray: stray.dead, fresh: !fresh.dead, score: G.score - s0 };
+      for (const x of grumblings()) E.removeEnemy(x);
+    }
+    // A clump of 6 Grumblings reaching you in the same frame: small puffs (no explosions), and one or two bites.
+    {
+      park(); step(2);
+      let booms = 0;
+      const explosion = G.fx.explosion.bind(G.fx);
+      G.fx.explosion = (...a) => { booms++; return explosion(...a); };
+      p.health = p.maxHealth; p.invuln = 0;
+      const h0 = p.health;
+      for (let k = 0; k < 6; k++) spawn('grumbling', p.pos.clone().add(new V(k * 0.3, 0, 0)));
+      G.step(1 / 30);
+      for (let k = 0; k < 4; k++) { p.invuln = 0; G.step(1 / 30); }
+      G.fx.explosion = explosion;
+      out.pores.clump = { lost: +(h0 - p.health).toFixed(1), booms, left: grumblings().length };
+      p.health = p.maxHealth;
+      for (const x of grumblings()) E.removeEnemy(x);
     }
 
     // ---- Relax mode: the planet stays and dozes: moons still, no orbs, its Grumblings pop, none come. Back from it,
@@ -2788,7 +2835,7 @@ try {
       out.shield.down = {
         broken: moons.every((x) => x.broken), toast: notes.some((n) => /^SHIELD DOWN!/.test(n)), bubble: eye.shield.visible, progress: O.current.progress, phase: g.phase, hp: +bar().toFixed(1),
         lines: ['Moon down! It\'s going to tell Mum.', 'Moon down! It wasn\'t even its fault.', 'Last moon down! The planet is very alone now.'].every((l) => notes.includes(l)), phase2: notes.includes('No moons, no shield, no chill. Shoot the eye when it opens!'),
-        shocked: g.face.o.visible, score80: pops.filter((x) => x === '+80').length,
+        shocked: g.face.o.visible, score80: pops.filter((x) => x === '+80').length, note: g.bar().note,
       };
       step(15);
       out.shield.down.tethersGone = moons.every((m) => !m.tether.visible);
@@ -2805,7 +2852,7 @@ try {
         const s = eye.state;
         if (s !== last) { cycle.push([s, +(G.time - at).toFixed(2)]); last = s; at = G.time; }
         if (s === 'shut' && !shutShot) shutShot = eyeShot();
-        if (s === 'open' && G.time - at > 0.5 && !openShot) { openShot = eyeShot(); out.homing.eye = (() => { const h = g.homeAt(eye.mid.clone().addScaledVector(eye.wn, 30)); return !!h && h.distanceTo(eye.mid) < 1; })(); }
+        if (s === 'open' && G.time - at > 0.5 && !openShot) { out.openLook = { progress: O.current.progress, note: g.bar().note, stalk: eye.stalk.visible && eye.stalk.scale.y > 10 }; openShot = eyeShot(); out.homing.eye = (() => { const h = g.homeAt(eye.mid.clone().addScaledVector(eye.wn, 30)); return !!h && h.distanceTo(eye.mid) < 1; })(); }
       }
       out.eye = { cycle, shutShot, openShot, firstHit: notes.includes('Right in the eye! It\'s really upset now.') };
     }
@@ -2891,6 +2938,13 @@ try {
       p.pos.copy(from).add(new V(0, 0, 200)); p.prevPos.copy(p.pos); p.invuln = 0; p.health = p.maxHealth;
       for (let k = 0; k < 30 && g.beamT > 0; k++) { p.invuln = 0; g.animate(1 / 30); }
       out.phase3.dodge.hitPays = G.score - s1;
+      // ...and a barrel roll straight through it is a dodge too: +25, no damage.
+      const s2 = G.score, h2 = p.health = p.maxHealth;
+      g.beam(from, dir, 200);
+      p.pos.copy(from).add(new V(0, 0, 200)); p.prevPos.copy(p.pos); p.invuln = 0; p.dodging = true;
+      for (let k = 0; k < 30 && g.beamT > 0; k++) { p.invuln = 0; g.animate(1 / 30); }
+      p.dodging = false;
+      out.phase3.dodge.roll = { score: G.score - s2, lost: h2 - p.health };
       p.health = p.maxHealth;
     }
     // The beam's reach, fired by hand along +Z from 200 m in front of you: its hit radius is 6 + 4 m (you at 9 m off the
@@ -3575,22 +3629,24 @@ try {
     // ---- Grumbleglobe, the Planet With Opinions (see the GLOBE block)
     ...(({ zone: z, arrival: a }) => [
       [z.name === 'Grumbleglobe' && z.after === 'Gas Giant' && z.before === 'The Moon' && z.mood === 'ember' && z.asteroids === 0 && GLOBE.card === 'Grumbleglobe' && GLOBE.notInDeck && GLOBE.devButton && z.blurb === 'A tiny planet with a big frown, three clingy moons and one very angry eye.', `Grumbleglobe: its own zone between Gas Giant and The Moon, never in the regular boss deck, a dev-menu button (${JSON.stringify(z)})`],
-      [a.t <= 6 && a.dist >= 650 && a.dist <= 800 && a.deg <= 15 && a.grown === 1 && a.eye === 'stare' && a.facing > 0.9 && a.bar === '👑 Grumbleglobe, the Planet With Opinions (moons: 3)' && a.progress === '🌙3 🕳4' && a.level === 1 && a.nextGap >= 4 && a.nextGap <= 7 && a.surfaceSide, `Grumbleglobe: the zone's first objective; within 6 s the planet is ~760 m off your nose, face first (every gadget on the face side), with its boss bar (and it takes the boss slot) (${JSON.stringify(a)})`],
+      [a.t <= 6 && a.dist >= 650 && a.dist <= 800 && a.deg <= 15 && a.grown === 1 && a.eye === 'stare' && a.facing > 0.9 && a.bar === '👑 Grumbleglobe, the Planet With Opinions (moons: 3)' && a.progress === '🌙 3 moons left · pores 4' && a.level === 1 && a.nextGap >= 4 && a.nextGap <= 7 && a.surfaceSide, `Grumbleglobe: the zone's first objective; within 6 s the planet is ~760 m off your nose, face first (every gadget on the face side), with its boss bar (and it takes the boss slot) (${JSON.stringify(a)})`],
       [a.moons.length === 3 && a.moons.every((d) => d >= 280 && d <= 300) && a.tilts.every((x) => x >= 20) && a.tethers && a.rings && a.markers, `Grumbleglobe: 3 moons orbit 280-300 m from its centre on different tilts, each with a faint orbit ring, a cyan tether to the shield and a red marker (${JSON.stringify({ moons: a.moons, tilts: a.tilts, tethers: a.tethers, rings: a.rings, markers: a.markers })})`],
     ])(GLOBE),
     [GLOBE.rock.drop === 0 && GLOBE.rock.sparks.length > 0 && GLOBE.rock.sparks.every((c) => c === '#9aa0a6') && GLOBE.rock.tip && GLOBE.gadget.drop === 1.33 && GLOBE.gadget.partDrop === 1 && GLOBE.gadget.sparks.includes('#ffd23a') && GLOBE.gadget.moonDrop === 1.13 && GLOBE.gadget.moonSparks.includes('#ffd23a'), `Grumbleglobe: bare rock never moves the bar (grey, with a tip); a pore or moon hit drains it at once (gold) (${JSON.stringify({ rock: GLOBE.rock, gadget: GLOBE.gadget })})`],
     [GLOBE.through.stopped && GLOBE.through.drop === 0 && GLOBE.through.partDrop === 0 && GLOBE.through.orbGone, `Grumbleglobe: bullets and orbs stop at the planet, nothing passes through (${JSON.stringify(GLOBE.through)})`],
-    [(({ shield: s }) => s.note3 === 'moons: 3' && s.shot.drop === 0 && s.shot.eyeDrop === 0 && s.bubble && s.plugged && s.notes[0] === 'moons: 2' && s.notes[1] === 'moons: 1' && s.notes[2] !== 'moons: 0' && s.phases[0] === 1 && s.phases[1] === 1 && s.phases[2] === 2 && s.down.broken && s.down.toast && s.down.phase2 && s.down.lines && !s.down.bubble && s.down.progress === '🌙0 🕳1' && s.down.phase === 2 && s.down.hp > 33 && s.down.shocked && s.down.score80 >= 3 && s.down.tethersGone)(GLOBE), `Grumbleglobe: while a moon stands the eye takes no damage (cyan bubble); the bar note counts the moons down, each with its line, +80 and a shocked face; the last one (pores plugged first or not) drops the shield, its tethers fade and phase 2 starts at once (${JSON.stringify(GLOBE.shield)})`],
+    [(({ shield: s }) => s.note3 === 'moons: 3' && s.shot.drop === 0 && s.shot.eyeDrop === 0 && s.bubble && s.plugged && s.notes[0] === 'moons: 2' && s.notes[1] === 'moons: 1' && s.notes[2] !== 'moons: 0' && s.phases[0] === 1 && s.phases[1] === 1 && s.phases[2] === 2 && s.down.broken && s.down.toast && s.down.phase2 && s.down.lines && !s.down.bubble && s.down.progress === '👁 Eye shut: dodge! · pores 1' && s.down.note === 'eye shut' && s.down.phase === 2 && s.down.hp > 33 && s.down.shocked && s.down.score80 >= 3 && s.down.tethersGone)(GLOBE), `Grumbleglobe: while a moon stands the eye takes no damage (cyan bubble); the bar note counts the moons down, each with its line, +80 and a shocked face; the last one (pores plugged first or not) drops the shield, its tethers fade and phase 2 starts at once (${JSON.stringify(GLOBE.shield)})`],
     [(({ eye: y }) => { const tw = y.cycle.findIndex((c) => c[0] === 'twitch'); return tw >= 0 && y.cycle[tw + 1]?.[0] === 'open' && y.cycle[tw + 1][1] >= 0.9 && y.cycle[tw + 2]?.[0] === 'shut' && Math.abs(y.cycle[tw + 2][1] * 0.85 - 5) < 0.1 && y.shutShot?.drop === 0 && y.openShot?.drop === 2.78 && y.openShot.eyeDrop === 1 && y.firstHit; })(GLOBE), `Grumbleglobe: the lid opens for 5 s on a cycle after a 1 s twitch; shut it bounces, open the bar drains (${JSON.stringify(GLOBE.eye)})`],
+    [(({ openLook: o }) => o && o.progress === '👁 EYE OPEN: shoot it! · pores 1' && o.note === 'eye open!' && o.stalk)(GLOBE), `Grumbleglobe: once the eye opens the card says "EYE OPEN: shoot it!" and the eye bulges out on its stalk (${JSON.stringify(GLOBE.openLook)})`],
     [(({ potshots: t }) => t.orbs > 0 && t.perS <= 1 && t.maxD < 380 && t.minGlow >= 0.55 && t.blocked === 0)(GLOBE), `Grumbleglobe moons: a 0.6 s glow before every potshot, only at you within 380 m with the planet out of the way; over a 30 s orbit at 300 m (phase 1) at most 1 damaging orb/s all told (${JSON.stringify(GLOBE.potshots)})`],
-    [(({ spit1: a, spit2: b, phase3: c }) => a.fans.length >= 1 && a.fans.every((f) => f.wind >= 1 && f.orbs === 5 && f.puff >= 1.35) && a.starts.every((s) => s.cos > 0.35) && b.fans.length >= 2 && b.fans.every((f) => f.wind >= 1 && f.orbs === 5) && b.starts.length >= 2 && b.starts.every((s) => s.state !== 'twitch' && s.state !== 'open' && s.cos > 0.35) && b.drones === 0 && b.phase === 2 && c.fans.length >= 1 && c.fans.every((f) => f.wind >= 1 && f.orbs === 7))(GLOBE), `Grumbleglobe spit fans: cheeks puff for 1 s+ first, then 5 orbs (7 in phase 3), only with you in front of the face; in phase 2 (no drones) a fan never starts while the eye twitches or is open (${JSON.stringify({ spit1: GLOBE.spit1, spit2: GLOBE.spit2, p3: GLOBE.phase3.fans })})`],
-    [(({ pores: q }) => q.farBurps === 0 && q.burped === 30 && q.spawned === 30 - q.burped0 && q.maxAlive >= 5 && q.maxAlive <= 6 && q.near <= 10 && q.minGlow >= 1 && q.outward > 0.85 && q.firstTip && q.spent)(GLOBE), `Grumbleglobe pores: a 1 s+ glow, then Grumblings pop out at the pore mouth along its normal; at most 6 alive, 30 a fight (then a line), none while you're over 500 m out (${JSON.stringify(GLOBE.pores)})`],
+    [(({ spit1: a, spit2: b, phase3: c }) => a.fans.length >= 1 && a.fans.every((f) => f.wind >= 1 && f.orbs === 5 && f.speed === 100 && f.puff >= 1.35) && a.starts.every((s) => s.cos > 0.35) && b.fans.length >= 2 && b.fans.every((f) => f.wind >= 1 && f.orbs === 5) && b.starts.length >= 2 && b.starts.every((s) => s.state !== 'twitch' && s.state !== 'open' && s.cos > 0.35) && b.drones === 0 && b.phase === 2 && c.fans.length >= 1 && c.fans.every((f) => f.wind >= 1 && f.orbs === 7))(GLOBE), `Grumbleglobe spit fans: cheeks puff for 1 s+ first, then 5 orbs (7 in phase 3), only with you in front of the face; in phase 2 (no drones) a fan never starts while the eye twitches or is open (${JSON.stringify({ spit1: GLOBE.spit1, spit2: GLOBE.spit2, p3: GLOBE.phase3.fans })})`],
+    [(({ pores: q }) => q.farBurps === 0 && q.burped === 24 && q.spawned === 24 - q.burped0 && q.maxAlive === 6 && q.markerGlow && !q.markerQuiet && q.near <= 10 && q.minGlow >= 1 && q.outward > 0.85 && q.firstTip && q.spent)(GLOBE), `Grumbleglobe pores: a 1 s+ glow, then Grumblings pop out at the pore mouth along its normal; its red marker only while it glows; at most 6 alive, 24 a fight (then a line), none while you're over 500 m out (${JSON.stringify(GLOBE.pores)})`],
+    [(({ pores: { steer: q, sulk: u, clump: c } }) => q.lead > 0.8 && q.gap > 8 && q.speed === 52 && u.old && u.stray && u.fresh && u.score === 0 && c.lost >= 8 && c.lost <= 16 && c.booms === 0 && c.left === 0)(GLOBE), `Grumblings: after the scatter they cut in ahead of your nose at 52, each to its own spot; one about over 10 s or 220 m off the surface sulks off (no points); a clump of 6 reaching you at once puffs (no explosions) and bites 8-16 hull, not 48 (${JSON.stringify({ steer: GLOBE.pores.steer, sulk: GLOBE.pores.sulk, clump: GLOBE.pores.clump })})`],
     [(({ pores: { pop: q } }) => q.dead && q.score === 5 && q.squeak && q.booms === 0 && q.shared && q.disposed === 0)(GLOBE), `Grumblings: one hit pops one for 5 points with a squeak (no explosion); they share their geometry and materials, and removing one disposes none of it (${JSON.stringify(GLOBE.pores.pop)})`],
     [(({ bounce: b }) => b.boing && b.line && b.hull.length === 1 && b.hull[0] === 12 && b.lost >= 11 && b.lost <= 12.5 && !b.dead && b.lives === b.lives0 && b.d >= 164 && b.away >= 0.5 && b.glow && !b.god.boing && b.god.hull.length === 0 && !b.ghost.boing && b.ghost.hull.length === 0 && b.mega.boing && b.mega.lives === b.lives0 && b.low.boing && !b.low.dead && b.low.health >= 1 && b.low.health <= 2 && b.moon.boing && b.moon.d >= 4 && b.moon.lives === b.lives0)(GLOBE), `Grumbleglobe: flying into it (or a moon) bounces you back out: BOING!, a line, 12 hull, no life, outside it and heading away within 0.5 s; God and Ghost Mode skim it unhurt; Mega Plane bounces too; a bounce never takes your last hull point (${JSON.stringify(GLOBE.bounce)})`],
     [(({ respawnCrash: c, respawn: r }) => c.dead && c.lives === 4 && r.dist >= 445 && r.dist <= 455 && Math.abs(r.dy) <= 2 && r.deg <= 5 && r.invuln > 2 && r.broken)(GLOBE), `Grumbleglobe: running out of hull near it costs a life as usual; the respawn is 450 m out facing it, destroyed gadgets still gone (${JSON.stringify({ crash: GLOBE.respawnCrash, respawn: GLOBE.respawn })})`],
     [(({ track: q }) => q.p1 >= 0.11 && q.p1 <= 0.121 && q.p2 >= 0.19 && q.p2 <= 0.201 && q.p3 >= 0.29 && q.p3 <= 0.301 && q.open === 0)(GLOBE), `Grumbleglobe: its face turns toward you at up to 0.12 / 0.2 / 0.3 rad/s by phase, and holds still while the eye is open (${JSON.stringify(GLOBE.track)})`],
     [(({ phase3: q }) => q.phase === 3 && q.enraged && q.cracks && /ENRAGED/.test(q.bar) && q.toast && q.brows < 0 && q.begs && q.eyeOpen >= 5.8 && q.glare && q.glare.t >= 1.2 && q.glare.fired >= 1.2 && q.glare.hit === 1 && q.glare.sight && q.glare.sight[0] >= 2 && q.glare.sight[0] < 2.5 && q.glare.sight[1] > 3.5 && q.glare.sight[1] <= 4 && q.glare.beamOp.length === 1 && q.glare.beamOp[0] === 0.7 && q.glare.beamOver >= 25 && q.glare.beamOver <= 35 && q.glare.beamDrawn && (q.glare.beamDrawn.endToAim <= 1 || Math.abs(q.glare.beamDrawn.camGap - 50) <= 0.5) && Math.abs(q.glare.beamDrawn.hitPast - 30 - q.glare.beamDrawn.shortOfAim) <= 0.2 && q.glare.beamDrawn.tip === 40 && q.glare.beamDrawn.point === 0 && q.rocks >= 1 && q.rocks <= 2)(GLOBE), `Grumbleglobe phase 3 (33%): ENRAGED, cracks, worried brows, begging taunts, the eye open 6 s, a 1.2 s+ glare warning (a thin sight, 2 m thickening to 4 m) before its 20-damage beam (steady 0.7, drawn up to where it aimed or 50 m short of the camera, narrowing over its last 40 m, hitting ~30 m past you), up to 2 Grudge Rocks (${JSON.stringify(GLOBE.phase3)})`],
-    [(({ phase3: { dodge: q } }) => q && q.score === 25 && q.pop && q.hitPays === 0)(GLOBE), `Grumbleglobe glare: a beam that misses you pays +25 "Dodge!"; one that hits pays nothing (${JSON.stringify(GLOBE.phase3.dodge)})`],
+    [(({ phase3: { dodge: q } }) => q && q.score === 25 && q.pop && q.hitPays === 0 && q.roll.score === 25 && q.roll.lost === 0)(GLOBE), `Grumbleglobe glare: a beam that misses you pays +25 "Dodge!", and so does a barrel roll straight through it; one that hits pays nothing (${JSON.stringify(GLOBE.phase3.dodge)})`],
     [(({ phase3: { held: q } }) => q && q.held >= 5.9 && q.held <= 6.2 && q.err > 0.7 && q.opened && q.inView && q.inView.held >= 5.9 && q.inView.held <= 6.2 && q.inView.opened && q.inView.sees && q.inView.glares === 0)(GLOBE), `Grumbleglobe: an eye the face can't bring round to you (you keep 126° off it) still twitches and opens after 6 s held shut; a forced opening with the face off you fires no glare (${JSON.stringify(GLOBE.phase3.held)})`],
     [(({ phase3: { glareBack: q } }) => q && q.behind === true && q.ahead === false)(GLOBE), `Grumbleglobe glare: from behind the camera it toasts "glaring at your back"; from in front, no toast (${JSON.stringify(GLOBE.phase3.glareBack)})`],
     [(({ phase3: { reach: q } }) => q && q.in9 === 1 && q.out11 === 0 && q.past25 === 1 && q.past45 === 0 && q.camDrawn === 70 && q.camEnd === 70 && q.sight && q.sight.end === 70 && q.sight.body === 35 && q.sight.same && q.sight.gone)(GLOBE), `Grumbleglobe glare: hit radius 6 + 4 m, the hit segment 30 m past the aim point, the drawn beam and the sight stopping 50 m short of the camera, their last 40 m (half, for these 70 m) a narrowing tip (${JSON.stringify(GLOBE.phase3.reach)})`],

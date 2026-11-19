@@ -27,7 +27,7 @@ const TYPES = {
   grudgeRock: { hp: 4, radius: 9, dmg: 15, speed: 14, make: makeGrudgeRock, score: 60, minScore: 120, weight: 1.2, kamikaze: false, split: ['pebble', 3], name: 'Grudge Rock', intro: 'A Grudge Rock! Break it and you get several smaller rocks. They keep the grudge.' },
   pebble: { hp: 1, radius: 3, dmg: 10, speed: 48, make: makePebble, score: 10, minScore: 0, weight: 0, kamikaze: true, quiet: true, name: 'Grudge Pebble' },
   // squeak: a short high squeak instead of the explosion when it pops. Only Grumbleglobe's pores make these (planetboss.js).
-  grumbling: { hp: 1, radius: 4, dmg: 8, speed: 44, make: makeGrumbling, score: 5, minScore: Infinity, weight: 0, kamikaze: true, quiet: true, squeak: true, name: 'Grumbling' },
+  grumbling: { hp: 1, radius: 4, dmg: 8, speed: 52, make: makeGrumbling, score: 5, minScore: Infinity, weight: 0, kamikaze: true, quiet: true, squeak: true, name: 'Grumbling' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
   kites: { hp: 2, radius: 5, dmg: 12, speed: 26, make: makeKite, score: 50, minScore: 200, weight: 1, kamikaze: false, pair: true, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. Do not fly through the string. Go over. Or under.' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
@@ -62,6 +62,9 @@ const RUSH_KEEP = 1.1; // see keepUp
 // and no more than ACTIVE_BEHIND m behind you.
 const STRAGGLER = 550, ACTIVE_R = 700, ACTIVE_BEHIND = 300;
 const KILL_MEND = 3; // hull each kill mends during Hold The Line
+// Grumblings aim GRUMBLE_LEAD s ahead of you, each at its own spot up to GRUMBLE_SPREAD m off that point (circling
+// slowly); GRUMBLE_GAP s after one bites, the rest of the clump doesn't.
+const GRUMBLE_LEAD = 1, GRUMBLE_SPREAD = 20, GRUMBLE_GAP = 0.3;
 // Umbrella Goon: how fast its umbrella swings round to you (rad per enemy-s), and how far off its facing a bullet may
 // come in and still bounce off (cos of 60°). Circling it 120 m out (about 0.37 rad/s) outturns it.
 const UMBRELLA_TURN = 0.25, UMBRELLA_COS = Math.cos((60 * Math.PI) / 180);
@@ -319,6 +322,7 @@ export class Enemies {
     this.orbGeo = new THREE.SphereGeometry(1.6, 8, 6);
     this.orbMat = new THREE.MeshBasicMaterial({ color: '#7aff5a' });
     this.introduced = new Set();
+    this.nibbleAt = -99; // when a Grumbling last bit you (see GRUMBLE_GAP)
     this.orbMats = new Map();
     this.breather = false; // every boss alive has lost you or is coming back (not waiting): see player.js regen
     this.shookAt = -99;
@@ -733,7 +737,7 @@ export class Enemies {
     this.G.scene.add(mesh);
     const e = {
       type, def, mesh, pos: mesh.position, vel: new THREE.Vector3(), hp: def.hp, radius: def.radius * (opts.scale || 1),
-      t: Math.random() * 10, cd: rand(1, 3), state: 'idle', stateT: 0, quest: !!opts.quest, anchor: opts.anchor ? opts.anchor.clone() : pos.clone(), dead: false,
+      t: Math.random() * 10, seed: Math.random() * 6.283, cd: rand(1, 3), state: 'idle', stateT: 0, quest: !!opts.quest, anchor: opts.anchor ? opts.anchor.clone() : pos.clone(), dead: false,
     };
     if (opts.scale) mesh.scale.setScalar(opts.scale);
     e.marker = makeMarker();
@@ -933,13 +937,16 @@ export class Enemies {
         // Mega Plane flattens anything smaller than a boss.
         if (G.powerups.has('mega') && !e.boss) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
         e.contactCd = 1.5; // big enemies bump you once, not every frame
-        p.damage(e.dash > 0 && e.def.dashDmg ? e.def.dashDmg : e.def.dmg); // dashDmg: a glancing bump mid-strafe (Gary's cut)
+        // A clump of Grumblings costs one or two bites, not six: GRUMBLE_GAP s after one gets you, the next ones don't.
+        const nibble = e.def.squeak && G.time - this.nibbleAt < GRUMBLE_GAP;
+        if (e.def.squeak && !nibble) this.nibbleAt = G.time;
+        if (!nibble) p.damage(e.dash > 0 && e.def.dashDmg ? e.def.dashDmg : e.def.dmg); // dashDmg: a glancing bump mid-strafe (Gary's cut)
         if (e.dash > 0 || e.mv?.charge) {
           e.dash = 0;
           if (e.mv) e.mv.charge = false;
           if (e.kind === 'seagullSteven' && p.boost > 0.1) { p.boost = 0; G.ui.notify('Steven stole your boost. And your chips. Mostly the chips.', 'bad', 3); }
         }
-        if (e.def.kamikaze) { G.fx.explosion(e.pos); this.kill(i, false); continue; }
+        if (e.def.kamikaze) { this.burst(e); this.kill(i, false); continue; }
         e.vel.copy(toP).normalize().multiplyScalar(-60);
       }
       // Bullets: weak points and breakable parts first, then the body. A moth on your wing is out of your line of fire.
@@ -1145,10 +1152,20 @@ export class Enemies {
         steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(0, Math.sin(e.t * 1.5) * 6, 0)), 0.8);
         break;
       case 'pebble':
-      case 'grumbling':
         // Scatters from the break for 0.8 s (real), then homes in.
         if (e.stateT < 0.8 * PACE) e.vel.multiplyScalar(Math.exp(-dt * 1.5));
         else steer(_w.copy(toP).normalize().multiplyScalar(d.speed).add(_pp.set(Math.sin(e.t * 7) * 8, Math.cos(e.t * 6) * 5, 0)), 2.5);
+        break;
+      case 'grumbling':
+        // Scatters out of its pore for 0.8 s (real), then cuts across in front of your nose (where you'll be in
+        // GRUMBLE_LEAD s), each aiming at its own spot round that point and wiggling to its own beat (e.seed), so they
+        // swarm rather than stack. Grumbleglobe sends off the ones that hang about too long (planetboss.js).
+        if (e.stateT < 0.8 * PACE) e.vel.multiplyScalar(Math.exp(-dt * 1.5));
+        else {
+          const k = GRUMBLE_SPREAD, s = e.seed;
+          _w.copy(p.pos).addScaledVector(p.forward, p.speed * GRUMBLE_LEAD).add(_pp.set(Math.sin(s + e.stateT * 0.8) * k, Math.cos(s * 1.7 + e.stateT * 0.6) * k * 0.6, Math.cos(s + e.stateT * 0.8) * k));
+          steer(_w.sub(e.pos).normalize().multiplyScalar(d.speed).add(_pp.set(Math.sin(e.t * 7 + s) * 10, Math.cos(e.t * 6 + s * 1.7) * 7, 0)), 2.5);
+        }
         break;
       case 'sniperOwl': {
         // Holds 320-380 m off (200-240 under a roof). Closer than 250 m (160) it backs off at 0.7 × your speed: catchable.
@@ -1361,6 +1378,13 @@ export class Enemies {
       }
       if (hit || ground || s.life <= 0) { this.G.scene.remove(s.mesh); this.shots.splice(i, 1); }
     }
+  }
+
+  // A kamikaze going off: small fry (quiet ones: pebbles, Grumblings) just puff, so a clump of them doesn't white out
+  // the screen; the rest explode.
+  burst(e) {
+    if (e.def.quiet) this.G.fx.emit(e.pos, 10, { colors: ['#ffd23a', '#8a7a9a', '#ffffff'], speed: 25, life: 0.5, size: 5 });
+    else this.G.fx.explosion(e.pos);
   }
 
   kill(i, byPlayer) {

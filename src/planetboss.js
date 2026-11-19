@@ -31,8 +31,8 @@ export const GLOBE = {
 // The gadgets. worth: how much of the 100-point bar it drains in all (moons 34, pores 16, eye 50). The eye is shielded
 // until every moon is gone, and breaking it ends the fight whatever is left of the bar.
 const KINDS = {
-  moon: { hp: 10, worth: 34 / 3, score: 80, icon: '🌙' },
-  pore: { hp: 3, worth: 4, score: 40, icon: '🕳', line: 'Pore plugged! Fewer opinions.' },
+  moon: { hp: 10, worth: 34 / 3, score: 80 },
+  pore: { hp: 3, worth: 4, score: 40, line: 'Pore plugged! Fewer opinions.' },
   eye: { hp: 18, worth: 50, score: 40, line: 'The eye is out! It can\'t see you now. It can still feel you.' },
   crown: { hp: 10, worth: 0, score: 40, line: 'CROWN KNOCKED OFF! Every gadget takes 30% more damage now. The planet is mortified.' },
 };
@@ -52,13 +52,15 @@ const MOON = {
 // The three of them: colour and face.
 const MOONS = [{ color: '#7ab8ff', face: 'pouty' }, { color: '#ff9ad0', face: 'smug' }, { color: '#ffe08a', face: 'sleepy' }];
 // Spitballs from the mouth: only with you within `cos` of the face (normal · dir; 70°) and `range` m. Cheeks puff up to
-// `puff` × over `wind` s (with a rising hum), then n orbs (phase 3: nMad) `spread`° apart in a level fan at where you
-// are (no lead). Cooldown by phase. Never starts while the eye is twitching or open: that's your turn.
-const SPIT = { wind: 1.0, n: 5, nMad: 7, spread: 12, speed: 70, dmg: 8, size: 2.5, color: '#ff9a3a', cd: [6, 4.5, 3.5], first: 3, cos: 0.35, range: 600, puff: 1.4, oFire: 0.4, oShock: 1 };
+// `puff` × over `wind` s (with a rising hum), then n orbs (phase 3: nMad) `spread`° apart in a level fan, its centre
+// aimed `lead` of the way to where you'll be when they arrive (like the moons' potshots). Cooldown by phase. Never
+// starts while the eye is twitching or open: that's your turn.
+const SPIT = { wind: 1.0, n: 5, nMad: 7, spread: 12, speed: 100, lead: 0.5, dmg: 8, size: 2.5, color: '#ff9a3a', cd: [6, 4.5, 3.5], first: 3, cos: 0.35, range: 600, puff: 1.4, oFire: 0.4, oShock: 1 };
 // Pores: glow and rumble `warn` s, then burp n Grumblings out along the normal at `out` m/s. Each pore every cd ± jitter
 // s (phase 3: × madK), never two within `gap` s, only with you within `range` m of the centre. Alive at once: cap
 // (phase 3: capMad; lap 2+: +lap; persuasion 'easier': -easier), never past the CEILING; `total` per fight, then they stop.
-const PORE = { warn: 1.0, n: 3, out: 40, cd: 9, jitter: 2, madK: 0.7, gap: 3, range: 450, cap: 6, capMad: 8, lap: 2, easier: 2, total: 30, first: 4 };
+// A Grumbling about for over `life` s, or more than `leash` m off the surface, sulks off (no points) to make room.
+const PORE = { warn: 1.0, n: 3, out: 40, cd: 9, jitter: 2, madK: 0.7, gap: 8, range: 450, cap: 6, capMad: 8, lap: 2, easier: 2, total: 24, first: 4, life: 10, leash: 220 };
 // Touching the planet (R + crashPad) or a moon (r + moonPad): you're pushed out to `out` m off it, your nose flicked back
 // out (reflected about the normal, then at least minOut along it), `dmg` hull (never the last 1), `invuln` s of
 // invulnerability. At most one bounce every `cd` s (in between you just skim).
@@ -186,8 +188,11 @@ const BUILD = {
     lid.position.y = 2;
     ball.add(lid);
     add(lid, new THREE.SphereGeometry(17.5, 20, 8, 0, TAU, 0, Math.PI / 2), lambert('#7a6a8a', '#2a2030', 1));
+    // The stalk it bulges out on: 1 m tall, stretched to the bulge (animate).
+    const stalk = add(g, new THREE.CylinderGeometry(8, 11, 1, 12).translate(0, 0.5, 0), lambert('#8a5a8a', '#3a1a30', 1), 0, 1, 0);
+    stalk.visible = false;
     const shield = add(g, new THREE.SphereGeometry(EYE.shield, 28, 18), basic('#5ae0ff', 0.2, true), 0, 0, 0);
-    return { a: [2, 10], r: 15, top: 34, lid, shield, ball };
+    return { a: [2, 10], r: 15, top: 34, lid, shield, ball, stalk };
   },
   crown(g) {
     g.add(makeCrown(5));
@@ -309,7 +314,7 @@ export class Globe {
     this.parts = LAYOUT.map(([kind, lon, lat]) => {
       const obj = mount(body, lon, lat), s = BUILD[kind](obj), x = part(obj, kind, s, dirOf(lon, lat));
       if (kind === 'pore') x.cd = rand(PORE.first, PORE.first + PORE.cd);
-      if (kind === 'eye') marker(x, obj, s.top);
+      if (kind === 'eye' || kind === 'pore') marker(x, obj, s.top); // a pore's only while it glows
       const scar = add(body, new THREE.CircleGeometry(kind === 'eye' ? 18 : 10, 10).rotateX(-Math.PI / 2), basic('#2a1e2e'));
       scar.position.copy(x.n).multiplyScalar(lump(x.n) + 0.3);
       scar.quaternion.setFromUnitVectors(Y, x.n);
@@ -419,6 +424,7 @@ export class Globe {
     this.eyeStep(dt);
     this.potshots(dt);
     this.spitStep(dt, dist);
+    this.sulk();
     this.pores(dt, dist);
     if (p.dead) return false;
     this.spawns(dt);
@@ -679,7 +685,8 @@ export class Globe {
     this.oT = Math.max(this.oT, SPIT.oFire);
     if (p.dead || this.dozing) return;
     const from = this.face.o.getWorldPosition(new THREE.Vector3()).addScaledVector(this.eye.wn, 10);
-    const aim = _a.subVectors(p.pos, from).normalize();
+    const t = from.distanceTo(p.pos) / (SPIT.speed * PACE); // real s to reach you: orbs fly at PACE
+    const aim = _a.copy(p.pos).addScaledVector(p.forward, p.speed * t * SPIT.lead).sub(from).normalize();
     // The fan turns about "up" as seen along the aim (world up made square to it), so it stays level.
     const axis = _b.copy(Y).addScaledVector(aim, -aim.dot(Y));
     if (axis.lengthSq() < 1e-4) axis.set(1, 0, 0);
@@ -691,6 +698,17 @@ export class Globe {
     s.fired = (s.fired || 0) + 1;
     G.audio.tone(140, 0.25, { type: 'square', vol: 0.06, slide: -80 });
     G.audio.noise(0.2, { vol: 0.08, freq: 700 });
+  }
+
+  // A Grumbling that has been about over PORE.life s (enemy time) or strayed over PORE.leash m from the surface sulks
+  // off (a puff, no points), freeing its slot for the next burp.
+  sulk() {
+    const G = this.G, far = R * this.k + PORE.leash;
+    for (const x of this.alive()) {
+      if (x.stateT <= PORE.life && x.pos.distanceTo(this.C) <= far) continue;
+      G.fx.emit(x.pos, 8, { colors: ['#7a6a8a', '#b8a8c8'], speed: 14, life: 0.5, size: 5 });
+      G.enemies.removeEnemy(x);
+    }
   }
 
   // Grumblings (enemies.js) from this planet still about.
@@ -712,7 +730,7 @@ export class Globe {
         this.e.attacks++;
       } else if (x.state === 'glow' && (x.t -= dt) <= 0) {
         this.burp(x);
-        x.state = 'quiet';
+        this.quiet(x);
         x.cd = (PORE.cd + rand(-PORE.jitter, PORE.jitter)) * (mad ? PORE.madK : 1);
       }
     }
@@ -737,7 +755,7 @@ export class Globe {
   }
 
   // A pore goes quiet (it's plugged, the planet dozes off or dies): no glow, no burp.
-  quiet(x) { x.state = 'quiet'; x.t = 0; }
+  quiet(x) { x.state = 'quiet'; x.t = 0; x.marker.visible = false; }
 
   // Its Grumblings pop all at once (it dozes off, it dies, the fight is called off).
   popGrumblings() {
@@ -893,11 +911,13 @@ export class Globe {
 
   animate(real) {
     const G = this.G, x = this.eye, t = this.e.t, ease = 1 - Math.exp(-real * 10), F = this.face;
-    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.25 * Math.abs(Math.sin(t * 12)) : 0; // ~3.8 Hz wobble, no flashing
+    const lid = x.state === 'open' || x.state === 'stare' ? EYE.lidOpen : x.state === 'twitch' ? -0.35 * Math.abs(Math.sin(t * 6)) : 0; // ~1.9 Hz wobble, no flashing
     x.lid.rotation.x += ((this.dozing || this.dying >= 0 ? 0 : lid) - x.lid.rotation.x) * ease;
     // Open, it bulges out of its socket (easier to hit from the side); its hit capsule goes with it.
     const bulge = x.state === 'open' && !this.dozing && this.dying < 0 ? EYE.bulge : 0;
     x.ball.position.y += (bulge - x.ball.position.y) * ease * 0.6;
+    x.stalk.scale.y = Math.max(0.01, x.ball.position.y);
+    x.stalk.visible = x.ball.position.y > 0.5;
     x.a.y = 2 + x.ball.position.y;
     x.b.y = 10 + x.ball.position.y;
     x.shield.visible = this.moons() > 0 && !x.broken;
@@ -923,7 +943,8 @@ export class Globe {
     if (this.beamT > 0) {
       this.beamT -= real;
       const p = G.player;
-      if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { this.beamHit = true; p.damage(EYE.glareDmg); }
+      // Only a hit that cost hull counts: a barrel roll (or invulnerability) through the beam is still a dodge.
+      if (!this.beamHit && !p.dead && pointSeg(p.pos, this.beamA, this.beamB) < EYE.glareR + 4 * p.sizeScale) { const h = p.health; p.damage(EYE.glareDmg); this.beamHit = p.dead || p.health < h; }
       if (this.beamT <= 0) {
         this.glare.visible = this.glareTip.visible = false;
         if (!this.beamHit && !p.dead && this.dying < 0) this.dodged();
@@ -933,7 +954,7 @@ export class Globe {
     const cam = G.camera.position;
     for (const p of this.parts) {
       if (!p.marker) continue;
-      const want = p.kind === 'moon' ? !this.dozing && this.dying < 0 : this.eyeOpen() && _a.subVectors(cam, p.mid).dot(p.wn) > 0;
+      const want = p.kind === 'moon' ? !this.dozing && this.dying < 0 : p.kind === 'pore' ? p.state === 'glow' : this.eyeOpen() && _a.subVectors(cam, p.mid).dot(p.wn) > 0;
       p.marker.visible = want && this.grow >= 1;
     }
   }
@@ -1041,10 +1062,15 @@ export class Globe {
 
   bar() {
     const e = this.e, moons = this.moons();
-    return { name: TEXT.name, hp: Math.max(0, e.hp), maxHp: e.maxHp, enraged: e.enraged, away: this.far, note: moons ? `moons: ${moons}` : this.eyeOpen() ? 'eye open!' : '' };
+    return { name: TEXT.name, hp: Math.max(0, e.hp), maxHp: e.maxHp, enraged: e.enraged, away: this.far, note: moons ? `moons: ${moons}` : this.eyeOpen() ? 'eye open!' : this.eye.broken ? '' : 'eye shut' };
   }
 
-  progress() { return ['moon', 'pore'].map((k) => `${KINDS[k].icon}${this.left(k)}`).join(' '); }
+  // The objective card's progress line: what to do now, and the pores left.
+  progress() {
+    const moons = this.moons(), pores = this.left('pore');
+    const now = moons ? `🌙 ${moons} moon${moons > 1 ? 's' : ''} left` : this.eyeOpen() ? '👁 EYE OPEN: shoot it!' : '👁 Eye shut: dodge!';
+    return pores ? `${now} · pores ${pores}` : now;
+  }
 
   // Persuasion 'easier': every gadget -30% hp, worth the same (so the bar can still be emptied); fewer Grumblings.
   easier() {
