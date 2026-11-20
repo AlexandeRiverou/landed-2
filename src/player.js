@@ -23,6 +23,9 @@ const MANEUVERS = {
 };
 // Boost tank (0..1) per second, before perks: a full tank lasts 4 s and refills in 5 s.
 const BOOST_DRAIN = 0.25, BOOST_REGEN = 0.2, WHOOSH_GAP = 0.6;
+// Boost speed over base speed. With Turbo active, boost goes faster (TURBO_BOOST) and costs no tank, but only while
+// you hold it: Turbo never forces speed on you.
+export const BOOST_MUL = 1.7, TURBO_BOOST = 2.1;
 const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 // Cave tuck: under a rock roof, pulling up (pitch held up) scales the pitch rate by your speed over BASE_SPEED from
@@ -226,7 +229,7 @@ export class Player {
       G.ui.notify('On the glide path: easing the throttle for you.', 'info', 2.5, 1);
     }
     this.onGlide = glide;
-    const target = (boosting ? this.baseSpeed * 1.7 : glide ? this.baseSpeed * APPROACH_SLOW : this.baseSpeed) - this.forward.y * 10;
+    const target = (boosting ? this.baseSpeed * this.boostMul() : glide ? this.baseSpeed * APPROACH_SLOW : this.baseSpeed) - this.forward.y * 10;
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
 
     this.prevPos.copy(this.pos);
@@ -325,12 +328,13 @@ export class Player {
     this.updateAxes();
   }
 
-  // Boost: drains while held (Turbo and free boost cost nothing), recharges otherwise. Returns whether it's on.
-  // Pressing it yourself goes whoosh (at most every WHOOSH_GAP s); Turbo and free boost stay quiet.
+  // Boost: drains while held (free boost and Turbo cost nothing), recharges otherwise. Returns whether it's on.
+  // Pressing it yourself goes whoosh (at most every WHOOSH_GAP s); free boost stays quiet. Turbo only acts while you
+  // hold boost: faster (TURBO_BOOST) and free, so you pick when to go fast.
   throttle(dt, input) {
     const G = this.G, turbo = G.powerups.has('turbo');
-    const pressed = !turbo && this.freeBoost <= 0 && input.boost && this.boost > 0.02;
-    const boosting = turbo || this.freeBoost > 0 || pressed;
+    const pressed = this.freeBoost <= 0 && input.boost && (turbo || this.boost > 0.02);
+    const boosting = this.freeBoost > 0 || pressed;
     if (pressed && !this.pressedBoost && G.time - this.whooshAt >= WHOOSH_GAP) { this.whooshAt = G.time; G.audio.whoosh(); }
     this.pressedBoost = pressed;
     if (this.freeBoost > 0) this.freeBoost -= dt;
@@ -339,6 +343,9 @@ export class Player {
     this.boosting = boosting;
     return boosting;
   }
+
+  // Boost speed over base speed: higher while Turbo is active (only when you're actually boosting, see throttle).
+  boostMul() { return this.G.powerups.has('turbo') && this.freeBoost <= 0 ? TURBO_BOOST : BOOST_MUL; }
 
   bank() { return Math.asin(THREE.MathUtils.clamp(-this.right.y, -1, 1)); }
 
@@ -400,7 +407,7 @@ export class Player {
     const G = this.G, L = this.landed;
     L.t += dt;
     const boosting = this.throttle(dt, input), pull = input.pitch > 0.3;
-    const target = boosting ? this.baseSpeed * 1.7 : pull ? this.baseSpeed : TAXI_SPEED;
+    const target = boosting ? this.baseSpeed * this.boostMul() : pull ? this.baseSpeed : TAXI_SPEED;
     const rate = this.speed > target ? BRAKE : boosting ? THROTTLE * 1.5 : THROTTLE;
     this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
     L.yaw -= THREE.MathUtils.clamp(input.roll + input.yaw, -1, 1) * TAXI_TURN * dt;

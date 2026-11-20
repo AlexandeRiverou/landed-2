@@ -224,8 +224,9 @@ pads), a new pad colour and a slightly different brightness. Now and then it ste
 section usually steps back home. So it doesn't loop, but it stays the same mood. `N` toggles the music, and the game remembers your choice.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
-40 s; never more than one waiting), and every boss drops one. Most last about half a minute (Time Freeze 14 s, Double
-Points and Objective Radar 45 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo, Slow-Mo, Time Freeze, Double Points,
+40 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
+Points and Objective Radar 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
+hold boost, it's faster, 2.1× cruise instead of 1.7×, and free; it never boosts for you), Slow-Mo, Time Freeze, Double Points,
 Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and Objective Radar.
 
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
