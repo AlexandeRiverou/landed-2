@@ -147,7 +147,7 @@ export class DevMenu {
     this.godBtn = button(cheats, '', () => this.toggleGod(), 'No damage, no crashing');
     this.relaxBtn = button(cheats, '', () => { G.setRelax(!G.relax); this.refresh(); });
     button(cheats, 'Complete objective', () => this.completeObjective());
-    button(cheats, 'Level up', () => this.levelUp(), 'Same as a real promotion: a perk and a full hull');
+    button(cheats, 'Level up', () => this.levelUp(), 'Same as a real promotion: a perk and +50 hull');
     button(cheats, 'Lose a life', () => this.loseLife(), 'Crash on the spot (costs a life even in god mode)');
     button(cheats, 'Clear enemies', () => this.clearEnemies());
 

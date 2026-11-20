@@ -508,7 +508,7 @@ export class Globe {
     p.prevPos.copy(p.pos);
     this.bounceCd = BOUNCE.cd;
     const dmg = Math.min(BOUNCE.dmg, p.health - 1); // the planet never takes a life by itself: a bounce leaves you 1 hull
-    if (dmg > 0) p.damage(dmg);
+    if (dmg > 0) p.damage(dmg, true); // raw: no enemy multiplier, or it could take the last hull
     p.invuln = Math.max(p.invuln, BOUNCE.invuln);
     // Flick the nose back out: reflected about the normal, and at least BOUNCE.minOut along it.
     const f = _a.copy(p.forward).addScaledVector(n, -2 * p.forward.dot(n));

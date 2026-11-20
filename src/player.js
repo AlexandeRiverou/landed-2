@@ -52,12 +52,15 @@ const LANDING_GRADES = [
 const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
 
 // Lives and hull. Every crash costs a life (not in Relax Mode or god mode); the last one ends the run (main.js
-// endRun). The hull mends itself only after REGEN_DELAY s without a hit, at stats.regen hp/s; levelling up mends it fully.
+// endRun). The hull mends itself only after REGEN_DELAY s without a hit, at REGEN_RATE × stats.regen hp/s; levelling up
+// patches LEVEL_MEND of it (progression.js). Enemy hits are scaled by ENEMY_DMG so a fight can cost a life, not only a crash.
 export const LIVES = 3;
 export const MAX_LIVES = 5; // beating a boss gives a spare plane, up to this many (objectives.js complete)
-const REGEN_DELAY = 10;
+const REGEN_DELAY = 12, REGEN_RATE = 0.6;
+export const LEVEL_MEND = 50;
+const ENEMY_DMG = 1.5; // every damage(n) call except a raw one (the planet bounce, which never takes your last hull)
 // Breather (every boss alive has lost you, see enemies.js): repairs start sooner and run faster.
-const BREATHER_DELAY = 3, BREATHER_REGEN = 3;
+const BREATHER_DELAY = 5, BREATHER_REGEN = 2;
 // Permanent upgrades from levelling up (see progression.js) start from these every run.
 const BASE_STATS = { fireRate: 1, boostRegen: 1, boostDrain: 1, regen: 1, damage: 1 };
 const BASE_HEALTH = 100, BASE_SPEED = 44;
@@ -168,7 +171,7 @@ export class Player {
     if (this.grace <= 0) this.graceNotified = false;
     this.sinceHit += dt;
     const breather = G.enemies.breather;
-    if (this.sinceHit > (breather ? BREATHER_DELAY : REGEN_DELAY) && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * this.stats.regen * (breather ? BREATHER_REGEN : 1));
+    if (this.sinceHit > (breather ? BREATHER_DELAY : REGEN_DELAY) && this.health < this.maxHealth) this.health = Math.min(this.maxHealth, this.health + dt * REGEN_RATE * this.stats.regen * (breather ? BREATHER_REGEN : 1));
 
     this.maneuverCd = Math.max(0, this.maneuverCd - dt);
     if (this.landed ? !this.taxi(dt, input) : !this.fly(dt, input)) return; // false: crashed
@@ -560,11 +563,12 @@ export class Player {
     this.bullets.splice(i, 1);
   }
 
-  damage(n) {
+  // raw: skip ENEMY_DMG (the caller already chose the exact amount).
+  damage(n, raw = false) {
     if (this.dead || this.invuln > 0 || this.dodging || this.god) return;
     const G = this.G;
     if (G.powerups.has('shield')) { G.powerups.shieldHit(); return; }
-    this.health -= n;
+    this.health -= raw ? n : n * ENEMY_DMG;
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);
     G.audio.hit();
