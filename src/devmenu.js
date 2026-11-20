@@ -156,6 +156,14 @@ export class DevMenu {
     for (const s of SECRETS) button(secrets, `🥚 ${s.name}`, () => { this.close(); G.secrets.trigger(s.id); }, s.hint).dataset.secret = s.id;
     button(secrets, 'Forget found secrets', () => { G.secrets.reset(); G.ui.notify('Secrets forgotten. Go find them again.', 'info', 3, 2); });
 
+    // Hidden finds (finds.js): drop one in a real hiding spot ahead, or right in front of the nose.
+    const finds = section('Hidden finds');
+    button(finds, '🪙 Hide a coin ahead', () => { this.close(); G.finds.drop('coin'); }, 'Low over the ground, behind a peak or up high, off your line');
+    button(finds, '📜 Hide a lore note ahead', () => { this.close(); G.finds.drop('note'); }, 'A paper plane with an unread note (a coin once all are read)');
+    button(finds, '🪙 Coin in front of me', () => { this.close(); G.finds.drop('coin', G.player.pos.clone().addScaledVector(G.player.forward, 90), 'here'); });
+    button(finds, '📜 Note in front of me', () => { this.close(); G.finds.drop('note', G.player.pos.clone().addScaledVector(G.player.forward, 90), 'here'); });
+    button(finds, 'Forget lore and coins', () => { G.finds.reset(); G.ui.notify('Lore and coins forgotten. Go find them again.', 'info', 3, 2); });
+
     this.root.append(card);
     document.body.append(this.hint, this.root);
   }

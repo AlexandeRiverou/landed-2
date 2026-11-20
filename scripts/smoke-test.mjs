@@ -45,6 +45,7 @@ try {
 
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+  await page.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
   // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
   const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
   const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
@@ -1913,6 +1914,7 @@ try {
     const pp = await guard(await ctx.newPage());
     await pp.goto(origin + '/');
     await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await pp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     const rows = await pp.evaluate(titleRows);
     await pp.evaluate(() => document.getElementById('start').click());
     const hud = await pp.evaluate(async () => {
@@ -1995,6 +1997,87 @@ try {
   await corners([]);
   report.devmenu.touchReleased = await page.evaluate(() => window.G.devmenu.since === null && window.G.input.stick.id === null);
   await page.evaluate(() => window.G.devmenu.close());
+
+  // Hidden finds (finds.js): rare coins and lore notes off your line, low, behind peaks and up high.
+  report.finds = await page.evaluate(async () => {
+    const G = window.G, F = G.finds, p = G.player;
+    const { groundAt } = await import('./src/objectives.js');
+    const { FINDS, COIN, NOTE, LORE } = await import('./src/finds.js');
+    G.zones.enter(0);
+    G.powerups.active.clear(); // no Double Points
+    F.reset(); F.resetRun(); F.off = false; p.god = true;
+    const out = { first: F.timer, n: LORE.length, cfg: { first: FINDS.first, every: FINDS.every, coin: COIN, note: NOTE.points } };
+    const flat = (v) => Math.hypot(v.x - p.pos.x, v.z - p.pos.z);
+    const side = { x: -p.forward.z, z: p.forward.x }, sl = Math.hypot(side.x, side.z);
+    // Hiding spots, 20 of each kind.
+    out.spots = {};
+    for (const kind of ['low', 'peak', 'sky']) {
+      const r = { kinds: new Set(), minD: 1e9, maxD: 0, minUp: 1e9, maxUp: -1e9, minSide: 1e9, maxY: -1e9 };
+      for (let k = 0; k < 20; k++) {
+        const { pos, spot } = F.hidingSpot(kind);
+        r.kinds.add(spot);
+        const d = flat(pos), g = groundAt(G, pos.x, pos.z, p.pos.y);
+        const up = kind === 'sky' ? pos.y - Math.max(p.pos.y, g) : pos.y - g;
+        r.minD = Math.min(r.minD, d); r.maxD = Math.max(r.maxD, d);
+        r.minUp = Math.min(r.minUp, up); r.maxUp = Math.max(r.maxUp, up);
+        r.minSide = Math.min(r.minSide, Math.abs(((pos.x - p.pos.x) * side.x + (pos.z - p.pos.z) * side.z) / sl));
+        r.maxY = Math.max(r.maxY, pos.y);
+      }
+      r.kinds = [...r.kinds];
+      out.spots[kind] = r;
+    }
+    // Spawning: off means none; on, one appears when the timer runs out, and the next waits 55-95 s.
+    F.off = true; F.timer = 0.01; F.update(0.02); out.offNone = !F.find;
+    F.off = false; F.timer = 0.01; F.update(0.02);
+    out.spawned = !!F.find && ['coin', 'note'].includes(F.find.kind) && F.G.scene.children.includes(F.find.mesh);
+    out.nextIn = F.timer;
+    out.glint = { inScene: G.scene.children.includes(F.glint), fixedSize: F.glint.material.sizeAttenuation === false, hidesBehind: F.glint.material.depthTest === true };
+    // Lost: past its life it goes away.
+    F.find.life = 0.01; F.update(0.02); out.expired = !F.find && !G.scene.children.includes(F.glint);
+    // The chime: 100 m to your right, a ping panned right, higher than far out.
+    const pings = [], ping = G.audio.ping;
+    G.audio.ping = (pan, pitch) => pings.push([pan, pitch]);
+    F.drop('coin', p.pos.clone().addScaledVector(p.right, 100));
+    F.update(0.016); F.update(0.016);
+    out.chime = pings.slice();
+    F.clear(); pings.length = 0;
+    F.drop('coin', p.pos.clone().addScaledVector(p.right, 300)); F.update(0.016);
+    out.farPings = pings.length;
+    G.audio.ping = ping;
+    // A coin: points, full boost, a hull patch, counted (and remembered).
+    F.clear();
+    p.boost = 0.1; p.health = p.maxHealth - 50;
+    let s0 = G.score;
+    F.drop('coin', p.pos.clone().addScaledVector(p.forward, 4)); F.update(0.016);
+    out.coin = { gone: !F.find, score: G.score - s0, boost: p.boost, hull: p.maxHealth - p.health, run: F.runCoins, total: F.coins, stored: localStorage.getItem('landed.coins') };
+    // A lore note: points and its card (no pause), remembered; a click folds it away.
+    s0 = G.score;
+    const paused0 = G.paused;
+    F.drop('note', p.pos.clone().addScaledVector(p.forward, 4));
+    const id = F.find.note.id;
+    F.update(0.016);
+    const card = document.getElementById('lore-card');
+    out.note = {
+      score: G.score - s0, shown: card.classList.contains('show'), paused: G.paused !== paused0, count: card.querySelector('.lore-count').textContent,
+      title: card.querySelector('b').textContent === LORE.find((n) => n.id === id).title, stored: JSON.parse(localStorage.getItem('landed.lore')).includes(id),
+      notLast: !LORE.find((n) => n.id === id).last,
+    };
+    card.click(); out.note.folded = !card.classList.contains('show');
+    out.title = document.getElementById('finds-count').textContent;
+    // The last page turns up only once every other note is read; with every note read, a note drop is a coin.
+    F.lore = new Set(LORE.filter((n) => !n.last && n.id !== 'dent').map((n) => n.id));
+    let lastEarly = 0;
+    for (let k = 0; k < 40; k++) if (F.nextNote().last) lastEarly++;
+    F.lore.add('dent');
+    out.last = { early: lastEarly, then: F.nextNote()?.last === true };
+    F.lore = new Set(LORE.map((n) => n.id));
+    out.allRead = F.drop('note', p.pos.clone().addScaledVector(p.up, 300)).kind;
+    // A new run: nothing out there, the clock starts over, what you found stays found.
+    F.resetRun();
+    out.reset = { none: !F.find, timer: F.timer, runCoins: F.runCoins, lore: F.lore.size };
+    F.reset(); F.off = true; p.god = false;
+    return out;
+  });
 
   // Secrets, part 2: each one through its real path where practical (real key presses, simulated flight, dates).
   report.secrets = secretsReport;
@@ -3497,6 +3580,7 @@ try {
     const pp = await guard(await ctx.newPage());
     await pp.goto(origin + '/');
     await pp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await pp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     await pp.click('#start');
     F.portraitFov = await pp.evaluate(() => { const G = window.G; for (let k = 0; k < 120; k++) { G.player.invuln = 99; G.step(1 / 30); } return +G.camera.fov.toFixed(1); });
     // At that wider view, a fresh run's first hoop is on screen too (20 first hoops, from fresh headings).
@@ -3525,6 +3609,7 @@ try {
     const rp = await guard(await ctx.newPage());
     await rp.goto(origin + '/');
     await rp.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
+    await rp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     await rp.click('#start');
     F.reduced = await rp.evaluate(() => {
       const G = window.G, p = G.player, V = p.pos.constructor;
@@ -3556,6 +3641,7 @@ try {
     const sp = await guard(await ctx.newPage());
     await sp.goto(origin + '/');
     await sp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    await sp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     F.settingsDefault = await sp.evaluate(() => ({ invert: window.G.input.invert, muted: window.G.audio.muted, stored: localStorage.getItem('landed-settings') }));
     await sp.click('#start');
     for (const k of ['KeyI', 'KeyN', 'KeyM']) await sp.keyboard.press(k);
@@ -3579,6 +3665,7 @@ try {
     const jp = await guard(await ctx.newPage());
     await jp.goto(origin + '/');
     await jp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    await jp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     const errors0 = errors.length;
     F.junk = [];
     for (const [settings, furthest] of [['{bad', '{"index":99,"lap":1}'], ['5', '{"index":0,"lap":1e21}'], ['{"invert":"yes"}', '{"index":0,"lap":1e21}']]) {
@@ -3760,6 +3847,7 @@ try {
     const dp = await guard(await ctx.newPage());
     await dp.goto(origin + '/');
     await dp.waitForFunction(() => window.G && window.G.step, null, { timeout: 30000 });
+    await dp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
     desk.titleShown = await dp.isVisible('#title-quit') && await dp.isVisible('#title-fullscreen');
     await dp.click('#title-fullscreen');
     await dp.click('#title-quit');
@@ -3776,6 +3864,12 @@ try {
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
+    [(({ finds: f }) => f.first === 45 && f.cfg.every[0] === 55 && f.cfg.every[1] === 95 && f.offNone && f.spawned && f.nextIn >= 55 && f.nextIn <= 95 && f.glint.inScene && f.glint.fixedSize && f.glint.hidesBehind && f.expired)(report), `hidden finds: the first waits 45 s, then 55-95 s between finds, none while switched off; each twinkles at a fixed screen size that terrain hides, and goes after its life (${JSON.stringify(report.finds)})`],
+    [(({ finds: { spots: s } }) => ['low', 'peak', 'sky'].every((k) => s[k].kinds.length === 1 && s[k].kinds[0] === k && s[k].minD > 150 && s[k].maxD < 1000)
+      && s.low.minUp >= 4.9 && s.low.maxUp <= 6.1 && s.peak.minUp >= 4.9 && s.peak.maxUp <= 7.1 && s.sky.minSide >= 89 && (s.sky.minUp >= 199 || s.sky.maxY <= 1080) && s.sky.maxY <= 1080)(report), `hidden finds: spots 150-1000 m away; low ones 6 m over the ground, behind-a-peak ones 7 m over it, sky ones 200-300 m up (never over 1080 m) and 90 m+ off your line (${JSON.stringify(report.finds.spots)})`],
+    [(({ finds: { chime: c, farPings: far } }) => c.length === 1 && c[0][0] > 0.5 && c[0][1] > 0.9 && c[0][1] < 1.5 && far === 0)(report), `hidden finds: within 150 m a chime pings on the find's side, none from 300 m (${JSON.stringify({ chime: report.finds.chime, far: report.finds.farPings })})`],
+    [(({ finds: { coin: c } }) => c.gone && c.score === 120 && c.boost === 1 && Math.abs(c.hull - 30) < 0.01 && c.run === 1 && c.total === 1 && c.stored === '1')(report), `hidden coin: +120, boost refilled, +20 hull, counted and remembered (${JSON.stringify(report.finds.coin)})`],
+    [(({ finds: { note: n, title: t, last: l, allRead: a, reset: r, n: N } }) => N === 12 && n.score === 150 && n.shown && !n.paused && n.count === '📜 Lore 1/12' && n.title && n.stored && n.notLast && n.folded && t.startsWith('📜 Lore 1/12 · 🪙 1 hidden coin found') && l.early === 0 && l.then && a === 'coin' && r.none && r.timer === 45 && r.runCoins === 0 && r.lore === 12)(report), `lore notes: +150 and a card "Lore 1/12" (no pause, a click folds it), remembered, counted on the title card; the last page only comes last, then notes turn into coins; a new run keeps what you read (${JSON.stringify({ note: report.finds.note, title: report.finds.title, last: report.finds.last, allRead: report.finds.allRead, reset: report.finds.reset })})`],
     [report.firstObjective === 'hoop', 'first objective is a hoop'],
     [report.musicPlaying && report.engineGain <= 0.015, 'calm music plays and the engine stays quiet'],
     [report.musicSection && report.musicSection.mood === 'day' && report.musicSection.texture, 'the music is in a section (music.section shows mood, progression, texture, root)'],
