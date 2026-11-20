@@ -85,6 +85,10 @@ const RUSH_KEEP = 1.1; // see keepUp
 // RUSH_RETURN m away: see sweep); the cap counts those within ACTIVE_R m and no more than ACTIVE_BEHIND m behind you.
 const STRAGGLER = 550, ACTIVE_R = 700, ACTIVE_BEHIND = 300, RUSH_RETURN = 250;
 const KILL_MEND = 3; // hull each kill mends during Hold The Line
+// Kill streak: kills less than STREAK_WINDOW s apart chain, and the 2nd, 3rd and 4th+ kill in a chain score
+// STREAK_MULT[1], [2], [3] times their points (shown on the "+N" popup). Dying ends the chain.
+const STREAK_WINDOW = 3;
+const STREAK_MULT = [1, 1.5, 2, 3];
 // Grumblings aim GRUMBLE_LEAD s ahead of you, each at its own spot up to GRUMBLE_SPREAD m off that point (circling
 // slowly); GRUMBLE_GAP s after one bites, the rest of the clump doesn't.
 const GRUMBLE_LEAD = 1, GRUMBLE_SPREAD = 20, GRUMBLE_GAP = 0.3;
@@ -1526,13 +1530,17 @@ export class Enemies {
     }
   }
 
-  // Points (and the kill) for a regular enemy you brought down (an elite: GARY.score × as many). Hold The Line: each
-  // kill mends 3 hull.
+  // Points (and the kill) for a regular enemy you brought down (an elite: GARY.score × as many), times the kill-streak
+  // multiplier (STREAK_MULT). Hold The Line: each kill mends 3 hull.
   payout(e) {
-    const G = this.G, p = G.player, pts = e.def.score * (e.elite ? GARY.score : 1);
+    const G = this.G, p = G.player;
+    this.streak = !p.dead && G.time - (this.streakAt ?? -Infinity) < STREAK_WINDOW ? (this.streak || 0) + 1 : 0;
+    this.streakAt = G.time;
+    const mult = STREAK_MULT[Math.min(this.streak, STREAK_MULT.length - 1)];
+    const pts = Math.round(e.def.score * (e.elite ? GARY.score : 1) * mult);
     e.paid = true;
     G.score += pts;
-    G.fx.popText(e.pos, `+${pts}`);
+    G.fx.popText(e.pos, mult > 1 ? `+${pts} x${mult}` : `+${pts}`);
     G.stats.kills++;
     if (Math.random() < 0.3) G.ui.notify(`${pick(T.kill)} +${pts}`, 'good', 2.5, 0);
     if (this.frenzy && !e.quest && !p.dead) {
