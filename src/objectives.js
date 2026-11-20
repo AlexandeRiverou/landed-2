@@ -270,7 +270,7 @@ function mkCollect(G, kind) {
   const start = trail ? pointAhead(G, 260, 340, 0.5, 50, 90) : null;
   const dir = trail ? new THREE.Vector3().subVectors(start, G.player.pos).setY(0).normalize() : null;
   for (let k = 0; k < n; k++) {
-    const m = stars ? makeStar() : makeBalloon(colors[k % colors.length]);
+    const m = stars ? makeStar() : makeBalloon(colors[k % colors.length], { glow: true });
     if (trail) {
       const side = new THREE.Vector3(-dir.z, 0, dir.x);
       m.position.copy(start).addScaledVector(dir, k * 55).addScaledVector(side, Math.sin(k * 0.8) * 45);
@@ -289,16 +289,16 @@ function mkCollect(G, kind) {
   return objective({
     type: kind, reward: trail ? 180 : stars ? 150 : 140, noun: trail ? 'the star trail' : stars ? 'the stars' : 'the balloons',
     title: trail ? pick(['Star Trail', 'Follow The Shiny Road', 'Twinkle Highway']) : stars ? pick(['Star Collector', 'Twinkle Twinkle Grab That Star', 'Shiny Things Department']) : pick(['Balloon Popper', 'Party Pooper', 'Pop Goes The Balloon']),
-    desc: trail ? `A wiggly trail of ${n} stars. Follow it like breadcrumbs, but shinier.` : stars ? `Collect ${n} stars. They're not real stars. Please don't tell them.` : `Pop ${n} balloons by flying into them. They knew the risks.`,
+    desc: trail ? `A wiggly trail of ${n} stars. Follow it like breadcrumbs, but shinier.` : stars ? `Collect ${n} stars. They're not real stars. Please don't tell them.` : `Pop ${n} balloons by FLYING INTO them. Bullets go right through. They knew the risks.`,
     caps: new Set(['grow', 'approach', 'teleport', 'magnet']),
-    signText: stars ? ['STARS!', 'THAT WAY →'] : ['BALLOONS', 'NEED POPPING →'],
+    signText: stars ? ['STARS!', 'THAT WAY →'] : ['BALLOONS', 'FLY INTO THEM →'],
     target() {
       let best = null, bd = Infinity;
       for (const m of alive()) { const d = m.position.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = m; } }
       return best ? best.position : null;
     },
     onUpdate(dt, G) {
-      this.progress = `${stars ? '⭐' : '🎈'} ${got} / ${n}`;
+      this.progress = stars ? `⭐ ${got} / ${n}` : `🎈 ${got} / ${n} popped`;
       const pp = G.player.pos;
       for (const m of alive()) {
         anim(m, dt);

@@ -360,7 +360,9 @@ pays 1.5× a regular boss and a spare plane, and its par is 100 s.
 
 - *Hoops:* hoop, tiny precision hoop, timed speed hoop, a hoop that wanders around, a hoop that shrinks until it's gone.
 - *Ring chains:* slalom, corkscrew, climbing staircase, downhill dive, and a time trial.
-- *Collecting:* stars, balloons to fly into, a long wiggly star trail, a shooting gallery of balloons you have to shoot.
+- *Collecting:* stars, glowing balloons to fly into (bullets go right through), a long wiggly star trail, and a
+  shooting gallery of carnival bullseye targets you have to shoot (ramming them doesn't count). The rule: a glow
+  means fly into it, a bullseye means shoot it.
 - *Chases:* catching the golden goose, following Larry (Gary's nice cousin) or Professor Honk in formation.
 - *Stunts:* loop-de-loop (detected from your pitch rotation), flying upside down, going really fast, crop dusting (low
   flying), climbing to an altitude. In Crystal Caverns a loop is tighter while you keep pulling (boosting doesn't make
