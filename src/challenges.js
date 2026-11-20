@@ -2,7 +2,7 @@
 // a ground bullseye, stunt flying (speed, upside down), pest control, survival and a sightseeing tour.
 // Same contract as objectives.js: hooks the persuasion system can use on a player who ignores them.
 import * as THREE from 'three';
-import { makeRing, makeBalloon, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
+import { makeRing, makeGalleryTarget, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { WAVES, GARY } from './enemies.js';
 import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, loopDome, BUZZ } from './objectives.js';
@@ -89,53 +89,68 @@ export function mkShrinkHoop(G) {
   });
 }
 
-// ---------- shooting gallery: balloons you have to SHOOT ----------
+// ---------- shooting gallery: carnival targets you have to SHOOT ----------
+// The rule players learn: a glow means fly into it, a bullseye means shoot it.
 
 export function mkGallery(G) {
-  const n = 6;
+  const n = 6, KNOCK = 0.2; // seconds a hit target spends tipping over before it's gone
   const center = pointAhead(G, 380, 520, 0.6, 50, 100);
-  const colors = ['#ff4d6d', '#ffd23a', '#4dd6ff', '#7aff6a', '#c77dff', '#ff9a3a'];
   const items = [];
   for (let k = 0; k < n; k++) {
-    const m = makeBalloon(colors[k % colors.length]);
+    const m = makeGalleryTarget();
     m.position.copy(center).add(new THREE.Vector3(rand(-70, 70), rand(-25, 35), rand(-70, 70)));
     m.position.y = underRoof(G, m.position.x, m.position.z, Math.max(m.position.y, clearance(G, m.position.x, m.position.z, 10) + 25), 15);
     m.userData.phase = Math.random() * 10;
+    faceFlat(m, G.player.pos);
     G.scene.add(m);
     items.push(m);
   }
-  let got = 0, scale = 1;
+  let got = 0, scale = 1, quipped = false;
   const alive = () => items.filter((m) => !m.userData.got);
   return objective({
-    type: 'gallery', reward: 170, noun: 'the target balloons',
-    title: pick(['Shooting Gallery', 'Balloon Sniper', 'Carnival Of Pop']),
-    desc: `${n} balloons. SHOOT them (Space / click). Flying into them is cheating and they will tell everyone.`,
+    type: 'gallery', reward: 170, noun: 'the targets',
+    title: pick(['Shooting Gallery', 'Carnival Of Clank', 'Tin Can Alley']),
+    desc: `${n} carnival targets. SHOOT them (Space / click). Ramming them voids the warranty.`,
     caps: new Set(['grow', 'approach', 'teleport']),
     signText: ['TARGETS', 'SHOOT THEM →'],
-    hints: ['Point your nose at a balloon and hold Space.', 'Bullets travel far. Start shooting early.'],
+    hints: ['Point your nose at a target and hold Space.', 'Bullets travel far. Start shooting early.'],
     target() {
       let best = null, bd = Infinity;
       for (const m of alive()) { const d = m.position.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = m; } }
       return best ? best.position : null;
     },
     onUpdate(dt, G) {
-      this.progress = `🎯 ${got} / ${n} popped`;
-      const bullets = G.player.bullets;
+      this.progress = `🎯 ${got} / ${n} hit`;
+      const bullets = G.player.bullets, pp = G.player.pos;
+      for (const m of items) { // a hit target tips over backwards, then it's gone
+        const u = m.userData;
+        if (!u.got || !m.visible) continue;
+        u.knock += dt;
+        u.body.rotation.x = -Math.PI / 2 * Math.min(1, u.knock / KNOCK);
+        if (u.knock >= KNOCK) m.visible = false;
+      }
       for (const m of alive()) {
         anim(m, dt);
         const ph = this.t + m.userData.phase;
         m.position.x += Math.sin(ph * 0.7) * dt * 6; // gentle sway: a moving target
         m.position.y = underRoof(G, m.position.x, m.position.z, m.position.y + Math.sin(ph) * dt * 3, 15);
+        faceFlat(m, pp); // every frame: edge-on, a bullseye is a stick
+        m.userData.body.rotation.z = Math.sin(ph * 1.3) * 0.12;
+        if (!quipped && !G.player.dead && m.position.distanceTo(pp) < 10 * scale) { // ramming doesn't count, it just gets a remark
+          quipped = true;
+          G.ui.notify("Shoot it, don't hug it!", 'warn', 2.5);
+        }
         const r2 = (6 * scale) ** 2;
         for (let b = bullets.length - 1; b >= 0; b--) {
           if (bullets[b].pos.distanceToSquared(_b.copy(m.position).setY(m.position.y + 1)) > r2) continue;
           G.player.removeBullet(b);
           m.userData.got = true;
-          m.visible = false;
+          m.userData.knock = 0;
           got++;
           this.progressed = true;
           G.score += 10;
           G.fx.confetti(m.position);
+          G.audio.clank();
           G.audio.pop();
           break;
         }

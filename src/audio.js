@@ -78,6 +78,8 @@ export class Sfx {
   success() { [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.25, { type: 'triangle', vol: 0.18, delay: i * 0.08 })); }
   ding(p = 1) { this.tone(880 * p, 0.3, { type: 'triangle', vol: 0.15 }); this.tone(1320 * p, 0.3, { type: 'sine', vol: 0.08, delay: 0.05 }); }
   pop() { this.tone(600, 0.12, { type: 'square', vol: 0.08, slide: 600 }); this.noise(0.08, { vol: 0.15, freq: 3000 }); }
+  // A gallery target taking a bullet: a tinny carnival clank (played with pop()).
+  clank() { this.tone(1100, 0.1, { type: 'square', vol: 0.06, slide: -400 }); this.noise(0.05, { vol: 0.12, freq: 4000 }); }
   shoot() { this.tone(700, 0.06, { type: 'triangle', vol: 0.018, slide: -350 }); }
   hit() { this.noise(0.15, { vol: 0.25, freq: 2000 }); this.tone(160, 0.15, { type: 'sawtooth', vol: 0.1, slide: -80 }); }
   // A bullet hitting the ground: a soft low thud. At most one per 70 ms, so a burst rumbles instead of clipping.

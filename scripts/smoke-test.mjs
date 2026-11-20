@@ -277,6 +277,50 @@ try {
     }
     step(150);
 
+    // Shoot it vs fly into it: the gallery's bullseye targets face the player, count bullets only (ramming gets a
+    // quip, once); the popper's balloons glow, and count the plane only (bullets go through).
+    {
+      const O = G.objectives, p = G.player, cooldown = O.cooldown, notify = G.ui.notify, clank = G.audio.clank;
+      const V = p.pos.constructor;
+      const res = (out.shootOrFly = {});
+      const drop = () => { if (O.current) { O.current.dispose(G); O.current = null; } G.persuasion.reset(null); };
+      const ours = (test) => G.scene.children.filter(test);
+      const shootAt = (m) => { p.fire(); for (const b of p.bullets) { b.pos.copy(m.position).add(new V(0, 1, 0)); b.vel.set(0, 0, 0); } };
+      const ram = (m) => { p.pos.copy(m.position); p.prevPos.copy(m.position); step(1); };
+      let quips = 0, clanks = 0;
+      G.ui.notify = function (text, ...a) { if (text === "Shoot it, don't hug it!") quips++; return notify.call(this, text, ...a); };
+      G.audio.clank = function () { clanks++; return clank.call(this); };
+      O.cooldown = 1e9;
+      drop(); O.startType('gallery');
+      const targets = ours((o) => o.userData.body);
+      res.gallery = { count: targets.length, balloons: targets.filter((m) => m.userData.halo).length };
+      // Circle a target: it turns to face the plane (its face is +Z), wherever the plane is.
+      const m0 = targets[0], fwd = new V();
+      res.gallery.facing = [0, 1, 2, 3].map((k) => {
+        const a = k * Math.PI / 2;
+        p.pos.copy(m0.position).add(new V(Math.cos(a) * 150, 0, Math.sin(a) * 150)); p.prevPos.copy(p.pos);
+        step(1);
+        m0.getWorldDirection(fwd).setY(0).normalize();
+        return +fwd.dot(new V().subVectors(p.pos, m0.position).setY(0).normalize()).toFixed(3);
+      });
+      ram(targets[1]); ram(targets[2]); step(1); // progress is written at the start of a frame: one more to see it
+      res.gallery.afterRam = O.current.progress;
+      shootAt(targets[1]); step(9);
+      res.gallery.afterShot = O.current.progress;
+      res.gallery.hidden = !targets[1].visible;
+      res.gallery.quips = quips; res.gallery.clanks = clanks;
+      drop(); O.startType('balloons');
+      const balloons = ours((o) => o.userData.halo);
+      res.popper = { count: balloons.length, haloR: balloons[0]?.userData.halo.geometry.parameters.radius };
+      shootAt(balloons[0]); step(2);
+      res.popper.afterShot = O.current.progress;
+      ram(balloons[0]); step(1);
+      res.popper.afterRam = O.current.progress;
+      drop();
+      G.ui.notify = notify; G.audio.clank = clank;
+      O.cooldown = cooldown;
+    }
+
     // Quests finished through play (stunts, or the plane moved onto each target), never by complete():
     // what's checked is that each one notices what the player did.
     out.quests = {};
@@ -3628,6 +3672,8 @@ try {
     [report.zoneBanner.length === 2 && /^New zone: /.test(report.zoneBanner[1]), `banner: a zone change shows the points and "New zone" only (${JSON.stringify(report.zoneBanner)})`],
     [report.guide.loopTasticHoops === 0 && report.guide.loopTasticLoops > 0 && report.guide.loopTasticLoops < 30, 'banner: "LOOP-TASTIC!" is only for the loop objective (200 hoops never), and not every time'],
     [(({ spare: s }) => s.from2.lives === 3 && s.from2.detail.includes('Spare plane +1 ❤️') && s.from5.lives === 5 && s.from5.detail.includes('Hangar full (5 planes)') && s.big.lives === 1e6 && s.forced.lives === 2 && s.from2.par === 25 && s.hearts4 === '❤️❤️❤️❤️')(report.guide), 'spare plane: beating a boss adds a life up to 5 (never removes any, not when forced); 4 lives show 4 hearts'],
+    [((g) => g.count === 6 && g.balloons === 0 && g.facing.every((d) => d > 0.99) && g.afterRam === '🎯 0 / 6 hit' && g.afterShot === '🎯 1 / 6 hit' && g.hidden && g.quips === 1 && g.clanks === 1)(report.shootOrFly.gallery), `shooting gallery: 6 bullseye targets (no balloons) face the plane as it circles; a bullet counts with a clank, ramming doesn't and quips once (${JSON.stringify(report.shootOrFly.gallery)})`],
+    [((b) => b.count === 5 && b.haloR === 9.5 && b.afterShot === '🎈 0 / 5 popped' && b.afterRam === '🎈 1 / 5 popped')(report.shootOrFly.popper), `balloon popper: 5 glowing balloons; bullets go through, flying into one pops it (${JSON.stringify(report.shootOrFly.popper)})`],
     [report.bossDefeated, 'boss can be defeated'],
     [report.firstBossGap >= 4 && report.firstBossGap <= 7 && report.nextBossGap >= 4 && report.nextBossGap <= 7, 'bosses come every 4 to 7 objectives'],
     [report.chunks > 20, 'terrain is loaded'],

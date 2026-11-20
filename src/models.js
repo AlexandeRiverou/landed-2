@@ -975,11 +975,37 @@ export function makeStar() {
   return g;
 }
 
-export function makeBalloon(color) {
-  const g = new THREE.Group();
-  add(g, Sph(4.5, 12, 10), new THREE.MeshPhongMaterial({ color, shininess: 80, specular: '#ffffff' }), { s: [1, 1.2, 1] });
-  add(g, Cone(0.8, 1.2, 6), lam(color), { y: -5.6, rx: PI });
-  add(g, Box(0.15, 10, 0.15), basic('#ffffff'), { y: -11 });
+// glow: the Balloon Popper's party balloon (fly into it). A quarter bigger, a halo about its touch radius,
+// a white shine and a string in its own colour. The size lives in an inner group: grow sets the outer scale.
+export function makeBalloon(color, { glow = false } = {}) {
+  const g = new THREE.Group(), b = glow ? new THREE.Group() : g;
+  add(b, Sph(4.5, 12, 10), new THREE.MeshPhongMaterial({ color, shininess: 80, specular: '#ffffff' }), { s: [1, 1.2, 1] });
+  add(b, Cone(0.8, 1.2, 6), lam(color), { y: -5.6, rx: PI });
+  add(b, Box(0.15, 10, 0.15), basic(glow ? new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.5) : '#ffffff'), { y: -11 });
+  if (glow) {
+    add(b, Sph(0.9, 6, 4), basic('#ffffff'), { x: -1.8, y: 2.8, z: 3.6, s: [1, 1.3, 0.6] });
+    b.scale.setScalar(1.25);
+    g.add(b);
+    g.userData.halo = add(g, Sph(9.5, 10, 8), basic(color, { transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
+  }
+  return g;
+}
+
+// The Shooting Gallery's target (shoot it): a carnival bullseye on a wooden handle, face toward +Z.
+// Everything hangs off userData.body, so the gallery can wobble and knock it back while the group faces the player.
+// The face is centred at y=+1, where the gallery tests its bullets.
+export function makeGalleryTarget() {
+  const g = new THREE.Group(), b = new THREE.Group();
+  b.position.y = 1;
+  const wood = lam('#7a4a22');
+  [['#ff3a4a', 5.5], ['#ffffff', 4], ['#ff3a4a', 2.6], ['#ffd23a', 1.1]].forEach(([c, r], k) =>
+    add(b, Cyl(r, r, 0.3, 16), lam(c, { emissive: c, emissiveIntensity: 0.25 }), { z: k * 0.2, rx: PI / 2 }));
+  add(b, Tor(5.6, 0.45, 6, 16), wood);
+  add(b, Cyl(5.6, 5.6, 0.6, 16), wood, { z: -0.4, rx: PI / 2 });
+  add(b, Box(0.9, 8, 0.9), lam('#8a5a2a'), { y: -9 });
+  add(b, Sph(0.8, 6, 4), lam('#8a5a2a'), { y: -13 });
+  g.add(b);
+  g.userData.body = b;
   return g;
 }
 
