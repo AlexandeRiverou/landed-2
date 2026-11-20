@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { makePlane, PLANE_SKINS } from './models.js';
 import { pick, T } from './texts.js';
 import { waterLine } from './world.js';
+import { MEGA } from './powerups.js';
 
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
@@ -41,7 +42,7 @@ const ROOF_TUCK = { from: 0.35, to: PI, margin: 8, max: 2.6 };
 // Landing. A touchdown is a landing (not a crash) when the sink rate (m/s), bank (rad), nose (forward.y) and
 // wings (up.y) are within these, on dry ground whose slope (rise per metre) is gentle enough.
 export const LAND = { sink: 7, bank: 0.44, noseDown: -0.25, upright: 0.7, slope: 0.3 };
-const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels down, on a runway's asphalt (times Mega / Tiny Plane's scale)
+const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels down, on a runway's asphalt (times Mega Ram / Tiny Ace's scale)
 // On the ground: roll out to taxi speed (m/s), braking/accelerating at these m/s², turning at TAXI_TURN rad/s.
 // Pulling up takes off once you're at LIFTOFF × cruise speed. Bonus points need this long in the air first (s).
 const TAXI_SPEED = 10, BRAKE = 10, THROTTLE = 12, TAXI_TURN = 0.9, LIFTOFF = 0.7, BONUS_AIRTIME = 15;
@@ -84,7 +85,7 @@ export class Player {
     this.wind = new THREE.Vector3();
     this.resetRun();
     this.speed = this.baseSpeed;
-    this.sizeScale = 1;    // Mega / Tiny Plane power-ups
+    this.sizeScale = 1;    // Mega Ram / Tiny Ace power-ups
     this.invuln = 0;
     this.grace = 0;        // after the world mutates: terrain pushes you up instead of killing you
     this.dead = false;
@@ -585,7 +586,7 @@ export class Player {
     if (this.dead || this.invuln > 0 || this.dodging || this.god) return;
     const G = this.G;
     if (G.powerups.has('shield')) { G.powerups.shieldHit(); return; }
-    this.health -= raw ? n : n * ENEMY_DMG;
+    this.health -= (raw ? n : n * ENEMY_DMG) * (G.powerups.has('mega') ? MEGA.armor : 1); // Mega Ram is armoured
     this.sinceHit = 0;
     G.ui.flash('#ff3a3a', 0.35);
     G.audio.hit();

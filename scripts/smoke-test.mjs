@@ -1199,6 +1199,52 @@ try {
       p.freeBoost = fb; p.boost = tank; p.boosting = false;
     }
 
+    // Mega Ram (Nov 2026): a regular enemy pops on contact for 1.5x its points, a boss rammed loses MEGA.boss of its
+    // max hull, is dazed and shoved, and enemy hits on you do half. Tiny Ace: a shot that would have hit a normal plane
+    // whiffs past for +15, and flying low pays daredevil points (none high up).
+    {
+      const p = G.player, E = G.enemies, P = G.powerups;
+      const { MEGA, TINY } = await import('./src/powerups.js');
+      const st = E.spawnTimer, calm = E.calmTimer;
+      E.spawnTimer = 1e9; E.calmTimer = 0; E.streakAt = -Infinity;
+      P.active.clear(); P.active.set('mega', 10); P.update(0);
+      const mega = { scale: p.sizeScale };
+      const drone = E.spawn('drone', p.pos.clone().addScaledVector(p.forward, 2));
+      const s0 = G.score;
+      step(1);
+      Object.assign(mega, { popped: drone.dead, pts: G.score - s0, want: Math.round(drone.def.score * MEGA.bonus) });
+      const boss = E.spawnBoss('thunder', p.pos.clone().addScaledVector(p.forward, 3));
+      boss.contactCd = 0;
+      const bhp = boss.hp, h0 = p.health;
+      step(1);
+      Object.assign(mega, { boss: +((bhp - boss.hp) / boss.maxHp).toFixed(3), dazed: boss.dazed > 0, cd: boss.contactCd > 0, bump: +(h0 - p.health).toFixed(2) });
+      E.removeEnemy(boss); E.hazards.clear();
+      p.invuln = 0; p.dodging = false; p.health = p.maxHealth;
+      p.damage(10);
+      mega.armored = +(p.maxHealth - p.health).toFixed(2);
+      P.active.clear(); P.update(0); p.health = p.maxHealth;
+      p.damage(10);
+      mega.plain = +(p.maxHealth - p.health).toFixed(2);
+      p.health = p.maxHealth; p.invuln = 99;
+      // Tiny Ace.
+      P.active.set('tiny', 10); P.update(0);
+      const tiny = { scale: p.sizeScale };
+      const shot = E.fireOrb(p.pos.clone().addScaledVector(p.right, 4), p.forward.clone(), 0, 5);
+      const s1 = G.score, h1 = p.health;
+      E.updateShots(1 / 30);
+      Object.assign(tiny, { whiffed: !!shot.whiffed, pts: G.score - s1, hurt: h1 - p.health });
+      shot.life = 0; E.updateShots(1 / 30);
+      const y0 = p.pos.y;
+      P.lowT = 0; p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) + 5;
+      const s2 = G.score; P.daredevil(TINY.pay + 0.05); tiny.low = G.score - s2;
+      P.lowT = 0; p.pos.y += 300;
+      const s3 = G.score; P.daredevil(TINY.pay + 0.05); tiny.high = G.score - s3;
+      p.pos.y = y0;
+      P.active.clear(); P.update(0);
+      E.spawnTimer = st; E.calmTimer = calm;
+      out.sizePU = { mega, tiny, whiff: TINY.whiff, rate: TINY.rate, megaBoss: MEGA.boss };
+    }
+
     // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
     const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
     const ground0 = G.terrain.surfaceHeight(spot.x, spot.z);
@@ -3793,6 +3839,7 @@ try {
     [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],
     [report.longestPowerup >= 45, 'power-ups last longer'],
     [report.powerupDurShort?.length === 0, `every timed power-up lasts at least 1.5x its old duration (short: ${JSON.stringify(report.powerupDurShort)})`],
+    [(({ sizePU: { mega: m, tiny: t, whiff, rate, megaBoss } }) => m.scale > 2 && m.popped && m.pts >= m.want && m.boss >= megaBoss * 0.5 && m.dazed && m.cd && m.bump === 0 && m.armored > 0 && Math.abs(m.armored * 2 - m.plain) < 0.01 && t.scale === 0.5 && t.whiffed && t.pts === whiff && t.hurt === 0 && t.low === rate && t.high === 0)(report), `Mega Ram pops regulars for 1.5x points, rams and dazes bosses, halves hits; Tiny Ace whiffs shots for points and pays daredevil points low down only (${JSON.stringify(report.sizePU)})`],
     [(({ turbo: t }) => t && !t.idle && t.held && t.tank >= 0.01 && t.turboMul > t.plainMul)(report), `Turbo only boosts while held, faster than plain boost and free (${JSON.stringify(report.turbo)})`],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
     [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],
