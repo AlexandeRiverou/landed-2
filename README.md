@@ -227,7 +227,10 @@ section usually steps back home. So it doesn't loop, but it stays the same mood.
 40 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
 Points and Objective Radar 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
 hold boost, it's faster, 2.1× cruise instead of 1.7×, and free; it never boosts for you), Slow-Mo, Time Freeze, Double Points,
-Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and Objective Radar.
+Repair Kit, Ghost Mode (can't crash into the ground), Mega Ram (huge and armoured, enemy hits do half: ram regular
+enemies for 1.5× points, ram a boss for 12% of its hull and a 2.5 s daze), Tiny Ace (half size: a shot that would have
+hit a normal plane whiffs past for +15, and flying within 15 m of the ground, water or a tunnel roof pays 15 points a
+second) and Objective Radar.
 
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
 → Sky Intern → … → Supreme Commander Of Up) and grants a permanent perk for the flight: more hull, faster boost
@@ -319,7 +322,7 @@ the 15: it's never in the deck, never rolls a modifier and never comes as twins.
 760 m ahead of you. It never moves. Its face turns to follow you, slowly.
 
 The planet and its moons are solid, but they're not deadly. Touch one and you bounce off ("BOING!"): 12 hull (never your
-last point), 1 s of invulnerability, and no life lost. God and ghost modes skim past; the Mega Plane bounces too.
+last point), 1 s of invulnerability, and no life lost. God and ghost modes skim past; the Mega Ram bounces too.
 Bullets and orbs stop at the surface, and the pull-up warning sees it. Bare rock takes no damage ("That's just rock.
 Shoot the moons, the pores and the eye!"). If you do run out of hull, you lose a life as usual and come back 450 m out,
 facing it. Every hit on a gadget drains the boss bar (gold sparkle). Work from the outside in:

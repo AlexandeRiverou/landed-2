@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
+import { MEGA, TINY } from './powerups.js';
 import { MOVES as BOSS_MOVES, Hazards, guardStep, animateBoss, endMoves, dropBoss, daze } from './bossmoves.js';
 
 const TYPES = {
@@ -1055,8 +1056,10 @@ export class Enemies {
       // Player contact.
       e.contactCd = Math.max(0, (e.contactCd || 0) - dt);
       if (!p.dead && !calm && dist < e.radius + 4 * p.sizeScale && e.contactCd <= 0) {
-        // Mega Plane flattens anything smaller than a boss.
-        if (G.powerups.has('mega') && !e.boss) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
+        // Mega Ram flattens anything smaller than a boss (for bonus points), and rams a boss (see ram).
+        if (G.powerups.has('mega') && !e.boss) { e.rammed = true; G.fx.explosion(e.pos); G.shake?.(0.5, 0.15); this.kill(i, true); continue; }
+        if (G.powerups.has('mega') && !e.planet) this.ram(e, toP);
+        else {
         e.contactCd = 1.5; // big enemies bump you once, not every frame
         // A clump of Grumblings costs one or two bites, not six: GRUMBLE_GAP s after one gets you, the next ones don't.
         const nibble = e.def.squeak && G.time - this.nibbleAt < GRUMBLE_GAP;
@@ -1069,6 +1072,7 @@ export class Enemies {
         }
         if (e.def.kamikaze) { this.burst(e); this.kill(i, false); continue; }
         e.vel.copy(toP).normalize().multiplyScalar(-60);
+        }
       }
       // Bullets: weak points and breakable parts first, then the body. A moth on your wing is out of your line of fire.
       const broad = e.latched ? -1 : (e.radius * 1.8 + 3) ** 2;
@@ -1414,7 +1418,22 @@ export class Enemies {
   }
 
   // A Clingy Moth on your wing drains boost (MOTH_BOOST of the tank per s: the tank can't refill meanwhile) and hull
-  // until a stunt (any) or Mega Plane shakes it off, for points. Going down just drops it.
+  // until a stunt (any) or Mega Ram shakes it off, for points. Going down just drops it.
+  // Mega Ram into a boss: MEGA.boss of its max hull (shields and weak-spot multipliers apply), shoved away, dazed,
+  // and no bump on you. toP points from the boss to the player. The usual hp <= 0 check after bullets finishes it off.
+  ram(e, toP) {
+    const G = this.G;
+    e.contactCd = MEGA.cd;
+    e.hp -= e.maxHp * MEGA.boss * (e.vulnerable || 1) * (e.shield ?? 1);
+    e.vel.copy(toP).normalize().multiplyScalar(-MEGA.shove);
+    daze(e, MEGA.daze);
+    G.fx.explosion(e.pos);
+    G.fx.popText(e.pos, 'RAM!');
+    G.shake?.(1.2, 0.3);
+    G.audio.explode();
+    if (!this.rammedBoss) { this.rammedBoss = true; G.ui.notify('RAM! The boss is dazed: shoot it now for extra damage.', 'good', 3, 0); }
+  }
+
   cling(e, dt) {
     const G = this.G, p = G.player, rdt = dt / PACE;
     if (p.dead) { this.unlatch(e, false); return; }
@@ -1492,8 +1511,14 @@ export class Enemies {
       s.life -= dt;
       if (s.g) s.vel.y -= s.g * dt; // dropped bombs and eggs fall
       s.pos.addScaledVector(s.vel, dt);
-      const hit = !p.dead && s.pos.distanceToSquared(p.pos) < s.r2 * p.sizeScale * p.sizeScale;
+      const d2 = s.pos.distanceToSquared(p.pos), hit = !p.dead && d2 < s.r2 * p.sizeScale * p.sizeScale;
       if (hit) p.damage(s.dmg);
+      else if (!p.dead && !s.whiffed && d2 < s.r2 && this.G.powerups.has('tiny')) {
+        // Tiny Ace: it would have hit a normal-size plane.
+        s.whiffed = true;
+        this.G.score += TINY.whiff;
+        this.G.fx.popText(_pp.copy(p.pos).addScaledVector(p.up, 5), `Whiff! +${TINY.whiff}`);
+      }
       const ground = !hit && s.pos.y < this.G.terrain.surfaceHeight(s.pos.x, s.pos.z, s.pos.y);
       if (ground) {
         // Orbs that miss blow holes in the landscape.
@@ -1569,10 +1594,10 @@ export class Enemies {
     this.streak = !p.dead && G.time - (this.streakAt ?? -Infinity) < STREAK_WINDOW ? (this.streak || 0) + 1 : 0;
     this.streakAt = G.time;
     const mult = STREAK_MULT[Math.min(this.streak, STREAK_MULT.length - 1)];
-    const pts = Math.round(e.def.score * (e.elite ? GARY.score : 1) * mult);
+    const pts = Math.round(e.def.score * (e.elite ? GARY.score : 1) * mult * (e.rammed ? MEGA.bonus : 1)); // Mega Ram: bonus
     e.paid = true;
     G.score += pts;
-    G.fx.popText(e.pos, mult > 1 ? `+${pts} x${mult}` : `+${pts}`);
+    G.fx.popText(e.pos, `${e.rammed ? 'RAM! ' : ''}+${pts}${mult > 1 ? ` x${mult}` : ''}`);
     G.stats.kills++;
     if (Math.random() < 0.3) G.ui.notify(`${pick(T.kill)} +${pts}`, 'good', 2.5, 0);
     if (this.frenzy && !e.quest && !p.dead) {

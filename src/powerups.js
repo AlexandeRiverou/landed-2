@@ -16,11 +16,18 @@ export const POWERUPS = {
   double: { name: 'Double Points', icon: '💰', color: '#7aff6a', dur: 70, text: 'Double Points! Everything is worth twice as much for a while.' },
   repair: { name: 'Repair Kit', icon: '🔧', color: '#3ccf7a', dur: 0, text: 'Repair Kit! Hull fully patched with duct tape and optimism.' },
   ghost: { name: 'Ghost Mode', icon: '👻', color: '#e8e8ff', dur: 35, text: 'Ghost Mode! You can\'t crash into the ground or sea. Go wild.' },
-  mega: { name: 'Mega Plane', icon: '🦖', color: '#ff9a3a', dur: 40, text: 'Mega Plane! You\'re HUGE. Small enemies pop on contact.' },
-  tiny: { name: 'Tiny Plane', icon: '🐜', color: '#c8ff7a', dur: 50, text: 'Tiny Plane! Half the size, half as easy to hit.' },
+  mega: { name: 'Mega Ram', icon: '🦖', color: '#ff9a3a', dur: 40, text: 'Mega Ram! You\'re HUGE and armoured. Ram enemies for bonus points, and ram bosses to daze them.' },
+  tiny: { name: 'Tiny Ace', icon: '🐜', color: '#c8ff7a', dur: 50, text: 'Tiny Ace! Shots whiff past you for points. Hug the ground or fly through tunnels for daredevil points.' },
   radar: { name: 'Objective Radar', icon: '📡', color: '#ffe08a', dur: 70, text: 'Objective Radar! Arrow and distance to the objective, no nagging needed.' },
 };
 const IDS = Object.keys(POWERUPS);
+// Mega Ram: regular enemies pop on contact for bonus× their points (a "RAM!" popup, still part of the kill streak). A
+// boss takes boss× its max hull (times its shield and weak-spot multipliers), is shoved shove m/s away and dazed for daze
+// s (bullets do ×1.5 on a dazed boss), and can't be rammed again for cd s; you take no bump. Enemy hits on you do armor×.
+export const MEGA = { scale: 2.2, bonus: 1.5, boss: 0.12, cd: 1.5, daze: 2.5, shove: 70, armor: 0.5 };
+// Tiny Ace: half the size, so an enemy shot that would have hit a normal plane whiffs past for +whiff points. Flying
+// within low m of the ground, the water or a tunnel roof earns rate daredevil points a second, paid every pay s.
+export const TINY = { scale: 0.5, whiff: 15, low: 15, rate: 15, pay: 1 };
 const OPPOSITES = { mega: 'tiny', tiny: 'mega' };
 
 const FIRST_SPAWN = 40;                  // seconds into a flight before the first one appears
@@ -162,9 +169,24 @@ export class PowerUps {
       this.shield.position.copy(p.pos);
       this.shield.scale.setScalar(p.sizeScale * (1 + Math.sin(G.time * 6) * 0.04));
     }
-    p.sizeScale = this.has('mega') ? 2.2 : this.has('tiny') ? 0.5 : 1;
+    p.sizeScale = this.has('mega') ? MEGA.scale : this.has('tiny') ? TINY.scale : 1;
+    this.daredevil(dt);
     if (this.has('ghost') && !p.dead) p.model.group.visible = Math.floor(G.time * 8) % 3 !== 0; // ghostly flicker
     this.renderTray();
+  }
+
+  // Tiny Ace: daredevil points for flying low (ground, water or a tunnel roof within TINY.low m), paid in chunks.
+  daredevil(dt) {
+    const G = this.G, p = G.player;
+    const low = this.has('tiny') && !p.dead && !p.landed && (p.pos.y - groundAt(G, p.pos.x, p.pos.z, p.pos.y) < TINY.low
+      || G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y) - p.pos.y < TINY.low);
+    if (!low) { this.lowT = 0; return; }
+    this.lowT = (this.lowT || 0) + dt;
+    if (this.lowT < TINY.pay) return;
+    this.lowT -= TINY.pay;
+    const pts = Math.round(TINY.rate * TINY.pay);
+    G.score += pts;
+    G.fx.popText(p.pos.clone().addScaledVector(p.up, 6), `Daredevil +${pts}`);
   }
 
   renderTray() {
