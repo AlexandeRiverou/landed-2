@@ -2709,7 +2709,7 @@ try {
       step(30 * 2.5, false);
       out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
       out.owl.lost = hp1 - p.health;
-      // Kite Twins: flying through the string hurts (12 × 1.5 = 18) and says so; shooting a kite snaps the string.
+      // Kite Twins: flying through the string hurts (22 × 1.5 = 33) and says so; shooting a kite snaps the string.
       fresh();
       G.powerups.active.set('freeze', 999);
       const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
@@ -2727,6 +2727,35 @@ try {
       face(ka.pos);
       shootAt(ka, 0.5);
       out.kites.snapped = ka.dead && !pair.line.parent && kb.pair === null;
+      // Kite Twins hunt: flying straight, the pair keeps pace in front of you, winds up (the string blinks red) and
+      // snaps the string across your path (33). A barrel roll through the snap gets you out of it unhurt.
+      const kiteRun = (roll) => {
+        fresh();
+        p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z) + 150;
+        p.prevPos.copy(p.pos);
+        const k = E.spawn('kites', ahead(120)), kp = k.pair;
+        p.health = p.maxHealth;
+        const r = { ahead: [Infinity, -Infinity], windAt: null, snapAt: null, hitAt: null, lost: 0, red: false, rolled: false };
+        for (let i = 0; i < 30 * 12; i++) {
+          p.invuln = 0; p.grace = 99;
+          G.step(1 / 30);
+          const t = (i + 1) / 30;
+          if (kp.phase === 'park' && !kp.back && t > 2 && r.windAt === null) {
+            const a = Math.round(kp.centre.clone().sub(p.pos).dot(p.forward));
+            r.ahead = [Math.min(r.ahead[0], a), Math.max(r.ahead[1], a)];
+          }
+          if (kp.phase === 'wind' && r.windAt === null) r.windAt = t;
+          if (kp.phase === 'wind' && kp.mat.color.getHexString() === 'ff3b30') r.red = true;
+          if (kp.phase === 'snap' && r.snapAt === null) r.snapAt = t;
+          if (roll && r.snapAt !== null && !r.rolled) { p.startManeuver('left'); r.rolled = true; }
+          if (r.hitAt === null && p.health < p.maxHealth) { r.hitAt = t; r.lost = +(p.maxHealth - p.health).toFixed(2); }
+          if (r.snapAt !== null && t - r.snapAt > 1.5) break;
+        }
+        r.ahead = r.ahead.map((a) => (Number.isFinite(a) ? a : null));
+        r.lead = r.hitAt !== null && r.windAt !== null ? +(r.hitAt - r.windAt).toFixed(2) : null;
+        return r;
+      };
+      out.kiteHunt = { straight: kiteRun(false), rolled: kiteRun(true) };
       // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
       fresh();
       const moth = E.spawn('moth', ahead(6));
@@ -3985,7 +4014,8 @@ try {
     [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Grudge Rock: breaks into 3 pebbles, which don't split again (${JSON.stringify(RUSH.dog)})`],
     [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 27 && RUSH.thunder.shade >= 0.6, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 27 (18 × 1.5) on its axis, the zap sounds on landing, and the cloud body is light slate (${JSON.stringify(RUSH.thunder)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
-    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 18 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12 × 1.5 = 18), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
+    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 33 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (22 × 1.5 = 33), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
+    [(({ straight: s, rolled: r }) => s.ahead[0] >= 80 && s.ahead[1] <= 200 && s.red && s.lost === 33 && s.lead >= 0.9 && r.snapAt !== null && r.rolled && r.lost === 0)(RUSH.kiteHunt), `Kite Twins hunt: they keep pace 80 to 200 m ahead, wind up (red string) and snap it at you for 33; a barrel roll dodges it (${JSON.stringify(RUSH.kiteHunt)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],
     // ---- Grumbleglobe, the Planet With Opinions (see the GLOBE block)
     ...(({ zone: z, arrival: a }) => [

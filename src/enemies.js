@@ -30,7 +30,7 @@ const TYPES = {
   // squeak: a short high squeak instead of the explosion when it pops. Only Grumbleglobe's pores make these (planetboss.js).
   grumbling: { hp: 1, radius: 4, dmg: 8, speed: 52, make: makeGrumbling, score: 5, minScore: Infinity, weight: 0, kamikaze: true, quiet: true, squeak: true, name: 'Grumbling' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
-  kites: { hp: 2, radius: 5, dmg: 12, speed: 26, make: makeKite, score: 50, minScore: 200, weight: 1, kamikaze: false, pair: true, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. Do not fly through the string. Go over. Or under.' },
+  kites: { hp: 2, radius: 5, dmg: 22, speed: 26, make: makeKite, score: 110, minScore: 200, weight: 1, kamikaze: false, pair: true, max: 1, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. They keep up, and when it flashes red they snap it at you. Go over, under, or roll.' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
 };
 const SWARMS = { gull: 4, bee: 6 };
@@ -99,7 +99,14 @@ const UMBRELLA_TURN = 0.25, UMBRELLA_COS = Math.cos((60 * Math.PI) / 180);
 // Sniper Owl: real s between locks, lock time before the shot, shot speed, and how far you may turn off it (rad).
 const OWL_EVERY = 4, OWL_LOCK = 1.5, OWL_SHOT = 130, OWL_BREAK = (35 * Math.PI) / 180;
 // Kite Twins: string length (m, open sky / under a roof), how close counts as flying through it, its cooldown (s).
-const KITE_GAP = 70, KITE_GAP_ROOF = 40, STRING_HIT = 4, STRING_CD = 1.5;
+const KITE_GAP = 70, KITE_GAP_ROOF = 40, STRING_HIT = 5, STRING_CD = 1.5;
+// Where the pair parks (m ahead of you, ± sideways sweep) and how fast it keeps up (× your speed), then its snap attack
+// (enemy s): every KITE_EVERY it winds up (the string blinks red for KITE_WIND while it drops back to KITE_CLOSE m in
+// front of you), then lunges (KITE_LUNGE m per enemy-s) to lay the string across the spot you'll reach in about
+// KITE_SNAP. After a snap, or once you're past it, it flies back out ahead, over your head and harmless, until it's
+// KITE_BACK m in front again. The string stays KITE_FLOOR m above the ground.
+const KITE_AHEAD = 110, KITE_CLOSE = 55, KITE_SWEEP = 40, KITE_KEEP = 1.15, KITE_EVERY = 6, KITE_WIND = 1, KITE_SNAP = 0.8;
+const KITE_LUNGE = 120, KITE_BACK = 80, KITE_FLOOR = 8, KITE_RED = '#ff3b30';
 // Clingy Moth while latched: boost tank drained per s, hull per s.
 const MOTH_BOOST = 0.15, MOTH_HP = 2;
 // Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
@@ -137,7 +144,7 @@ function flatForward(p, out) {
   return out.normalize();
 }
 
-let markerMat = null, stringMat = null, beamMat = null;
+let markerMat = null, beamMat = null;
 export function makeMarker() {
   if (!markerMat) {
     const cv = document.createElement('canvas');
@@ -809,10 +816,11 @@ export class Enemies {
     const axis = flatForward(G.player, new THREE.Vector3()).applyAxisAngle(Y, Math.PI / 2);
     const b = this.spawn(a.type, a.pos.clone().addScaledVector(axis, gap), { ...opts, twin: a });
     const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
-    const line = new THREE.Line(geo, stringMat || (stringMat = new THREE.LineBasicMaterial({ color: '#ffffff' })));
+    const mat = new THREE.LineBasicMaterial({ color: '#ffffff' }); // its own, so its red wind-up tints no other string
+    const line = new THREE.Line(geo, mat);
     line.frustumCulled = false; // its two ends move every frame
     G.scene.add(line);
-    const pair = { kites: [a, b], line, gap, axis, centre: a.pos.clone().addScaledVector(axis, gap / 2), hitCd: 0 };
+    const pair = { kites: [a, b], line, mat, gap, axis, centre: a.pos.clone().addScaledVector(axis, gap / 2), hitCd: 0, phase: 'park', phaseT: 0, strike: new THREE.Vector3(), back: false };
     a.pair = b.pair = pair;
     a.side = -1; b.side = 1;
     this.drawString(pair);
@@ -830,6 +838,7 @@ export class Enemies {
     const pair = e.pair;
     this.G.scene.remove(pair.line);
     pair.line.geometry.dispose();
+    pair.mat.dispose();
     for (const k of pair.kites) k.pair = null;
   }
 
@@ -1316,9 +1325,10 @@ export class Enemies {
           break;
         }
         if (pair.kites[0] === e) this.flyPair(pair, dt);
-        // Each kite holds its end of the string.
-        _w.copy(pair.centre).addScaledVector(pair.axis, (e.side * pair.gap) / 2).sub(e.pos).multiplyScalar(2);
-        steer(_w.clampLength(0, d.speed * 3), 3);
+        // Each kite holds its end of the string (keeping up with a lunge).
+        const fast = pair.phase === 'snap' || pair.back;
+        _w.copy(pair.centre).addScaledVector(pair.axis, (e.side * pair.gap) / 2).sub(e.pos).multiplyScalar(fast ? 6 : 2);
+        steer(_w.clampLength(0, fast ? KITE_LUNGE * 1.5 : Math.max(d.speed, (KITE_KEEP * p.speed) / PACE) * 3), fast ? 8 : 3);
         break;
       }
       case 'moth':
@@ -1399,17 +1409,46 @@ export class Enemies {
     at.needsUpdate = true;
   }
 
-  // Kite Twins: the pair's centre drifts into your path, sweeping side to side, with the string held across it.
-  // Flying through the string hurts and wobbles you (once per STRING_CD s).
+  // Kite Twins: the pair keeps pace KITE_AHEAD m in front of you, sweeping side to side, with the string held across
+  // your path. Every KITE_EVERY s it winds up (the string blinks red, a rising twang) and snaps the string at where
+  // you're about to be. Flying through the string hurts and wobbles you (once per STRING_CD s); a stunt, going over or
+  // under, or shooting a kite (it snaps the string) gets you out of it.
   flyPair(pair, dt) {
     const G = this.G, p = G.player, [a, b] = pair.kites;
     const f = flatForward(p, _s), side = _t.set(-f.z, 0, f.x);
-    _w.copy(p.pos).addScaledVector(f, 150).addScaledVector(side, Math.sin(a.t * 0.5) * 60);
-    _w.y = p.pos.y + Math.sin(a.t * 0.7) * 12;
-    pair.centre.add(_w.sub(pair.centre).clampLength(0, a.def.speed * dt));
-    pair.axis.lerp(side, 1 - Math.exp(-dt)).normalize(); // the string turns to lie across your path
+    const roof = this.roofed(pair.centre);
+    pair.phaseT += dt;
+    if (pair.phase === 'park' && !pair.back && pair.phaseT >= KITE_EVERY && !p.dead) {
+      pair.phase = 'wind'; pair.phaseT = 0;
+      G.audio.tone(330, 0.9, { type: 'triangle', vol: 0.07, slide: 660 });
+      if (!this.kiteWarned) { this.kiteWarned = true; G.ui.notify('The kites are winding up! Over, under, or roll!', 'bad', 2, 0); }
+    } else if (pair.phase === 'wind' && pair.phaseT >= KITE_WIND) {
+      pair.phase = 'snap'; pair.phaseT = 0;
+      // Where you'll be about halfway through the snap, at your height (sideways only under a roof).
+      pair.strike.copy(p.pos).addScaledVector(p.forward, (p.speed * KITE_SNAP * 0.55) / PACE);
+      if (roof) pair.strike.y = pair.centre.y;
+      G.audio.tone(880, 0.15, { type: 'sawtooth', vol: 0.06, slide: -500 });
+    } else if (pair.phase === 'snap' && pair.phaseT >= KITE_SNAP) {
+      pair.phase = 'park'; pair.phaseT = 0; pair.back = true;
+    }
+    pair.mat.color.set(pair.phase === 'snap' || (pair.phase === 'wind' && Math.floor(pair.phaseT * 8) % 2 === 0) ? KITE_RED : '#ffffff');
+    const ahead = _a.copy(pair.centre).sub(p.pos).dot(f);
+    if (pair.phase === 'park' && ahead < -5) pair.back = true; // you got past it (a snap you dodged, or boosting)
+    else if (pair.back && ahead >= KITE_BACK) pair.back = false;
+    let top = Math.max(a.def.speed, (KITE_KEEP * p.speed) / PACE);
+    if (pair.phase === 'snap') { _w.copy(pair.strike); top = KITE_LUNGE; }
+    else {
+      const wind = pair.phase === 'wind';
+      _w.copy(p.pos).addScaledVector(f, wind ? KITE_CLOSE : KITE_AHEAD).addScaledVector(side, Math.sin(a.t * 0.5) * KITE_SWEEP);
+      _w.y = p.pos.y + (wind ? 0 : Math.sin(a.t * 0.7) * 12);
+      if (wind) top = KITE_LUNGE;
+      if (pair.back) { top = KITE_LUNGE; if (!roof) _w.y = p.pos.y + 30; } // back out ahead, over your head
+    }
+    _w.y = Math.max(_w.y, G.terrain.surfaceHeight(_w.x, _w.z) + KITE_FLOOR);
+    pair.centre.add(_w.sub(pair.centre).clampLength(0, top * dt));
+    pair.axis.lerp(side, 1 - Math.exp(-dt * (pair.phase === 'snap' ? 4 : 1))).normalize(); // the string lies across your path
     pair.hitCd = Math.max(0, pair.hitCd - dt);
-    if (p.dead || p.dodging || p.invuln > 0 || pair.hitCd > 0 || segDist(p.pos, a.pos, b.pos) > STRING_HIT * p.sizeScale) return;
+    if (pair.back || p.dead || p.dodging || p.invuln > 0 || pair.hitCd > 0 || segDist(p.pos, a.pos, b.pos) > STRING_HIT * p.sizeScale) return;
     pair.hitCd = STRING_CD * PACE;
     p.damage(a.def.dmg);
     p.quat.multiply(_q.setFromAxisAngle(_s.set(0, 0, 1), (Math.random() < 0.5 ? -1 : 1) * 0.7)).normalize(); // a wobble

@@ -167,8 +167,9 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
   instead of exploding.
 - **Sniper Owl:** a red line means it's aiming. 1.5 s later it fires where you'll be. A stunt or a sharp turn
   (35° or more) breaks the lock. Never more than 2 at once.
-- **Kite Twins:** two kites joined by a long string, and the string hurts. Go over or under it, or shoot one kite
-  to snap the string.
+- **Kite Twins:** two kites joined by a long string, and the string hurts (33 hull). They keep pace about 110 m
+  ahead of you, and every 7 s or so the string blinks red, then they snap it across your path. Go over or under it,
+  barrel roll through it, or shoot one kite to snap the string. Only one pair at a time.
 - **Clingy Moth:** it latches onto your wing and drains your boost and hull. Any stunt shakes it off.
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
