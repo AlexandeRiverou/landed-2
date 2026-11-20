@@ -1,6 +1,7 @@
 // Pilot progression: your score is XP. Each level gives a new rank and a permanent perk for the
 // rest of the flight, and your best run is remembered between visits.
 import { ZONES } from './zones.js';
+import { LEVEL_MEND } from './player.js';
 
 const RANKS = [
   'Cadet Who Means Well', 'Sky Intern', 'Junior Wingperson', 'Cloud Botherer', 'Hoop Enthusiast',
@@ -82,8 +83,8 @@ export class Progress {
     const perk = PERKS[this.level - 2] || LATER_PERK;
     perk.apply(G);
     this.perks.push(perk.text);
-    if (!G.player.dead) G.player.health = G.player.maxHealth; // a promotion comes with a free repair (after Hull+ perks)
-    G.ui.notify(`⭐ Promoted to Level ${this.level}: ${this.rank}! Perk: ${perk.text}. Hull repaired!`, 'good', 5, 2);
+    if (!G.player.dead) G.player.health = Math.min(G.player.maxHealth, G.player.health + LEVEL_MEND); // a promotion patches the hull (after Hull+ perks)
+    G.ui.notify(`⭐ Promoted to Level ${this.level}: ${this.rank}! Perk: ${perk.text}. Hull +${LEVEL_MEND}!`, 'good', 5, 2);
     G.audio.success();
     G.fx.firework(G.player.pos.clone().addScaledVector(G.player.up, 40).addScaledVector(G.player.right, 60));
     const panel = document.getElementById('topleft');

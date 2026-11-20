@@ -231,14 +231,14 @@ Repair Kit, Ghost Mode (can't crash into the ground), Mega Plane, Tiny Plane and
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
 → Sky Intern → … → Supreme Commander Of Up) and grants a permanent perk for the flight: more hull, faster boost
 recharge, higher fire rate, longer and more frequent power-ups, harder-hitting bullets... The XP bar is under your
-score, and your best run is remembered on the title screen. Every promotion also fully repairs your hull ("Hull
-repaired!").
+score, and your best run is remembered on the title screen. Every promotion also patches 50 hull ("Hull +50!").
 
 **Lives and Game Over** (`src/player.js`, `src/main.js`): you get three planes per run, shown as hearts (❤️❤️🖤)
 above HULL and BOOST in the bottom-left. Every crash costs one, whether it's an enemy, the ground or the water, and
 you respawn with a full hull and a note telling you how many are left ("2 lives left…", "Last life!"). Crashes in
-Relax Mode are free. The hull doesn't patch itself quickly: it only starts mending after 10 s without a hit, at 1 hp
-a second (the "Hull repairs twice as fast" perk doubles that). Breaking away from a boss mends it sooner and faster
+Relax Mode are free. Enemies hit hard (every enemy, boss and asteroid hit does 1.5× its listed damage, so four drone
+rams or five UFO shots empty a fresh 100 hull), and the hull doesn't patch itself quickly: it only starts mending after 12 s without a hit, at
+0.6 hp a second (the "Hull repairs twice as fast" perk doubles that). Breaking away from a boss mends it sooner and faster
 (see Bosses). The real fixes are levelling up and the Repair Kit. Beating a boss earns a spare plane (+1 ❤️, up to 5;
 after that the banner just says "Hangar full").
 Lose the last plane and, once the explosion clears, the **Game Over** card shows your score, level and rank,
@@ -298,7 +298,7 @@ Prime and Steven never start a strafing run or a dive from behind a plane that's
 the boss hovers near the spot where it lost you and doesn't attack at all: no shots, summons, dashes, bombs, mines,
 dives or signature moves (its marked attacks and bodyguards go too). Its minions back off too and spawns pause for 3 s. The boss bar dims and says "(lost you)". Shoot it while it
 sulks and it fights back at once. While every boss in the fight has lost you or is coming back, your hull starts
-mending after 3 s instead of 10, at three times the rate. The break lasts up to 8 s of flying away, and ends early once
+mending after 5 s instead of 12, at twice the rate. The break lasts up to 8 s of flying away, and ends early once
 you're 650 m out. Then it comes back, closing at most 30 m/s faster than you fly away, and stops about 150 m further
 out than it fights from. There it waits ("The Goose Queen is waiting for you. Your move."), and the boss bar says
 "(your move)". Keep flying off and it keeps pace without attacking (and your hull mends at the normal rate). Round two
@@ -515,7 +515,7 @@ card.
 - **Power-ups:** grab any of the 13.
 - **Cheats & tools:** God mode (no damage, and you skim the ground, sea, cave roof and tunnel roofs like Ghost Mode;
   any crash that still happens costs no life), Relax Mode on/off, Complete objective, Level up (a real promotion: a
-  perk and a full hull), Lose a life (crashes on the spot and costs a life even in god mode, so you can reach the Game
+  perk and +50 hull), Lose a life (crashes on the spot and costs a life even in god mode, so you can reach the Game
   Over card fast; in Relax Mode it crashes you for free), Clear enemies (bosses and objective
   targets stay).
 - **Secrets:** trigger any of the 10 (it plays the effect and counts as found; hover a button for its hint), and
@@ -535,7 +535,7 @@ script that crashes on purpose; the HUD then shows `❤️ ×N`), `G.gameOver` i
 `G.endRun()` shows that card right now, and `G.flyAgain()` starts a fresh run from it (`G.flyAgain(true)` continues
 from the current zone, without checking that you got past zone 1). `G.progress.furthest` is the furthest zone reached
 (`{ index, lap }` or `null`, saved in `localStorage['landed-furthest']` and checked on load); `G.progress.reachZone(index,
-lap)` records one if it's further. `LIVES`, `MAX_LIVES`, `REGEN_DELAY`, `BREATHER_DELAY`, `BREATHER_REGEN` and the
+lap)` records one if it's further. `LIVES`, `MAX_LIVES`, `REGEN_DELAY`, `REGEN_RATE`, `BREATHER_DELAY`, `BREATHER_REGEN`, `ENEMY_DMG`, `LEVEL_MEND` and the
 boost tank (`BOOST_DRAIN`, `BOOST_REGEN`) sit at the top of `src/player.js`, which also exports `LAND` (the landing
 limits) and `Player.landableAt(x, z, y, ground)`, the "could you land here" test the landing and the pull-up warning
 share. `PAR` (par times per type) and `FREE_HINTS` sit above `TYPES` in `src/objectives.js`; each objective gets
