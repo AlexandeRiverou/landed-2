@@ -371,11 +371,24 @@ pays 1.5× a regular boss and a spare plane, and its par is 100 s.
   keys, flattened into the ground 520–820 m ahead. Touch down on it, then roll along it for 2 s or slow below
   12 m/s. If there's no dry land nearby, it makes you a little runway island. Not offered in Hollow Peaks, Metropolis,
   Sunken Reef or the zones with no ground.
-- *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line: survive 40 s of 4 waves
-  ("WAVE 2/4"), each bigger than the last. Later waves come at you from the sides and (in open sky) from above, and
-  the final wave opens with three groups at once. Every kill mends 3 hull. Getting shot down knocks 15 s off the
-  clock instead of starting over, and after the second time the enemies ease off on their own. "THE LINE HELD!"
-  pops whatever's left. Worth 250.
+- *Fights:* the pigeon hunt, pest control (shoot down any 5 enemies), and Hold The Line: survive 5 waves
+  ("🛡 WAVE 2/5 · 14 s · 6 left"), about 2 minutes in all. Each wave opens with a big centred countdown (PREPARE FOR
+  WAVE n, a joke, then 3, 2, 1, GO!) and nothing spawns until it ends. The clocks run 12, 15, 18, 20 and 24 s, the
+  rosters grow (5, 7, 9, 11, 10 enemies), new enemy types join in waves 2 and 3, more come from the sides and (in open
+  sky) from above, and wave 4 opens with three groups at once. Drones, bees, pebbles and diving gulls keep up with
+  you (0.85 up to 1.05× your base speed), so you can't just outrun them; boost still escapes.
+  - **The line:** a gold beacon marks it and is planted under you at every countdown. It fades to a ghost when you're
+    close and brightens near the edge, 550 m out. Cross the edge and the wave clock pauses ("PAUSED · BACK TO THE
+    LINE"), the arrow points home and TURN BACK shows. Stay out for 12 s in one wave and the line moves to you ("THE
+    LINE MOVED"), so a straight flyer can't soft-lock it.
+  - **Ending a wave:** shoot down the whole roster to clear it early for 40 × the wave number in points. Every wave
+    end mends 25 hull, and leftover enemies puff away for no points.
+  - **Gary:** wave 5 adds Rival Pilot Gary, elite, with 42 hp, a boss bar and triple points. Breaking his propeller
+    slows him and costs 10% of his hp. Shoot him down and "THE LINE HELD!" ends it at once. If the clock runs out
+    first, he leaves for the dentist and you still win.
+  - **Dying:** you restart the current wave, not the whole fight. After the second death the waves ease off: shorter
+    clocks, smaller rosters, slower spawns and slower chasers.
+  - Every kill still mends 3 hull. New enemy intros queue up one every 4 s (at most 4 waiting). Worth 350.
 - *Quests* (new verbs, `src/quests.js`):
   - **Pizza Delivery:** fly into the pizza box, then take it to the drop-off pad under the light beam (over a void or
     in space it's a floating mailbox). It cools 2.4% a second once you have it. At 0% the customer eats cereal and
@@ -557,8 +570,13 @@ surface normal), then calls `onFire`. New enemy `TYPES` flags: `guard` (front hi
 string), `latch` (clings to the plane) and `quiet` (no intro, and a small puff instead of a big explosion). Grumblings (`weight: 0`) only come from
 Grumbleglobe's pores. `CEILING` (exported, 18) caps regular enemies alive
 at once, whatever spawns them; boss bodyguards don't check it. `G.enemies.frenzy` is `null`, or during Hold The Line
-`{ wave, easier, burst, score }`; `WAVES` (exported) has each wave's spawn interval, cap, and flank/overhead chances,
-and gulls, bees and Grudge Pebbles count a third each toward a wave's cap. In caves, `loopDome(G)` (exported from
+`{ wave, phase, t, clock, step, easier, burst, first, spent, cleared, score, restart }`; `WAVES` (exported) has each
+wave's clock, roster, spawn interval, cap, and flank/overhead chances, and gulls, bees and Grudge Pebbles count a third
+each toward a wave's cap. Enemies spawned in a wave carry `e.wave`, and Rival Pilot Gary `e.elite`. `spawn(..., {
+quiet })` skips the intro; `Enemies.intro(text, first, about)` queues one. The survive objective in `mkSurvive`
+(`src/challenges.js`) exposes the beacon as `obj.line`, and `LINE_R` (exported, 550 m) is the ring where the clock
+pauses. `G.ui.callout(title, sub, secs)` shows the big centred `#wave-call` text (it fades instead of popping in
+Reduced Motion). In caves, `loopDome(G)` (exported from
 `src/objectives.js`) finds and marks the loop chamber (or returns `null`), and the loop tuck is `TUCK` (exported from
 `src/player.js`, 1.5×) with `G.player.loopTuck` the current value (the loop's `easier()` raises it by 0.25, up to
 2.2, and it resets when the objective ends).

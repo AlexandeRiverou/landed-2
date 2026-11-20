@@ -15,13 +15,14 @@ export class UI {
     this.el = {
       score: $('score'), stats: $('stats'), obj: $('objective'), objTitle: $('obj-title'), objDesc: $('obj-desc'),
       objProgress: $('obj-progress'), objDist: $('obj-dist'), objPar: $('obj-par'), hp: $('hp-fill'), boost: $('boost-fill'), speed: $('speed'),
-      lives: $('lives'), notes: $('notifications'), banner: $('banner'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
+      lives: $('lives'), notes: $('notifications'), banner: $('banner'), call: $('wave-call'), marker: $('marker'), arrow: $('edge-arrow'), tint: $('tint'), flash: $('flash'),
     };
     this.edgeArrow = 0;      // 0 faint, 1 normal, 2 big & pulsing (persuasion unlocks)
     this.showDistance = false;
     this.shownScore = 0;
     this.shownLives = null;
     this.bannerTimer = 0;
+    this.callTimer = 0;
     this.flashA = 0;
     this.tintTimer = 0;
     this.notes = [];       // visible
@@ -87,6 +88,20 @@ export class UI {
     ul.replaceChildren(...lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
     b.classList.add('show');
     this.bannerTimer = dur;
+  }
+
+  // A big centred callout (Hold The Line's countdown and wave results) for `secs` s; callout(null) hides it. Unlike
+  // notify it never drops a repeat, so 3, 2, 1 always show. Each one pops in, or just fades with reduced motion.
+  callout(title, sub = '', secs = 1) {
+    const c = this.el.call;
+    this.callTimer = title === null ? 0 : secs;
+    if (title === null) { c.classList.remove('show', 'pop'); return; }
+    c.querySelector('.call-title').textContent = title;
+    c.querySelector('.call-sub').textContent = sub;
+    c.classList.remove('pop');
+    void c.offsetWidth; // restart the pop
+    c.classList.add('show');
+    if (!this.G.comfort?.reducedMotion) c.classList.add('pop');
   }
 
   setObjective(obj) {
@@ -165,6 +180,7 @@ export class UI {
     e.speed.textContent = `SPD ${Math.round(p.speed * 3.6)} km/h · ALT ${alt} m`;
 
     if (this.bannerTimer > 0) { this.bannerTimer -= dt; if (this.bannerTimer <= 0) e.banner.classList.remove('show'); }
+    if (this.callTimer > 0) { this.callTimer -= dt; if (this.callTimer <= 0) e.call.classList.remove('show', 'pop'); }
     if (this.flashA > 0) { this.flashA = Math.max(0, this.flashA - dt * 2); e.flash.style.opacity = this.flashA; }
     if (this.tintTimer > 0) { this.tintTimer -= dt; if (this.tintTimer <= 0) e.tint.style.opacity = 0; }
 

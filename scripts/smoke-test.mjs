@@ -223,7 +223,7 @@ try {
       res.par.at10 = finish(obj, { t: 10 });
       res.par.at14 = finish(start('hoop'), { t: 14 });
       res.par.timed = start('timed').par;
-      // Hold The Line runs a fixed 40 s clock: no par line on its card, and no speed bonus however it ends.
+      // Hold The Line runs on its wave clocks: no par line on its card, and no speed bonus however it ends.
       obj = start('survive');
       G.step(1 / 30);
       res.par.survive = { par: obj.par, card: document.getElementById('obj-par').textContent, done: finish(obj, { t: 1 }).lines.join() };
@@ -2191,283 +2191,472 @@ try {
     return out;
   }, FLAT);
 
-  // Hold The Line ("The Rush": four waves, a clock that slips back when you're shot down) and the five newer regular
-  // enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth). Simulated, with nothing else around;
-  // world changes for completing an objective are held back, and score, lives and god mode are put back afterwards.
+  // Hold The Line ("The Rush": five waves with countdowns, a beacon whose ring holds the clock, a restart when you're
+  // shot down) and the five newer regular enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth).
+  // Simulated, with nothing else around; world changes for completing an objective are held back, and score, lives and
+  // god mode are put back afterwards.
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
-    const { CEILING } = await import('./src/enemies.js');
+    const { CEILING, WAVES, GARY } = await import('./src/enemies.js');
+    const { LINE_R } = await import('./src/challenges.js');
+    const { groundAt } = await import('./src/objectives.js');
     const V = p.pos.constructor, UP = new V(0, 1, 0);
-    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify };
-    G.mutations.celebrate = () => [];
-    if (G.relax) G.setRelax(false);
-    const notes = [];
-    G.ui.notify = (t, ...a) => { notes.push(t); return saved.notify.call(G.ui, t, ...a); };
-    const clear = () => { E.list.slice().forEach((e) => E.removeEnemy(e)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); E.calmTimer = 0; };
-    const quiet = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); G.ui.setObjective(null); };
-    quiet();
-    clear();
-    G.objectives.cooldown = 1e9;
-    G.powerups.active.clear();
-    G.powerups.timer = 1e9;
-    G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
-    G.input.mouseFire = false;
-    p.god = false;
-    p.lives = 1e6;
-    // safe: no damage (grace always: the ground pushes the plane up instead of crashing it).
-    const step = (n, safe = true) => { for (let k = 0; k < n; k++) { if (safe) p.invuln = 99; p.grace = 99; G.step(1 / 30); } };
-    const regulars = () => E.list.filter((e) => !e.quest).length;
-    const clock = () => { const m = /🛡 (\d+) \/ (\d+)s · WAVE (\d)\/4/.exec(G.objectives.current?.progress || ''); return m && { t: +m[1], need: +m[2], wave: +m[3] }; };
-
-    // Hold The Line: waves 1-4 in the progress text, never more than CEILING regulars, a death knocks 15 s off the
-    // clock, the second one makes it easier, and at the end everything pops (no points) within a second.
-    G.score = 800;
-    G.objectives.startType('survive');
-    const obj = G.objectives.current;
-    const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward });
-    const track = () => { const c = clock(); if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave); htl.maxRegulars = Math.max(htl.maxRegulars, regulars()); };
-    for (let k = 0; k < 30 * 22; k++) { step(1); track(); }
-    htl.progress = obj.progress;
-    const before = clock();
-    p.invuln = 0;
-    p.damage(1e4);
-    step(1, false);
-    htl.slip = { before: before.t, after: clock().t, dead: p.dead, toast: notes.some((t) => /clock slipped back 15 seconds/.test(t)) };
-    step(30 * 3);
-    const easier0 = E.frenzy.easier, need0 = clock().need;
-    p.invuln = 0;
-    p.damage(1e4);
-    step(1, false);
-    htl.second = { easier: E.frenzy.easier - easier0, need0, need: clock().need, toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
-    let addedAtEnd = null, scorePrev = G.score;
-    const complete = G.objectives.complete;
-    G.objectives.complete = function (f) { addedAtEnd = G.score - scorePrev; return complete.call(this, f); };
-    for (let k = 0; k < 30 * 60 && G.objectives.current === obj; k++) { scorePrev = G.score; step(1); track(); }
-    G.objectives.complete = complete;
-    htl.done = G.objectives.current !== obj;
-    htl.addedAtEnd = addedAtEnd;
-    htl.held = notes.includes('THE LINE HELD!');
-    step(30);
-    htl.after1s = regulars();
-    htl.frenzyAfter = E.frenzy;
-    htl.ceiling = CEILING;
-    // Relax Mode: no spawns, even with a frenzy set.
-    G.objectives.startType('survive');
-    step(60);
-    G.setRelax(true);
-    E.frenzy = { wave: 4, easier: 0, burst: true, score: 0 };
-    E.spawnTimer = 0;
-    step(150);
-    out.relax = { regulars: regulars(), objective: !!G.objectives.current };
-    E.frenzy = null;
-    G.setRelax(false);
-    quiet();
-    clear();
-
-    // The new regular enemies. Each spawns with its intro (once), and a scripted aim pilot shoots it down within 15 s:
-    // it flies at the nearest, firing (round the back of an Umbrella Goon; barrel-rolling off a moth).
-    E.spawnTimer = 1e9;
-    const fresh = () => { clear(); p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z)); p.invuln = 0; G.powerups.active.clear(); };
-    const ahead = (m, up = 0) => p.pos.clone().addScaledVector(p.forward, m).add(new V(0, up, 0));
-    const near = (list) => list.sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos))[0];
-    G.score = 5000;
-    out.types = {};
-    for (const type of ['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth']) {
-      fresh();
-      E.introduced.delete(type);
-      const n0 = notes.length;
-      E.spawnGroup(type, 'front');
-      const spawned = E.list.filter((e) => e.type === type).length;
-      const extra = E.spawn(type, ahead(600, 40)); // a second one (pair) of the same type: no second intro
-      const res = (out.types[type] = { spawned, intro: notes.slice(n0).filter((t) => t === extra.def.intro).length, extra: !!extra, t: null });
-      // The hunt: one (pair) 250 m ahead.
-      clear();
-      E.spawn(type, ahead(250, 10));
-      const mine = E.list.filter((e) => e.type === type), k0 = G.stats.kills;
-      let pass = null;
-      for (let i = 0; i < 30 * 15; i++) {
-        const alive = mine.filter((e) => !e.dead && e.state !== 'falling');
-        if (!alive.length) { res.t = +(i / 30).toFixed(1); break; }
-        const e = near(alive), d = e.pos.distanceTo(p.pos);
-        // Aimed where it will be when the bullets get there (enemies move at 0.85 pace, bullets ~340 m/s).
-        const at = e.pos.clone().addScaledVector(e.vel, (0.85 * d) / 340);
-        // An umbrella facing you (within 65°): boost past it, 35 m to the side, to a spot 100 m behind it, then turn and shoot.
-        const off = p.pos.clone().sub(e.pos);
-        if (pass && (--pass.t <= 0 || p.pos.distanceTo(pass.at) < 30)) pass = null;
-        if (e.face && !pass && off.clone().normalize().dot(e.face) > 0.42) pass = { at: e.pos.clone().addScaledVector(new V().crossVectors(off, UP).normalize(), 35).addScaledVector(off.clone().normalize(), -100), t: 30 * 6 };
-        if (pass) at.copy(pass.at);
-        if (pass && d > 150) G.input.keys.add('ShiftLeft');
-        else G.input.keys.delete('ShiftLeft');
-        if (e.latched) { if (!p.maneuver && p.maneuverCd <= 0) p.startManeuver('left'); }
-        else p.nudgeToward(at, 2.5, 1 / 30);
-        G.input.mouseFire = true;
-        step(1);
-      }
-      G.input.mouseFire = false;
-      G.input.keys.delete('ShiftLeft');
-      res.kills = G.stats.kills - k0;
-    }
-    // They all turn up in the ordinary spawn mix (not the bits), and at most 2 Sniper Owls at a time.
-    fresh();
-    const picks = new Set();
-    for (let k = 0; k < 3000; k++) picks.add(E.pickType());
-    E.spawn('sniperOwl', ahead(400, 40));
-    E.spawn('sniperOwl', ahead(450, 40));
-    let owls = 0;
-    for (let k = 0; k < 2000; k++) if (E.pickType() === 'sniperOwl') owls++;
-    out.picks = { all: [...picks], third: owls };
-
-    // Shooting a bullet into `e` (it arrives this frame, flying the way the plane faces). Returns hp lost, and the damage sent.
-    const shootAt = (e, hp = 100) => {
-      while (p.bullets.length) p.removeBullet(0);
-      p.shootCd = 0;
-      p.fire();
-      let dmg = 0;
-      for (const b of p.bullets) { b.pos.copy(e.pos).addScaledVector(b.vel, -1 / 30); dmg += b.dmg; }
-      e.hp = hp;
-      step(1);
-      return { lost: hp - e.hp, dmg };
-    };
-    const face = (at) => { p.nudgeToward(at, 1e3, 1); p.updateAxes(); };
-    // Umbrella Goon: nothing gets through the front; from behind, full damage.
-    fresh();
-    G.powerups.active.set('freeze', 999); // held still, so the placed bullets are on target
-    const u = E.spawn('umbrella', ahead(80));
-    step(1);
-    face(u.pos);
-    const toU = u.pos.clone().sub(p.pos).normalize();
-    u.face = toU.clone().negate(); // facing you
-    const front = shootAt(u);
-    u.face = toU.clone(); // facing away: you're behind it
-    const back = shootAt(u);
-    out.umbrella = { front, back };
-    // Grudge Rock: breaks into 3 pebbles; a pebble doesn't split again.
-    fresh();
-    const dog = E.spawn('grudgeRock', ahead(80));
-    step(1);
-    shootAt(dog, 0.5);
-    const bits = E.list.filter((e) => e.type === 'pebble');
-    out.dog = { dead: dog.dead, bits: bits.length };
-    step(1); // past their 0.8 s scatter, before they've had long to ram the plane
-    // Bits home in and ram the plane (kamikaze), so some can vanish while we wait or shoot: count only bits that
-    // weren't there before the shot. Shooting one must kill it and make no new ones.
-    const bitsBefore = E.list.filter((e) => e.type === 'pebble');
-    const target = bitsBefore[0];
-    out.dog.beforeBit = bitsBefore.length;
-    out.dog.planeUp = !p.dead;
-    // Just the one bit, held still for the shot: a sibling right next to it could take the bullet, and one ramming the
-    // plane now would leave it unable to fire.
-    bitsBefore.slice(1).forEach((b) => E.removeEnemy(b));
-    G.powerups.active.set('freeze', 999);
-    if (target) shootAt(target, 0.5);
-    G.powerups.active.delete('freeze');
-    out.dog.bitDead = !!target?.dead;
-    out.dog.newBits = E.list.filter((e) => e.type === 'pebble' && !bitsBefore.includes(e)).length;
-    // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
-    fresh();
-    const owl = E.spawn('sniperOwl', ahead(330, 30));
-    owl.cd = 0.3;
-    let on = null, fired = null;
-    const shots0 = new Set(E.shots);
-    for (let k = 0; k < 30 * 8 && fired === null; k++) {
-      step(1, false);
-      if (on === null && owl.beam?.visible) on = k;
-      if (E.shots.some((s) => !shots0.has(s))) fired = k;
-    }
-    out.owl = { lock: on !== null && fired !== null ? +((fired - on) / 30).toFixed(3) : null, dist: Math.round(owl.pos.distanceTo(p.pos)) };
-    let on2 = null;
-    for (let k = 0; k < 30 * 8 && on2 === null; k++) { step(1, false); if (owl.beam.visible) on2 = k; }
-    step(8, false);
-    const hp1 = p.health, shots1 = new Set(E.shots);
-    p.startManeuver('left');
-    step(1, false);
-    out.owl.broken = on2 !== null && !owl.beam.visible && owl.state !== 'aim';
-    step(30 * 2.5, false);
-    out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
-    out.owl.lost = hp1 - p.health;
-    // Kite Twins: flying through the string hurts (12) and says so; shooting a kite snaps the string.
-    fresh();
-    G.powerups.active.set('freeze', 999);
-    const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
-    step(1);
-    const mid = ka.pos.clone().add(kb.pos).multiplyScalar(0.5);
-    const across = new V().crossVectors(kb.pos.clone().sub(ka.pos), UP).normalize();
-    p.pos.copy(mid).addScaledVector(across, -8);
-    p.prevPos.copy(p.pos);
-    face(mid.clone().addScaledVector(across, 60));
-    p.invuln = 0;
-    p.health = p.maxHealth; // full: no mending in the way
-    const n1 = notes.length;
-    step(12, false);
-    out.kites = { pair: !!pair && kb !== ka, gap: Math.round(ka.pos.distanceTo(kb.pos)), lost: +(p.maxHealth - p.health).toFixed(2), toast: notes.slice(n1).some((t) => /kite string/.test(t)), inScene: !!pair.line.parent };
-    face(ka.pos);
-    shootAt(ka, 0.5);
-    out.kites.snapped = ka.dead && !pair.line.parent && kb.pair === null;
-    // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
-    fresh();
-    const moth = E.spawn('moth', ahead(6));
-    step(1, false);
-    const latched = moth.latched;
-    p.boost = 1;
-    const hp2 = p.health;
-    step(60, false);
-    out.moth = { latched, boost: +p.boost.toFixed(2), lost: +(hp2 - p.health).toFixed(1) };
-    const k1 = G.stats.kills, s1 = G.score;
-    p.startManeuver('left');
-    step(1, false);
-    out.moth.off = !moth.latched && moth.state === 'falling';
-    for (let k = 0; k < 30 * 15 && !moth.dead; k++) step(1);
-    out.moth.paid = { kills: G.stats.kills - k1, score: G.score - s1, dead: moth.dead };
-    // Shot down with a moth on: it drops off.
-    fresh();
-    const moth2 = E.spawn('moth', ahead(6));
-    step(1, false);
-    p.damage(1e4);
-    step(1, false);
-    out.moth.dropped = !moth2.latched;
-    // Thunderclaus's volley: per strike a charged yellow ring up top, one at the bottom and a thin spine (no dark
-    // column to block the view). Only the hazards tick, so the boss itself never gets a turn; sitting on the first
-    // strike's axis costs exactly 18, and the zap sounds when it lands, not at the cast.
-    fresh();
-    const { MOVES } = await import('./src/bossmoves.js');
-    const cloud = E.spawnBoss('thunder', ahead(120, 60));
-    let zaps = 0;
-    const zap = G.audio.zap;
-    G.audio.zap = function () { zaps++; return zap.call(this); };
+    const saved = { god: p.god, lives: p.lives, score: G.score, completed: G.objectives.completed, cooldown: G.objectives.cooldown, celebrate: G.mutations.celebrate, notify: G.ui.notify, callout: G.ui.callout, complete: G.objectives.complete, payout: E.payout };
     try {
-      MOVES.loom.strike(E, cloud);
-      const hz = E.hazards.list.filter((h) => h.owner === cloud);
-      const rings = hz.filter((h) => h.shape === 'ring'), cols = hz.filter((h) => h.shape === 'column');
-      out.thunder = { rings: rings.length, spines: cols.length, thick: cols.filter((h) => h.mesh.scale.x > 1).length, other: hz.length - rings.length - cols.length, dark: hz.filter((h) => h.mesh.material.color.getHexString() === '2a2440').length, castZaps: zaps };
-      // The cloud body itself must read as soft slate, not a black blot across the top of the view.
-      let shade = null;
-      cloud.mesh.traverse((o) => { if (shade === null && o.material?.isMeshLambertMaterial) shade = +(o.material.color.getHSL({}, 'srgb').l + o.material.emissive.getHSL({}, 'srgb').l).toFixed(2); });
-      out.thunder.shade = shade;
-      const [top, bottom, spine] = hz;
-      out.thunder.span = +(top.pos.y - bottom.pos.y).toFixed(1);
-      p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z);
-      p.invuln = 0;
-      const hp3 = p.health;
-      for (let k = 0; k < 30 * 1.3; k++) { E.hazards.update(1 / 30); p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z); }
-      out.thunder.lost = +(hp3 - p.health).toFixed(1);
-      out.thunder.landZaps = zaps - out.thunder.castZaps;
-    } finally {
-      G.audio.zap = zap;
-    }
-    E.hazards.clear(cloud);
+      G.mutations.celebrate = () => [];
+      if (G.relax) G.setRelax(false);
+      const notes = [], intros = []; // intros: [sim s, text] of every new-enemy intro shown ('warn', 4 s, priority 1)
+      G.ui.notify = (t, ...a) => { notes.push(t); if (a.join() === 'warn,4,1') intros.push([G.time, t]); return saved.notify.call(G.ui, t, ...a); };
+      const clear = () => { E.list.slice().forEach((e) => E.removeEnemy(e)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); E.calmTimer = 0; };
+      const quiet = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } G.persuasion.reset(null); G.ui.setObjective(null); };
+      quiet();
+      clear();
+      G.objectives.cooldown = 1e9;
+      G.powerups.active.clear();
+      G.powerups.timer = 1e9;
+      G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
+      G.input.mouseFire = false;
+      p.god = false;
+      p.lives = 1e6;
+      // safe: no damage (grace always: the ground pushes the plane up instead of crashing it).
+      const step = (n, safe = true) => { for (let k = 0; k < n; k++) { if (safe) p.invuln = 99; p.grace = 99; G.step(1 / 30); } };
+      const regulars = () => E.list.filter((e) => !e.quest).length;
+      const calls = []; // every callout shown: [title, sub]
+      G.ui.callout = (t, sub = '', ...a) => { if (t !== null) calls.push([t, sub]); return saved.callout.call(G.ui, t, sub, ...a); };
+      const progress = () => { const m = /^🛡 WAVE (\d)\/(\d) · (.*)$/.exec(G.objectives.current?.progress || ''); return m && { wave: +m[1], of: +m[2], rest: m[3] }; };
+      const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+      // A pilot who never shoots but stays near the line: past 250 m from the beacon it turns back toward it.
+      const pilot = (o) => { const b = o.line.position; if (flat(p.pos, b) > 250) { p.nudgeToward(new V(b.x, p.pos.y, b.z), 1.5, 1 / 30); p.updateAxes(); } };
 
-    clear();
-    quiet();
-    step(30 * 3); // respawned
-    G.powerups.active.clear();
-    Object.assign(G, { score: saved.score });
-    Object.assign(G.objectives, { completed: saved.completed, cooldown: saved.cooldown });
-    G.mutations.celebrate = saved.celebrate;
-    G.ui.notify = saved.notify;
-    E.spawnTimer = 6;
-    p.god = saved.god;
-    p.lives = saved.lives;
-    return out;
+      // Hold The Line, never shooting (safe): PREPARE FOR WAVE 1, 3, 2, 1, GO! before anything spawns; five waves, each
+      // with its countdown and flavour line, each sending more than the last (new types in waves 2 and 3), never more than
+      // CEILING regulars; done within ~115 s; at the end everything pops (no points) within a second. Each countdown
+      // plants the beacon under the plane. New-enemy intros (all of them due again) come one at a time, INTRO_GAP s apart.
+      G.score = 800;
+      E.introduced.clear();
+      const intros0 = intros.length;
+      G.objectives.startType('survive');
+      let obj = G.objectives.current;
+      const F = E.frenzy;
+      const htl = (out.htl = { waves: [], maxRegulars: 0, desc: obj.desc, reward: obj.reward, countSpawns: 0, perWave: {}, progress: [], planted: {} });
+      const track = () => {
+        const c = progress();
+        if (F.phase === 'count' && !(F.wave in htl.planted)) htl.planted[F.wave] = +flat(obj.line.position, p.pos).toFixed(1);
+        if (c && !htl.waves.includes(c.wave)) htl.waves.push(c.wave);
+        if (c && /left$/.test(c.rest) && !htl.progress.some((t) => t.startsWith(`🛡 WAVE ${c.wave}/`))) htl.progress.push(G.objectives.current.progress); // one per wave
+        htl.maxRegulars = Math.max(htl.maxRegulars, regulars());
+        if (F.phase === 'count') htl.countSpawns += regulars();
+        if (F.phase === 'wave') {
+          const w = (htl.perWave[F.wave] ||= { roster: E.roster(), spent: 0, types: [] });
+          w.spent = +F.spent.toFixed(2);
+          for (const e of E.list) if (e.wave === F.wave && !w.types.includes(e.type)) w.types.push(e.type);
+        }
+      };
+      const c0 = calls.length;
+      for (let k = 0; k < 30 * 3 && F.phase === 'count'; k++) { step(1); track(); }
+      htl.opening = { calls: calls.slice(c0).map((c) => c[0]), shown: document.getElementById('wave-call').classList.contains('show'), title: document.querySelector('#wave-call .call-title').textContent };
+      for (let k = 0; k < 30 * 20 && F.phase === 'count'; k++) { pilot(obj); step(1); track(); }
+      htl.opening.calls = calls.slice(c0).map((c) => c[0]);
+      htl.opening.at = +obj.t.toFixed(2);
+      let addedAtEnd = null, scorePrev = G.score;
+      const complete = G.objectives.complete;
+      G.objectives.complete = function (f) { addedAtEnd = G.score - scorePrev; return complete.call(this, f); };
+      for (let k = 0; k < 30 * 150 && G.objectives.current === obj; k++) { scorePrev = G.score; pilot(obj); step(1); track(); }
+      G.objectives.complete = complete;
+      htl.done = G.objectives.current !== obj;
+      htl.total = +obj.t.toFixed(1);
+      htl.addedAtEnd = addedAtEnd;
+      htl.held = notes.includes('THE LINE HELD!');
+      htl.dentist = notes.some((t) => /dentist/.test(t));
+      const seen = intros.slice(intros0);
+      htl.intros = { n: seen.length, gap: +Math.min(...seen.slice(1).map(([t], i) => t - seen[i][0])).toFixed(2) };
+      // Each wave after the first opens with its own countdown: PREPARE FOR WAVE n (with its flavour line), 3, 2, 1, GO!
+      htl.countdowns = [2, 3, 4, 5].map((n) => { const i = calls.findIndex((c) => c[0] === `PREPARE FOR WAVE ${n}`); return i >= 0 && calls.slice(i, i + 5).map((c) => c[0]).join() === `PREPARE FOR WAVE ${n},3,2,1,GO!` && calls[i][1].length > 10; });
+      step(30);
+      htl.after1s = regulars();
+      htl.frenzyAfter = E.frenzy;
+      htl.ceiling = CEILING;
+      htl.beaconGone = !obj.line.parent;
+
+      // Shot down mid-wave (wave 2): the wave starts over from its countdown (same wave, clock back to 0, "Wave 2 again,
+      // from the top."); the second time it gets easier by itself (one easier step, a shorter wave clock).
+      G.objectives.startType('survive');
+      obj = G.objectives.current;
+      const F2 = E.frenzy;
+      Object.assign(F2, { wave: 2, phase: 'count', t: 0, step: -1 });
+      for (let k = 0; k < 30 * 12 && !(F2.phase === 'wave' && F2.clock > 5); k++) { pilot(obj); step(1); }
+      const before = { wave: F2.wave, clock: +F2.clock.toFixed(1) };
+      const n0 = calls.length;
+      p.invuln = 0;
+      p.damage(1e4);
+      step(1, false);
+      const dead = p.dead;
+      for (let k = 0; k < 30 * 10 && F2.phase !== 'count'; k++) step(1);
+      htl.restart = { before, dead, wave: F2.wave, clock: F2.clock, phase: F2.phase, regulars: regulars(), line: calls.slice(n0).some((c) => c[1] === 'Wave 2 again, from the top.') };
+      for (let k = 0; k < 30 * 10 && !(F2.phase === 'wave' && F2.clock > 2); k++) { pilot(obj); step(1); }
+      htl.restart.calls = calls.slice(n0).map((c) => c[0]).join(); // no PREPARE: straight to 3, 2, 1
+      const easier0 = F2.easier, need0 = E.waveTime();
+      p.invuln = 0;
+      p.damage(1e4);
+      step(1, false);
+      htl.second = { easier: F2.easier - easier0, need0, need: E.waveTime(), toast: notes.some((t) => /They feel a bit bad about it/.test(t)) };
+      for (let k = 0; k < 30 * 10 && F2.phase !== 'wave'; k++) step(1);
+
+      // Away from the line (over LINE_R m from the beacon): the clock waits, the HUD says so, the arrow points home, and
+      // the first time a big TURN BACK callout tells you. The beacon is lit up out there.
+      const home = obj.line.position.clone();
+      step(30);
+      const dim = obj.line.material.opacity, c1 = calls.length;
+      const awayAt = p.pos.clone().sub(home).setY(0).normalize().multiplyScalar(LINE_R + 150).add(home);
+      p.pos.x = awayAt.x; p.pos.z = awayAt.z; p.prevPos.copy(p.pos);
+      step(2);
+      const clockOut = F2.clock;
+      step(60);
+      const t = obj.target();
+      htl.away = { clock0: clockOut, clock: F2.clock, hud: obj.progress, target: +flat(t, home).toFixed(1), turn: calls.slice(c1).filter((c) => c.join() === 'TURN BACK,The clock waits for you.').length, dim: +dim.toFixed(2), lit: +obj.line.material.opacity.toFixed(2) };
+      p.pos.x = home.x; p.pos.z = home.z; p.prevPos.copy(p.pos);
+      step(30);
+      htl.away.back = F2.clock - clockOut;
+
+      // Shooting down everything a wave sends clears it early: WAVE n CLEARED! +40n, and +25 hull.
+      let jump = null;
+      for (let k = 0; k < 30 * 30 && F2.phase === 'wave'; k++) {
+        for (const e of E.ofWave(F2.wave)) E.kill(E.list.indexOf(e), true);
+        p.health = 40;
+        const s0 = G.score, wave = F2.wave;
+        step(1);
+        if (F2.phase === 'result') jump = { wave, score: G.score - s0, hull: p.health - 40, clock: +F2.clock.toFixed(1), need: +E.waveTime().toFixed(1), call: calls.at(-1)[0] };
+      }
+      htl.clear = jump;
+      // The next countdown plants the beacon under the plane, wherever it is (here 400 m off the old spot).
+      const old = obj.line.position.clone();
+      const there = p.pos.clone().sub(old).setY(0).normalize().multiplyScalar(400).add(old);
+      p.pos.x = there.x; p.pos.z = there.z; p.prevPos.copy(p.pos);
+      for (let k = 0; k < 30 * 5 && F2.phase !== 'count'; k++) step(1);
+      step(1); // the opacity follows on the next frame: right under you the column is only a faint ghost
+      htl.replant = { ghost: +obj.line.material.opacity.toFixed(2), phase: F2.phase, moved: +flat(obj.line.position, old).toFixed(1), under: +flat(obj.line.position, p.pos).toFixed(1), standing: Math.abs(obj.line.position.y - obj.line.scale.y / 2 - groundAt(G, obj.line.position.x, obj.line.position.z)) < 0.01 };
+      // The types each wave may send (sampled): wave 1 only drones, mines and gulls; new ones in waves 2 and 3.
+      htl.mix = [1, 2, 3, 4, 5].map((n) => { F2.wave = n; const s = new Set(); for (let k = 0; k < 3000; k++) s.add(E.pickType(WAVES[n - 1].only)); return [...s]; });
+      G.objectives.suspend();
+
+      // Wave 5: elite Gary, with his boss bar. Shooting him down ends it at once: THE LINE HELD!, the rest pop for no points.
+      G.objectives.startType('survive');
+      obj = G.objectives.current;
+      const F5 = E.frenzy;
+      Object.assign(F5, { wave: 5, phase: 'count', t: 0, step: -1 });
+      for (let k = 0; k < 30 * 10 && F5.phase !== 'wave'; k++) step(1);
+      step(60);
+      const gary = E.list.find((e) => e.elite);
+      const bar = document.getElementById('boss-bar');
+      htl.gary = { found: !!gary, hp: gary?.maxHp, bar: !bar.classList.contains('hidden') && document.getElementById('boss-name').textContent, regulars: regulars(), intro: notes.includes(GARY.intro) };
+      // Shooting off his propeller only slows him (×0.7) and costs him a tenth of his hp: he doesn't fall, the wave goes on.
+      const prop = gary.mesh.userData.parts.find((x) => x.name === 'prop'), hp0 = gary.hp;
+      E.breakPart(gary, prop);
+      step(1);
+      htl.gary.prop = { falling: gary.state === 'falling', slow: gary.slow, lost: +(hp0 - gary.hp).toFixed(2), wave: F5.phase === 'wave' && G.objectives.current === obj, toast: notes.includes(GARY.propText) };
+      const s0 = G.score, held0 = notes.filter((n) => n === 'THE LINE HELD!').length;
+      let pays = 0;
+      const payout = E.payout;
+      E.payout = function (e) { pays += e.elite ? 0 : 1; return payout.call(this, e); };
+      G.objectives.complete = function (f) { htl.gary.paid = G.score - s0; return complete.call(this, f); };
+      E.kill(E.list.indexOf(gary), true);
+      step(1);
+      G.objectives.complete = complete;
+      E.payout = payout;
+      htl.gary.done = G.objectives.current !== obj;
+      htl.gary.held = notes.filter((n) => n === 'THE LINE HELD!').length > held0;
+      htl.gary.others = pays;
+      htl.gary.barAfter = !bar.classList.contains('hidden');
+      htl.gary.score = gary.def.score;
+      step(30);
+      htl.gary.after1s = regulars();
+
+      // The intro queue (mid-Hold The Line): at most 4 wait, the oldest goes (a first-in-line one too); at its turn an
+      // intro whose enemy type has nobody alive (or whose one enemy, like Gary, is gone) is skipped for the next.
+      G.objectives.startType('survive');
+      {
+        E.intros.length = 0;
+        E.introCd = 1e9;
+        for (let i = 1; i <= 6; i++) E.intro(`q${i}`, false, { type: 'drone' });
+        const capped = E.intros.map((q) => q.text).join();
+        E.intro('qF', true, { type: 'drone' });
+        const first = E.intros.map((q) => q.text).join();
+        E.intros.length = 0;
+        const drone = E.spawn('drone', p.pos.clone().add(new V(0, 0, 300)), { quiet: true });
+        const gone = E.spawn('drone', p.pos.clone().add(new V(0, 0, -300)), { quiet: true });
+        E.removeEnemy(gone);
+        for (const e of E.list.filter((x) => x.type === 'mine')) E.removeEnemy(e); // 'no mines' really means none
+        E.intro('no mines', false, { type: 'mine' });
+        E.intro('gone one', false, { e: gone });
+        E.intro('drone here', false, { type: 'drone' });
+        E.intro('after', false, { type: 'drone' });
+        const n1 = intros.length;
+        E.introCd = 0;
+        step(1);
+        htl.queue = { capped, first, shown: intros.slice(n1).map(([, t]) => t).join(), left: E.intros.map((q) => q.text).join(), alive: !drone.dead };
+      }
+      quiet();
+      clear();
+
+      // Flying dead straight from the start (never turning, never shooting): past LINE_R in wave 1 the clock waits, and
+      // a TURN BACK callout shows, again 8+ s later; after 12 s out the line moves under the plane (THE LINE MOVED), the
+      // clock runs again, and wave 1 ends without ever turning back.
+      G.objectives.startType('survive');
+      obj = G.objectives.current;
+      const FS = E.frenzy, c2 = calls.length;
+      let outAt = null, outT0 = null, moved = null, cs = calls.length;
+      const turnAt = [];
+      for (let k = 0; k < 30 * 90 && FS.wave === 1 && FS.phase !== 'result'; k++) {
+        if (outAt === null && FS.phase === 'wave' && /PAUSED · BACK TO THE LINE$/.test(obj.progress)) { outAt = +FS.clock.toFixed(1); outT0 = G.time; }
+        step(1);
+        for (const c of calls.slice(cs)) {
+          if (c[0] === 'TURN BACK' && !moved) turnAt.push(G.time);
+          if (c[0] === 'THE LINE MOVED' && !moved) moved = { after: +(G.time - outT0).toFixed(2), sub: c[1], under: +flat(obj.line.position, p.pos).toFixed(1), clock: FS.clock, hud: obj.progress };
+        }
+        cs = calls.length;
+        if (moved && moved.clock1 === undefined && G.time - outT0 >= moved.after + 1) moved.clock1 = +(FS.clock - moved.clock).toFixed(2);
+      }
+      htl.straight = { outAt, moved, phase: FS.phase, wave: FS.wave, at: +obj.t.toFixed(1), turn: calls.slice(c2).filter((c) => c[0] === 'TURN BACK').length, turnsBeforeMove: turnAt.length, turnGap: turnAt.length > 1 ? +(turnAt[1] - turnAt[0]).toFixed(2) : null };
+      quiet();
+      clear();
+
+      // Reduced motion: the callout fades in, no pop.
+      G.comfort.reducedMotion = true;
+      G.ui.callout('3', 'test', 1);
+      htl.calm = { pop: document.getElementById('wave-call').classList.contains('pop'), shown: document.getElementById('wave-call').classList.contains('show') };
+      G.comfort.reducedMotion = false;
+      G.ui.callout('3', 'test', 1);
+      htl.calm.popNormally = document.getElementById('wave-call').classList.contains('pop');
+      G.ui.callout(null);
+
+      // Relax Mode mid-wave: enemies, callout, boss bar and beacon all go; nothing spawns, even with a frenzy set.
+      G.objectives.startType('survive');
+      obj = G.objectives.current;
+      Object.assign(E.frenzy, { wave: 5, phase: 'count', t: 0, step: -1 });
+      for (let k = 0; k < 30 * 10 && E.frenzy.phase !== 'wave'; k++) step(1);
+      step(30);
+      const busy = { regulars: regulars(), bar: !bar.classList.contains('hidden') };
+      G.ui.callout('GO!', '', 5);
+      G.setRelax(true);
+      out.relax = { busy, cleared: regulars(), call: document.getElementById('wave-call').classList.contains('show'), bar: !bar.classList.contains('hidden'), beacon: !!obj.line.parent };
+      E.frenzy = { wave: 4, phase: 'wave', easier: 0, burst: true, spent: 0, score: 0 };
+      E.spawnTimer = 0;
+      step(150);
+      out.relax = { ...out.relax, regulars: regulars(), objective: !!G.objectives.current };
+      E.frenzy = null;
+      G.setRelax(false);
+      quiet();
+      clear();
+      G.objectives.cooldown = 1e9; // Relax Mode (suspend) set it to 3 s: no new objective may start (and pay) mid-test
+
+      // The new regular enemies. Each spawns with its intro (once), and a scripted aim pilot shoots it down within 15 s:
+      // it flies at the nearest, firing (round the back of an Umbrella Goon; barrel-rolling off a moth).
+      E.spawnTimer = 1e9;
+      const fresh = () => { clear(); p.spawn(p.pos.x, p.pos.z, Math.atan2(-p.forward.x, -p.forward.z)); p.invuln = 0; G.powerups.active.clear(); };
+      const ahead = (m, up = 0) => p.pos.clone().addScaledVector(p.forward, m).add(new V(0, up, 0));
+      const near = (list) => list.sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos))[0];
+      G.score = 5000;
+      out.types = {};
+      for (const type of ['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth']) {
+        fresh();
+        E.introduced.delete(type);
+        const n0 = notes.length;
+        E.spawnGroup(type, 'front');
+        const spawned = E.list.filter((e) => e.type === type).length;
+        const extra = E.spawn(type, ahead(600, 40)); // a second one (pair) of the same type: no second intro
+        const res = (out.types[type] = { spawned, intro: notes.slice(n0).filter((t) => t === extra.def.intro).length, extra: !!extra, t: null });
+        // The hunt: one (pair) 250 m ahead.
+        clear();
+        E.spawn(type, ahead(250, 10));
+        const mine = E.list.filter((e) => e.type === type), k0 = G.stats.kills;
+        let pass = null;
+        for (let i = 0; i < 30 * 15; i++) {
+          const alive = mine.filter((e) => !e.dead && e.state !== 'falling');
+          if (!alive.length) { res.t = +(i / 30).toFixed(1); break; }
+          const e = near(alive), d = e.pos.distanceTo(p.pos);
+          // Aimed where it will be when the bullets get there (enemies move at 0.85 pace, bullets ~340 m/s).
+          const at = e.pos.clone().addScaledVector(e.vel, (0.85 * d) / 340);
+          // An umbrella facing you (within 65°): boost past it, 35 m to the side, to a spot 100 m behind it, then turn and shoot.
+          const off = p.pos.clone().sub(e.pos);
+          if (pass && (--pass.t <= 0 || p.pos.distanceTo(pass.at) < 30)) pass = null;
+          if (e.face && !pass && off.clone().normalize().dot(e.face) > 0.42) pass = { at: e.pos.clone().addScaledVector(new V().crossVectors(off, UP).normalize(), 35).addScaledVector(off.clone().normalize(), -100), t: 30 * 6 };
+          if (pass) at.copy(pass.at);
+          if (pass && d > 150) G.input.keys.add('ShiftLeft');
+          else G.input.keys.delete('ShiftLeft');
+          if (e.latched) { if (!p.maneuver && p.maneuverCd <= 0) p.startManeuver('left'); }
+          else p.nudgeToward(at, 2.5, 1 / 30);
+          G.input.mouseFire = true;
+          step(1);
+        }
+        G.input.mouseFire = false;
+        G.input.keys.delete('ShiftLeft');
+        res.kills = G.stats.kills - k0;
+      }
+      // They all turn up in the ordinary spawn mix (not the bits), and at most 2 Sniper Owls at a time.
+      fresh();
+      const picks = new Set();
+      for (let k = 0; k < 3000; k++) picks.add(E.pickType());
+      E.spawn('sniperOwl', ahead(400, 40));
+      E.spawn('sniperOwl', ahead(450, 40));
+      let owls = 0;
+      for (let k = 0; k < 2000; k++) if (E.pickType() === 'sniperOwl') owls++;
+      out.picks = { all: [...picks], third: owls };
+
+      // Shooting a bullet into `e` (it arrives this frame, flying the way the plane faces). Returns hp lost, and the damage sent.
+      const shootAt = (e, hp = 100) => {
+        while (p.bullets.length) p.removeBullet(0);
+        p.shootCd = 0;
+        p.fire();
+        let dmg = 0;
+        for (const b of p.bullets) { b.pos.copy(e.pos).addScaledVector(b.vel, -1 / 30); dmg += b.dmg; }
+        e.hp = hp;
+        step(1);
+        return { lost: hp - e.hp, dmg };
+      };
+      const face = (at) => { p.nudgeToward(at, 1e3, 1); p.updateAxes(); };
+      // Umbrella Goon: nothing gets through the front; from behind, full damage.
+      fresh();
+      G.powerups.active.set('freeze', 999); // held still, so the placed bullets are on target
+      const u = E.spawn('umbrella', ahead(80));
+      step(1);
+      face(u.pos);
+      const toU = u.pos.clone().sub(p.pos).normalize();
+      u.face = toU.clone().negate(); // facing you
+      const front = shootAt(u);
+      u.face = toU.clone(); // facing away: you're behind it
+      const back = shootAt(u);
+      out.umbrella = { front, back };
+      // Grudge Rock: breaks into 3 pebbles; a pebble doesn't split again.
+      fresh();
+      const dog = E.spawn('grudgeRock', ahead(80));
+      step(1);
+      shootAt(dog, 0.5);
+      const bits = E.list.filter((e) => e.type === 'pebble');
+      out.dog = { dead: dog.dead, bits: bits.length };
+      step(1); // past their 0.8 s scatter, before they've had long to ram the plane
+      // Bits home in and ram the plane (kamikaze), so some can vanish while we wait or shoot: count only bits that
+      // weren't there before the shot. Shooting one must kill it and make no new ones.
+      const bitsBefore = E.list.filter((e) => e.type === 'pebble');
+      const target = bitsBefore[0];
+      out.dog.beforeBit = bitsBefore.length;
+      out.dog.planeUp = !p.dead;
+      // Just the one bit, held still for the shot: a sibling right next to it could take the bullet, and one ramming the
+      // plane now would leave it unable to fire.
+      bitsBefore.slice(1).forEach((b) => E.removeEnemy(b));
+      G.powerups.active.set('freeze', 999);
+      if (target) shootAt(target, 0.5);
+      G.powerups.active.delete('freeze');
+      out.dog.bitDead = !!target?.dead;
+      out.dog.newBits = E.list.filter((e) => e.type === 'pebble' && !bitsBefore.includes(e)).length;
+      // Sniper Owl: a red line for 1.5 s before the shot; a barrel roll during the line: no shot, no damage.
+      fresh();
+      const owl = E.spawn('sniperOwl', ahead(330, 30));
+      owl.cd = 0.3;
+      let on = null, fired = null;
+      const shots0 = new Set(E.shots);
+      for (let k = 0; k < 30 * 8 && fired === null; k++) {
+        step(1, false);
+        if (on === null && owl.beam?.visible) on = k;
+        if (E.shots.some((s) => !shots0.has(s))) fired = k;
+      }
+      out.owl = { lock: on !== null && fired !== null ? +((fired - on) / 30).toFixed(3) : null, dist: Math.round(owl.pos.distanceTo(p.pos)) };
+      let on2 = null;
+      for (let k = 0; k < 30 * 8 && on2 === null; k++) { step(1, false); if (owl.beam.visible) on2 = k; }
+      step(8, false);
+      const hp1 = p.health, shots1 = new Set(E.shots);
+      p.startManeuver('left');
+      step(1, false);
+      out.owl.broken = on2 !== null && !owl.beam.visible && owl.state !== 'aim';
+      step(30 * 2.5, false);
+      out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
+      out.owl.lost = hp1 - p.health;
+      // Kite Twins: flying through the string hurts (12) and says so; shooting a kite snaps the string.
+      fresh();
+      G.powerups.active.set('freeze', 999);
+      const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
+      step(1);
+      const mid = ka.pos.clone().add(kb.pos).multiplyScalar(0.5);
+      const across = new V().crossVectors(kb.pos.clone().sub(ka.pos), UP).normalize();
+      p.pos.copy(mid).addScaledVector(across, -8);
+      p.prevPos.copy(p.pos);
+      face(mid.clone().addScaledVector(across, 60));
+      p.invuln = 0;
+      p.health = p.maxHealth; // full: no mending in the way
+      const n1 = notes.length;
+      step(12, false);
+      out.kites = { pair: !!pair && kb !== ka, gap: Math.round(ka.pos.distanceTo(kb.pos)), lost: +(p.maxHealth - p.health).toFixed(2), toast: notes.slice(n1).some((t) => /kite string/.test(t)), inScene: !!pair.line.parent };
+      face(ka.pos);
+      shootAt(ka, 0.5);
+      out.kites.snapped = ka.dead && !pair.line.parent && kb.pair === null;
+      // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
+      fresh();
+      const moth = E.spawn('moth', ahead(6));
+      step(1, false);
+      const latched = moth.latched;
+      p.boost = 1;
+      const hp2 = p.health;
+      step(60, false);
+      out.moth = { latched, boost: +p.boost.toFixed(2), lost: +(hp2 - p.health).toFixed(1) };
+      const k1 = G.stats.kills, s1 = G.score;
+      p.startManeuver('left');
+      step(1, false);
+      out.moth.off = !moth.latched && moth.state === 'falling';
+      for (let k = 0; k < 30 * 15 && !moth.dead; k++) step(1);
+      out.moth.paid = { kills: G.stats.kills - k1, score: G.score - s1, dead: moth.dead };
+      // Shot down with a moth on: it drops off.
+      fresh();
+      const moth2 = E.spawn('moth', ahead(6));
+      step(1, false);
+      p.damage(1e4);
+      step(1, false);
+      out.moth.dropped = !moth2.latched;
+      // Thunderclaus's volley: per strike a charged yellow ring up top, one at the bottom and a thin spine (no dark
+      // column to block the view). Only the hazards tick, so the boss itself never gets a turn; sitting on the first
+      // strike's axis costs exactly 18, and the zap sounds when it lands, not at the cast.
+      fresh();
+      const { MOVES } = await import('./src/bossmoves.js');
+      const cloud = E.spawnBoss('thunder', ahead(120, 60));
+      let zaps = 0;
+      const zap = G.audio.zap;
+      G.audio.zap = function () { zaps++; return zap.call(this); };
+      try {
+        MOVES.loom.strike(E, cloud);
+        const hz = E.hazards.list.filter((h) => h.owner === cloud);
+        const rings = hz.filter((h) => h.shape === 'ring'), cols = hz.filter((h) => h.shape === 'column');
+        out.thunder = { rings: rings.length, spines: cols.length, thick: cols.filter((h) => h.mesh.scale.x > 1).length, other: hz.length - rings.length - cols.length, dark: hz.filter((h) => h.mesh.material.color.getHexString() === '2a2440').length, castZaps: zaps };
+        // The cloud body itself must read as soft slate, not a black blot across the top of the view.
+        let shade = null;
+        cloud.mesh.traverse((o) => { if (shade === null && o.material?.isMeshLambertMaterial) shade = +(o.material.color.getHSL({}, 'srgb').l + o.material.emissive.getHSL({}, 'srgb').l).toFixed(2); });
+        out.thunder.shade = shade;
+        const [top, bottom, spine] = hz;
+        out.thunder.span = +(top.pos.y - bottom.pos.y).toFixed(1);
+        p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z);
+        p.invuln = 0;
+        const hp3 = p.health;
+        for (let k = 0; k < 30 * 1.3; k++) { E.hazards.update(1 / 30); p.pos.set(top.pos.x + 10, spine.pos.y, top.pos.z); }
+        out.thunder.lost = +(hp3 - p.health).toFixed(1);
+        out.thunder.landZaps = zaps - out.thunder.castZaps;
+      } finally {
+        G.audio.zap = zap;
+      }
+      E.hazards.clear(cloud);
+
+      clear();
+      quiet();
+      step(30 * 3); // respawned
+      G.powerups.active.clear();
+      return out;
+    } finally { // the stubs go back even if a check above throws
+      Object.assign(G, { score: saved.score });
+      Object.assign(G.objectives, { completed: saved.completed, cooldown: saved.cooldown, complete: saved.complete });
+      G.mutations.celebrate = saved.celebrate;
+      G.ui.notify = saved.notify;
+      G.ui.callout = saved.callout;
+      E.payout = saved.payout;
+      E.spawnTimer = 6;
+      p.god = saved.god;
+      p.lives = saved.lives;
+    }
   });
   // Grumbleglobe (planetboss.js): the zone where the whole small planet is the boss. Arrival in front of you with its
   // moons, rock vs gadget hits, the moons' potshots and the face's spit fans, the pores' Grumblings, bouncing off it,
@@ -2792,6 +2981,14 @@ try {
       G.powerups.activate('mega'); dive(); out.bounce.mega = into(); G.powerups.active.clear();
       // Low hull: a bounce leaves 1, never a crash.
       dive(); p.health = 5; out.bounce.low = into(); out.bounce.low.health = +p.health.toFixed(1);
+      // On a landing approach over ground you could land on, the planet still lights the pull-up glow (it isn't a runway).
+      {
+        const approach = G.pullup.approach, landable = p.landableAt;
+        try {
+          G.pullup.approach = () => true; p.landableAt = () => true;
+          dive(); out.bounce.runway = into(); out.bounce.runway = { glow: out.bounce.runway.glow, boing: out.bounce.runway.boing };
+        } finally { G.pullup.approach = approach; p.landableAt = landable; }
+      }
       // A moon: fly at one (it orbits on; aim at where it is every frame).
       {
         const m = moons.find((x) => !x.broken);
@@ -3611,11 +3808,25 @@ try {
     [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
     // ---- Hold The Line ("The Rush") and the newer regular enemies (see the RUSH block)
-    [(({ htl: h }) => [1, 2, 3, 4].every((w) => h.waves.includes(w)) && /· WAVE \d\/4$/.test(h.progress) && h.reward === 250)(RUSH), `Hold The Line: "WAVE n/4" in the progress text, and the waves reach 4 (${JSON.stringify(RUSH.htl.waves)})`],
-    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 8, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
-    [(({ slip: s }) => s.dead && s.toast && Math.abs(s.before - s.after - 15) <= 1)(RUSH.htl), `Hold The Line: getting shot down knocks the clock back 15 s (${JSON.stringify(RUSH.htl.slip)})`],
-    [(({ second: s }) => s.easier === 1 && s.need === s.need0 - 8 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself (${JSON.stringify(RUSH.htl.second)})`],
-    [(({ htl: h }) => h.done && h.held && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined })})`],
+    [(({ htl: h }) => [1, 2, 3, 4, 5].every((w) => h.waves.includes(w)) && h.progress.length === 5 && h.progress.every((t) => /^🛡 WAVE \d\/5 · \d+s · \d+ left$/.test(t)) && h.reward === 350)(RUSH), `Hold The Line: "WAVE n/5 · <secs>s · <k> left" in the progress text, and the waves reach 5 (${JSON.stringify({ waves: RUSH.htl.waves, progress: RUSH.htl.progress })})`],
+    [(({ opening: o, countSpawns: c }) => o.calls.slice(0, 5).join() === 'PREPARE FOR WAVE 1,3,2,1,GO!' && o.shown && c === 0 && o.at >= 3 && o.at <= 4)(RUSH.htl), `Hold The Line: it opens with PREPARE FOR WAVE 1, 3, 2, 1, GO! (big, centred), and nothing spawns during any countdown (${JSON.stringify({ ...RUSH.htl.opening, countSpawns: RUSH.htl.countSpawns })})`],
+    [RUSH.htl.countdowns.every(Boolean), `Hold The Line: waves 2-5 each open with PREPARE FOR WAVE n (and a flavour line), 3, 2, 1, GO! (${JSON.stringify(RUSH.htl.countdowns)})`],
+    [(({ perWave: w, mix: m }) => [1, 2, 3, 4, 5].every((n) => w[n] && w[n].spent <= w[n].roster + 1 + 1e-6) && [5, 7, 9, 11, 10].every((r, i) => w[i + 1].roster === r) && w[5].types.includes('rival') && m[0].every((t) => ['drone', 'mine', 'gull'].includes(t)) && m[1].some((t) => !m[0].includes(t)) && m[2].some((t) => !m[1].includes(t)) && m[3].length >= m[2].length)(RUSH.htl), `Hold The Line: each wave sends more than the last (5/7/9/11/10 + Gary) and stops when its roster is spent (its last group never takes it more than 1 past it), with new types in waves 2 and 3 (${JSON.stringify({ perWave: RUSH.htl.perWave, mix: RUSH.htl.mix })})`],
+    [RUSH.htl.maxRegulars <= RUSH.htl.ceiling && RUSH.htl.maxRegulars >= 6, `Hold The Line: never more than ${RUSH.htl.ceiling} regular enemies at once (peak ${RUSH.htl.maxRegulars})`],
+    [RUSH.htl.done && RUSH.htl.total <= 116 && RUSH.htl.total >= 100, `Hold The Line: never shooting, it's over in about 115 s (${RUSH.htl.total} s)`],
+    [(({ restart: r }) => r.dead && r.wave === r.before.wave && r.before.clock > 3 && r.clock === 0 && r.phase === 'count' && r.regulars === 0 && r.line && r.calls.startsWith('3,2,1,GO!') && !/PREPARE/.test(r.calls))(RUSH.htl), `Hold The Line: getting shot down restarts the current wave from its countdown, straight to 3, 2, 1 ("Wave 2 again, from the top."), clock back to 0 (${JSON.stringify(RUSH.htl.restart)})`],
+    [(({ second: s }) => s.easier === 1 && s.need < s.need0 - 1 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself, with a shorter wave clock (${JSON.stringify(RUSH.htl.second)})`],
+    [(({ away: a }) => a.clock === a.clock0 && /· PAUSED · BACK TO THE LINE$/.test(a.hud) && a.target < 1 && a.turn === 1 && a.back > 0.5 && a.dim < 0.5 && a.lit >= 0.85)(RUSH.htl), `Hold The Line: past LINE_R from the beacon the wave clock waits, a TURN BACK callout shows once, the HUD says PAUSED · BACK TO THE LINE, the beacon lights up and the arrow points home (${JSON.stringify(RUSH.htl.away)})`],
+    [(({ planted: w, replant: r }) => [1, 2, 3, 4, 5].every((n) => w[n] <= 10) && r.phase === 'count' && r.moved >= 350 && r.under <= 10 && r.standing && r.ghost <= 0.15)(RUSH.htl), `Hold The Line: every countdown plants the beacon under the plane, standing on the ground, faded so it doesn't fill the screen (${JSON.stringify({ planted: RUSH.htl.planted, replant: RUSH.htl.replant })})`],
+    [(({ straight: s }) => s.outAt !== null && s.outAt < 12 && s.turnsBeforeMove === 2 && s.turnGap > 8 && s.turnGap < 8.2 && s.wave === 1 && s.phase === 'result')(RUSH.htl), `Hold The Line: flying dead straight, wave 1's clock waits past LINE_R with a TURN BACK callout, shown again 8 s later while still away, and the wave still finishes without turning back (${JSON.stringify(RUSH.htl.straight)})`],
+    [(({ straight: { moved: m } }) => m && m.after >= 11.9 && m.after <= 12.1 && m.sub === 'Fine. The line comes to you.' && m.under <= 10 && !/PAUSED/.test(m.hud) && m.clock1 > 0.9)(RUSH.htl), `Hold The Line: after 12 s outside the line in a wave, the beacon moves under the plane, THE LINE MOVED shows, and the wave clock runs again (${JSON.stringify(RUSH.htl.straight.moved)})`],
+    [(({ queue: q }) => q.capped === 'q3,q4,q5,q6' && q.first === 'qF,q4,q5,q6' && q.shown === 'drone here' && q.left === 'after' && q.alive)(RUSH.htl), `Hold The Line: at most 4 intros wait (the oldest goes), and one whose enemy is gone by its turn is skipped (${JSON.stringify(RUSH.htl.queue)})`],
+    [(({ intros: i }) => i.n >= 3 && i.gap >= 3.9)(RUSH.htl), `Hold The Line: new-enemy intros come one at a time, at least 4 s apart (${JSON.stringify(RUSH.htl.intros)})`],
+    [(({ clear: c }) => c && c.clock < c.need && c.score === 40 * c.wave && c.hull >= 25 && c.hull < 25.5 && c.call === `WAVE ${c.wave} CLEARED! +${40 * c.wave}`)(RUSH.htl), `Hold The Line: shooting down everything a wave sends clears it early, for +40 × the wave and +25 hull (${JSON.stringify(RUSH.htl.clear)})`],
+    [(({ gary: g }) => g.found && g.hp === 42 && g.intro && !g.prop.falling && g.prop.slow === 0.7 && Math.abs(g.prop.lost - 4.2) < 0.01 && g.prop.wave && g.prop.toast && /Rival Pilot Gary \(Big Day\)/.test(g.bar) && g.done && g.held && g.paid === 3 * g.score && g.others === 0 && !g.barAfter && g.after1s === 0)(RUSH.htl), `Hold The Line: wave 5 brings elite Gary (42 hp, his own intro) with a boss bar; shooting off his propeller only slows him and costs 10% hp; downing him (×3 points) ends it at once, THE LINE HELD!, the rest pop for nothing (${JSON.stringify(RUSH.htl.gary)})`],
+    [(({ htl: h }) => h.done && h.held && h.dentist && h.addedAtEnd === 0 && h.after1s === 0 && h.frenzyAfter === null && h.beaconGone)(RUSH), `Hold The Line: when it holds, every regular enemy is gone within 1 s, with no points for them, and the beacon goes (${JSON.stringify({ ...RUSH.htl, waves: undefined, desc: undefined, perWave: undefined, progress: undefined })})`],
+    [(({ calm: c }) => c.shown && !c.pop && c.popNormally)(RUSH.htl), `Hold The Line: with reduced motion the callout fades in, no pop (${JSON.stringify(RUSH.htl.calm)})`],
+    [(({ relax: r }) => r.busy.regulars > 0 && r.busy.bar && r.cleared === 0 && !r.call && !r.bar && !r.beacon)(RUSH), `Hold The Line: Relax Mode mid-wave clears the enemies, the callout, the boss bar and the beacon (${JSON.stringify(RUSH.relax)})`],
     [RUSH.relax.regulars === 0 && !RUSH.relax.objective, 'Hold The Line: nothing spawns in Relax Mode'],
     [Object.values(RUSH.types).every((r) => r.spawned >= 1 && r.intro === 1 && r.extra), `new enemies: each one spawns and shows its intro once (${JSON.stringify(RUSH.types)})`],
     [Object.values(RUSH.types).every((r) => r.t !== null && r.t <= 15 && r.kills >= 1), `new enemies: a scripted aim pilot shoots each one down within 15 s (${JSON.stringify(Object.fromEntries(Object.entries(RUSH.types).map(([k, r]) => [k, r.t])))})`],
@@ -3642,7 +3853,7 @@ try {
     [(({ pores: q }) => q.farBurps === 0 && q.burped === 24 && q.spawned === 24 - q.burped0 && q.maxAlive === 6 && q.markerGlow && !q.markerQuiet && q.near <= 10 && q.minGlow >= 1 && q.outward > 0.85 && q.firstTip && q.spent)(GLOBE), `Grumbleglobe pores: a 1 s+ glow, then Grumblings pop out at the pore mouth along its normal; its red marker only while it glows; at most 6 alive, 24 a fight (then a line), none while you're over 500 m out (${JSON.stringify(GLOBE.pores)})`],
     [(({ pores: { steer: q, sulk: u, clump: c } }) => q.lead > 0.8 && q.gap > 8 && q.speed === 52 && u.old && u.stray && u.fresh && u.score === 0 && c.lost >= 8 && c.lost <= 16 && c.booms === 0 && c.left === 0)(GLOBE), `Grumblings: after the scatter they cut in ahead of your nose at 52, each to its own spot; one about over 10 s or 220 m off the surface sulks off (no points); a clump of 6 reaching you at once puffs (no explosions) and bites 8-16 hull, not 48 (${JSON.stringify({ steer: GLOBE.pores.steer, sulk: GLOBE.pores.sulk, clump: GLOBE.pores.clump })})`],
     [(({ pores: { pop: q } }) => q.dead && q.score === 5 && q.squeak && q.booms === 0 && q.shared && q.disposed === 0)(GLOBE), `Grumblings: one hit pops one for 5 points with a squeak (no explosion); they share their geometry and materials, and removing one disposes none of it (${JSON.stringify(GLOBE.pores.pop)})`],
-    [(({ bounce: b }) => b.boing && b.line && b.hull.length === 1 && b.hull[0] === 12 && b.lost >= 11 && b.lost <= 12.5 && !b.dead && b.lives === b.lives0 && b.d >= 164 && b.away >= 0.5 && b.glow && !b.god.boing && b.god.hull.length === 0 && !b.ghost.boing && b.ghost.hull.length === 0 && b.mega.boing && b.mega.lives === b.lives0 && b.low.boing && !b.low.dead && b.low.health >= 1 && b.low.health <= 2 && b.moon.boing && b.moon.d >= 4 && b.moon.lives === b.lives0)(GLOBE), `Grumbleglobe: flying into it (or a moon) bounces you back out: BOING!, a line, 12 hull, no life, outside it and heading away within 0.5 s; God and Ghost Mode skim it unhurt; Mega Plane bounces too; a bounce never takes your last hull point (${JSON.stringify(GLOBE.bounce)})`],
+    [(({ bounce: b }) => b.boing && b.line && b.hull.length === 1 && b.hull[0] === 12 && b.lost >= 11 && b.lost <= 12.5 && !b.dead && b.lives === b.lives0 && b.d >= 164 && b.away >= 0.5 && b.glow && !b.god.boing && b.god.hull.length === 0 && !b.ghost.boing && b.ghost.hull.length === 0 && b.mega.boing && b.mega.lives === b.lives0 && b.low.boing && !b.low.dead && b.low.health >= 1 && b.low.health <= 2 && b.moon.boing && b.moon.d >= 4 && b.moon.lives === b.lives0 && b.runway.glow && b.runway.boing)(GLOBE), `Grumbleglobe: flying into it (or a moon) bounces you back out: BOING!, a line, 12 hull, no life, outside it and heading away within 0.5 s; the pull-up glow comes first, even on a landing approach over landable ground; God and Ghost Mode skim it unhurt; Mega Plane bounces too; a bounce never takes your last hull point (${JSON.stringify(GLOBE.bounce)})`],
     [(({ respawnCrash: c, respawn: r }) => c.dead && c.lives === 4 && r.dist >= 445 && r.dist <= 455 && Math.abs(r.dy) <= 2 && r.deg <= 5 && r.invuln > 2 && r.broken)(GLOBE), `Grumbleglobe: running out of hull near it costs a life as usual; the respawn is 450 m out facing it, destroyed gadgets still gone (${JSON.stringify({ crash: GLOBE.respawnCrash, respawn: GLOBE.respawn })})`],
     [(({ track: q }) => q.p1 >= 0.11 && q.p1 <= 0.121 && q.p2 >= 0.19 && q.p2 <= 0.201 && q.p3 >= 0.29 && q.p3 <= 0.301 && q.open === 0)(GLOBE), `Grumbleglobe: its face turns toward you at up to 0.12 / 0.2 / 0.3 rad/s by phase, and holds still while the eye is open (${JSON.stringify(GLOBE.track)})`],
     [(({ phase3: q }) => q.phase === 3 && q.enraged && q.cracks && /ENRAGED/.test(q.bar) && q.toast && q.brows < 0 && q.begs && q.eyeOpen >= 5.8 && q.glare && q.glare.t >= 1.2 && q.glare.fired >= 1.2 && q.glare.hit === 1 && q.glare.sight && q.glare.sight[0] >= 2 && q.glare.sight[0] < 2.5 && q.glare.sight[1] > 3.5 && q.glare.sight[1] <= 4 && q.glare.beamOp.length === 1 && q.glare.beamOp[0] === 0.7 && q.glare.beamOver >= 25 && q.glare.beamOver <= 35 && q.glare.beamDrawn && (q.glare.beamDrawn.endToAim <= 1 || Math.abs(q.glare.beamDrawn.camGap - 50) <= 0.5) && Math.abs(q.glare.beamDrawn.hitPast - 30 - q.glare.beamDrawn.shortOfAim) <= 0.2 && q.glare.beamDrawn.tip === 40 && q.glare.beamDrawn.point === 0 && q.rocks >= 1 && q.rocks <= 2)(GLOBE), `Grumbleglobe phase 3 (33%): ENRAGED, cracks, worried brows, begging taunts, the eye open 6 s, a 1.2 s+ glare warning (a thin sight, 2 m thickening to 4 m) before its 20-damage beam (steady 0.7, drawn up to where it aimed or 50 m short of the camera, narrowing over its last 40 m, hitting ~30 m past you), up to 2 Grudge Rocks (${JSON.stringify(GLOBE.phase3)})`],
