@@ -501,9 +501,13 @@ try {
           for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; p.quat.copy(q); p.updateAxes(); G.step(1 / 30); }
         };
         const free = (frames, until = () => false) => { for (let k = 0; k < frames && !p.dead && !until(); k++) { p.invuln = 0; p.grace = 0; G.step(1 / 30); } }; // hands off the stick
+        // Flying the wrong way along the strip is no approach: no glide-path assist, cruise speed kept.
+        fly(at(0, 20), new Q().setFromAxisAngle(UP, S.yaw + Math.PI), 45);
+        const wrongWay = { glide: p.onGlide, speed: p.speed };
         const pullUps = G.pullup.shows; // a landing approach is not a reason to PULL UP!
         fly(at(85, 4.5), glide, 150, () => p.landed);
         const L = out.landing = { landed: !!p.landed, dead: p.dead, ...p.lastLanding, pullUps: G.pullup.shows - pullUps };
+        Object.assign(L, { glide: p.onGlide, touchSpeed: p.speed, base: p.baseSpeed, wrongWay });
         free(150, () => G.objectives.current !== run);
         Object.assign(L, { done: G.objectives.current !== run && G.objectives.completed === done0 + 1, rollSpeed: Math.round(p.speed), stillLanded: !!p.landed });
         G.objectives.cooldown = 1e9; // completing it re-armed the cooldown: nothing new (a boss!) starts mid-check
@@ -3693,6 +3697,7 @@ try {
     [report.noHerd, 'balloon herding is gone and X marks the spot took its place in the objective list'],
     [report.landing.landed && !report.landing.dead && report.landing.grade && report.landing.sink < 7 && report.landing.points > 0, 'landing: a gentle, level descent onto flat ground lands, graded, with a bonus'],
     [report.landing.done, 'landing objective: touch down on the runway and roll along it to complete it'],
+    [(({ landing: l }) => l.glide && l.touchSpeed < l.base * 0.8 && !l.wrongWay.glide && l.wrongWay.speed > l.base * 0.95)(report), `landing: lined up on the runway's glide path the plane eases down to approach speed by itself; flying the wrong way along it keeps cruise speed (${JSON.stringify({ touch: report.landing.touchSpeed, base: report.landing.base, wrongWay: report.landing.wrongWay })})`],
     [report.takeoff.airborne && report.takeoff.lifted > 0 && report.takeoff.climb > 5, 'landing: pulling up on the ground takes off and climbs away'],
     [report.hop.landed && report.hop.points === 0, 'landing: hopping straight back down earns no bonus'],
     [report.diveCrash === 'ground' && report.waterCrash.reason === 'water' && !report.waterCrash.landed, 'landing: a steep dive onto flat ground still crashes, and so does settling onto water'],
