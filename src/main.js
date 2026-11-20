@@ -17,6 +17,7 @@ import { Progress } from './progression.js';
 import { Zones } from './zones.js';
 import { DevMenu } from './devmenu.js';
 import { Secrets } from './secrets.js';
+import { Finds } from './finds.js';
 import { PullUp } from './pullup.js';
 import { pick, T } from './texts.js';
 import { installCurvature } from './curve.js';
@@ -60,6 +61,7 @@ G.persuasion = new Persuasion(G);
 G.mutations = new Mutations(G);
 G.progress = new Progress(G);
 G.powerups = new PowerUps(G);
+G.finds = new Finds(G); // rare hidden coins and lore notes for explorers
 G.zones = new Zones(G);
 G.input = new Input(canvas);
 G.input.invert = settings.invert;
@@ -214,6 +216,7 @@ function flyAgain(keepZone = false) {
   G.player.resetRun();
   G.progress.resetRun();
   G.powerups.resetRun();
+  G.finds.resetRun();
   G.objectives.resetRun();
   G.enemies.clearAll();
   Object.assign(G.enemies, { spawnTimer: 6, calmTimer: 0, frenzy: null, hats: false }); // as on boot (hats: a mutation)
@@ -296,6 +299,7 @@ function step(dt) {
   G.objectives.update(dt);
   G.persuasion.update(dt);
   G.powerups.update(dt);
+  G.finds.update(dt);
   G.zones.update(dt);
   G.secrets.update(dt);
   p.events.length = 0;

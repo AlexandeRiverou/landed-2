@@ -224,6 +224,14 @@ mood has 3–4), a new top layer (plucks, a soft arpeggio, a little call-and-ans
 pads), a new pad colour and a slightly different brightness. Now and then it steps to a nearby key, and the next
 section usually steps back home. So it doesn't loop, but it stays the same mood. `N` toggles the music, and the game remembers your choice.
 
+**Hidden finds** (`src/finds.js`): for explorers. Every minute or two a rare find waits off your line, 400 to 600 m
+ahead and 90 to 220 m to one side: skimming the ground in a dip, tucked just behind a peak (the mountain hides it until
+you go round), or 200 to 300 m up in the sky. A faint twinkle gives it away from afar, and within 150 m a soft chime
+pings faster and higher as you close in, on the side it's on. A **hidden coin** pays +120, refills boost and patches 20
+hull; a **lore note** (a little paper plane) pays +150 and opens a short card, "Lore n/12" (no pause; tap it to fold it
+away). The last of the 12 notes only turns up once you've read the other 11. Notes read and coins found are remembered
+between visits and shown on the title card.
+
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
 Points and Objective Radar 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
@@ -525,6 +533,8 @@ card.
   targets stay).
 - **Secrets:** trigger any of the 10 (it plays the effect and counts as found; hover a button for its hint), and
   **Forget found secrets** to start the hunt over.
+- **Hidden finds:** hide a coin or a lore note in a real hiding spot ahead, or put one right in front of your nose, and
+  **Forget lore and coins** to start collecting over.
 
 Starting a boss or objective replaces the current one and turns Relax Mode off. While the menu is open, gameplay keys
 don't reach the game (`G.input.lock`), so `Space` won't fire behind it.
