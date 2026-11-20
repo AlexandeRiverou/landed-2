@@ -73,6 +73,7 @@ try {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
     window.OBJ_FOR_TEST = await import('./src/objectives.js');
     window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
+    window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -2215,6 +2216,32 @@ try {
     out.popMax = pops().length;
     step(36);
     out.popGone = pops().length;
+    // Spiky Balloon proximity fuse: close by (held beside you) it arms, blinks and beeps, then pops and costs hull;
+    // one that's far away never arms; one you leave before it pops misses.
+    {
+      const M = window.MINE_FOR_TEST, side = (d) => p.pos.clone().addScaledVector(p.right, d);
+      const run = (m, d, away = null) => {
+        let blinks = 0, was = false, n = 0;
+        const h0 = p.health;
+        while (!m.dead && n++ < 90) {
+          p.invuln = 0;
+          m.pos.copy(side(m.fuse !== undefined && away !== null ? away : d));
+          G.step(1 / 30);
+          if (m.blink && !was) blinks++;
+          was = !!m.blink;
+        }
+        const r = { armed: m.fuse !== undefined, dead: m.dead, blinks, secs: +(n / 30).toFixed(2), lost: +(h0 - p.health).toFixed(1) };
+        p.health = p.maxHealth;
+        if (!m.dead) G.enemies.removeEnemy(m);
+        return r;
+      };
+      G.enemies.spawnTimer = 1e9;
+      out.mineNear = run(G.enemies.spawn('mine', side(14)), 14);
+      out.mineFar = run(G.enemies.spawn('mine', side(M.arm + 20)), M.arm + 20);
+      out.mineLeft = run(G.enemies.spawn('mine', side(20)), 20, M.blast + 10);
+      out.mineConst = M;
+      step(10);
+    }
     // Taking damage goes hit, and shakes the camera.
     const hits = calls.hit;
     p.invuln = 0;
@@ -3826,6 +3853,9 @@ try {
     [F.partHit.broken && F.partHit.pops.includes('+10'), 'feel: breaking off a part pops +10'],
     [F.kill.dead && F.kill.pops.includes(`+${F.kill.score}`) && F.kill.after === 0, 'feel: a kill pops its points, gone within 1.2 s'],
     [F.popMax === 6 && F.popGone === 0, 'feel: at most 6 score pop-ups at once'],
+    [F.mineNear.armed && F.mineNear.dead && F.mineNear.blinks >= 3 && F.mineNear.secs <= F.mineConst.fuse / 0.85 + 0.2 && F.mineNear.lost > F.mineConst.dmgMin && F.mineNear.lost <= F.mineConst.dmgMax * 1.5 + 0.1
+      && !F.mineFar.armed && F.mineFar.lost === 0 && F.mineLeft.armed && F.mineLeft.dead && F.mineLeft.lost === 0,
+      `enemies: a Spiky Balloon close by blinks, then pops and costs hull; a far one never arms; leaving the blast before it pops is safe (${JSON.stringify({ near: F.mineNear, far: F.mineFar, left: F.mineLeft })})`],
     [F.shake.off > 0 && F.reduced.on && F.reduced.off === 0, 'feel: damage shakes the camera; not with reduced motion'],
     [F.peekLook < 0.9 && F.reduced.look > 0.999, 'comfort: the cinematic look turns the camera, but not with reduced motion'],
     [F.reduced.anim.every((a) => a === 'none'), 'comfort: reduced motion stops the marker spin, and the pull-up glow never throbs'],

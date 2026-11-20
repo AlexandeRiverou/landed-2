@@ -11,7 +11,7 @@ import { MOVES as BOSS_MOVES, Hazards, guardStep, animateBoss, endMoves, dropBos
 
 const TYPES = {
   drone: { hp: 2, radius: 5, dmg: 18, speed: 38, make: makeDrone, score: 50, minScore: 0, weight: 3, kamikaze: true, name: 'Angry Drone' },
-  mine: { hp: 1, radius: 6, dmg: 25, speed: 10, make: makeMine, score: 30, minScore: 0, weight: 2, kamikaze: true, name: 'Spiky Balloon' },
+  mine: { hp: 1, radius: 6, dmg: 25, speed: 10, make: makeMine, score: 30, minScore: 0, weight: 2, kamikaze: true, name: 'Spiky Balloon', intro: 'Spiky Balloon! Get close and it blinks red. Then it pops. Shoot it or get out of there.' },
   gull: { hp: 1, radius: 4, dmg: 8, speed: 58, make: makeGull, score: 25, minScore: 150, weight: 2, kamikaze: true, name: 'Seagull Gang' },
   ufo: { hp: 4, radius: 10, dmg: 15, speed: 34, make: makeUfo, score: 120, minScore: 350, weight: 1.2, kamikaze: false, name: 'UFO' },
   storm: { hp: 6, radius: 22, dmg: 12, speed: 16, make: makeStorm, score: 150, minScore: 650, weight: 0.8, kamikaze: false, name: 'Grumpy Cloud' },
@@ -103,6 +103,10 @@ const KITE_GAP = 70, KITE_GAP_ROOF = 40, STRING_HIT = 4, STRING_CD = 1.5;
 const MOTH_BOOST = 0.15, MOTH_HP = 2;
 // Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
 export const PACE = 0.85;
+// Spiky Balloon proximity fuse: inside arm m it stops, blinks red and beeps for fuse s (enemy time), then pops.
+// Everything inside blast m takes dmgMax at the centre down to dmgMin at the edge (before ENEMY_DMG). Shoot it while
+// it blinks to pop it safely, or veer or boost away: flying straight past close still gets you nicked.
+export const MINE = { arm: 34, fuse: 0.9, blast: 24, dmgMax: 30, dmgMin: 8 };
 // Boss breathing room: fly away from a boss and it lets you go (hovers where it lost you, holds its fire unless you shoot
 // it) so you can patch up and turn around, until you're LEASH m away or its loose time is up. Then it comes back, but only to a
 // standoff (its fight distance + STANDOFF m) where it waits: you get the first move. The loose time starts at LOOSE_T s
@@ -1031,6 +1035,7 @@ export class Enemies {
         if (guardStep(this, e)) { this.remove(i); continue; } // a boss's bodyguard holds its slot (or pops with its boss)
       } else if (e.boss) this.bossBehave(e, toP, dist, dt);
       else this.behave(e, toP, dist, dt);
+      if (e.boom) { this.mineBlast(e); this.kill(i, false); continue; }
 
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
@@ -1163,6 +1168,8 @@ export class Enemies {
         steer(_w.copy(toP).normalize().multiplyScalar(this.chase(d)).add(new THREE.Vector3(Math.sin(e.t * 2) * 10, Math.cos(e.t * 3) * 6, 0)), 1.5);
         break;
       case 'mine':
+        if (e.fuse === undefined && dist < MINE.arm && !p.dead) { e.fuse = MINE.fuse; e.blink = false; }
+        if (e.fuse !== undefined) { this.mineFuse(e, dt); break; }
         if (dist < 120) steer(_w.copy(toP).normalize().multiplyScalar(d.speed), 1);
         else steer(_w.set(0, Math.sin(e.t) * 3, 0), 1);
         break;
@@ -1495,6 +1502,31 @@ export class Enemies {
       }
       if (hit || ground || s.life <= 0) { this.G.scene.remove(s.mesh); this.shots.splice(i, 1); }
     }
+  }
+
+  // An armed Spiky Balloon: it brakes, swells and blinks faster and faster (a beep on each blink), then sets e.boom.
+  mineFuse(e, dt) {
+    e.vel.multiplyScalar(Math.exp(-dt * 5));
+    e.fuse -= dt;
+    const k = 1 - Math.max(0, e.fuse) / MINE.fuse; // 0 armed .. 1 boom
+    e.blinkPhase = (e.blinkPhase || 0) + dt * (5 + 15 * k);
+    const on = e.blinkPhase % 1 < 0.5;
+    if (on && !e.blink) this.G.audio.tone(900 + 700 * k, 0.07, { type: 'square', vol: 0.06 });
+    e.blink = on;
+    const light = e.mesh.userData.light;
+    if (light) { light.material.color.set(on ? '#ffffff' : '#ff2a2a'); light.scale.setScalar(on ? 2.2 : 1.2); }
+    e.mesh.scale.setScalar((e.radius / e.def.radius) * (1 + 0.25 * k + (on ? 0.06 : 0)));
+    if (e.fuse <= 0) e.boom = true;
+  }
+
+  // The pop: a ring of fire, and hull damage that falls off from the centre to the edge of MINE.blast.
+  mineBlast(e) {
+    const G = this.G, p = G.player, dist = p.pos.distanceTo(e.pos);
+    G.fx.explosion(e.pos);
+    G.fx.emit(e.pos, 50, { colors: ['#ff3a2a', '#ffd23a'], speed: 70, life: 0.6, size: 6, ring: true });
+    if (p.dead) return;
+    if (dist < MINE.blast * 2) G.shake?.(dist < MINE.blast ? 1 : 0.5, 0.3);
+    if (dist < MINE.blast && this.calmTimer <= 0) p.damage(MINE.dmgMax + (MINE.dmgMin - MINE.dmgMax) * (dist / MINE.blast));
   }
 
   // A kamikaze going off: small fry (quiet ones: pebbles, Grumblings) just puff, so a clump of them doesn't white out

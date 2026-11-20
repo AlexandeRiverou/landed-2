@@ -610,7 +610,7 @@ export function makeMine(hat) {
     o.position.copy(v).multiplyScalar(4.6);
     o.quaternion.setFromUnitVectors(up, v);
   }
-  add(g, Sph(0.9, 6, 4), basic('#ff2a2a'), { y: 4.2, z: 1.2 });
+  g.userData.light = add(g, Sph(0.9, 6, 4), basic('#ff2a2a'), { y: 4.2, z: 1.2 }); // blinks when armed (enemies.js mineFuse)
   add(g, Box(0.4, 10, 0.4), lam('#ffffff'), { y: -9 });
   if (hat) partyHat(g, 5.5);
   return g;
