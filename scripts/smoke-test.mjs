@@ -3498,8 +3498,10 @@ try {
     step(1);
     out.hearts3 = hearts();
     p.health = 10;
+    const max0 = p.maxHealth, lvl0 = G.progress.level;
     G.devmenu.levelUp();
-    out.levelUp = { health: p.health, max: p.maxHealth, note: [...G.ui.notes, ...G.ui.queue].some((n) => /Hull \+50/.test(n.text)) };
+    // One promotion: its perk may add hull (Hull +20 adds to both), then +50, capped at the max.
+    out.levelUp = { health: p.health, max: p.maxHealth, want: Math.min(p.maxHealth, 10 + (p.maxHealth - max0) + 50), levels: G.progress.level - lvl0, note: [...G.ui.notes, ...G.ui.queue].some((n) => /Hull \+50/.test(n.text)) };
     p.health = 50; p.sinceHit = 0;
     step(30 * 11);
     out.regen = { at11s: p.health, rate: p.stats.regen };
@@ -3810,7 +3812,7 @@ try {
     [(({ settingsDefault: d, settings: s }) => !d.invert && !d.muted && d.stored === null && s.before.invert && s.before.muted && s.invert && s.music === false && s.muted && s.master === 0 && /Remembered/.test(s.note))(F) && F.settingsCleared, 'settings: I, N and M survive a reload, with a "Remembered" note at take-off'],
     [F.junk.length === 3 && F.junk.every((j) => !j.invert && !j.muted && j.furthest === null && j.text === '' && !j.shown) && !F.junkErrors.length && F.junkCleared, `storage: junk settings and furthest-zone data boot with the defaults, no errors, no "Furthest" line (${JSON.stringify(F.junk)} ${F.junkErrors})`],
     [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
-    [(({ levelUp: u }) => u.health === Math.min(u.max, 60) && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) patches 50 hull (10 -> 60), and says so'],
+    [(({ levelUp: u }) => u.levels === 1 && u.health === u.want && u.health < u.max && u.note)(L.run), `lives: levelling up (the dev menu button, same path) patches 50 hull, not a full repair, and says so (${JSON.stringify(L.run.levelUp)})`],
     [(({ regen: r }) => r.at11s === 50 && r.at14s > 50 && r.at14s <= 50 + 0.6 * r.rate * 2.2)(L.run), 'hull: no repairs for 12 s after a hit, then slowly (0.6 × stats.regen hp/s)'],
     [(({ crash1: c, respawn1: r }) => c.lives === 2 && c.dead && c.hearts === '❤️❤️🖤' && !r.dead && r.full && r.lives === 2)(L.run), 'lives: a crash costs a life, and you respawn with a full hull'],
     [L.run.relax.lives === 2 && !L.run.relax.dead, 'lives: a crash in Relax Mode costs no life'],
