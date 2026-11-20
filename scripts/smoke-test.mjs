@@ -1179,6 +1179,24 @@ try {
     out.longestPowerup = longest;
     step(30 * Math.ceil(longest - 5 + 3));
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
+    // Durations were stretched ~1.6x (Nov 2026): every timed power-up lasts at least 1.5x what it used to.
+    const OLD_DUR = { shield: 30, rapid: 30, triple: 30, homing: 30, turbo: 20, slowmo: 25, freeze: 14, double: 45, ghost: 20, mega: 25, tiny: 30, radar: 45 };
+    out.powerupDurShort = Object.entries(OLD_DUR).filter(([id, d]) => !(window.POWERUPS_FOR_TEST[id]?.dur >= d * 1.5)).map(([id]) => id);
+    // Turbo never boosts for you: with it active and boost not held, no boost. Held, it's faster than plain boost and
+    // the tank doesn't drain, even from nearly empty.
+    {
+      const p = G.player, fb = p.freeBoost, tank = p.boost;
+      p.freeBoost = 0;
+      const plainMul = p.boostMul();
+      G.powerups.active.set('turbo', 10);
+      const idle = p.throttle(1 / 30, { boost: false });
+      p.boost = 0.01;
+      let held = true;
+      for (let i = 0; i < 30; i++) held = p.throttle(1 / 30, { boost: true }) && held;
+      out.turbo = { idle, held, tank: +p.boost.toFixed(3), plainMul, turboMul: p.boostMul() };
+      G.powerups.active.delete('turbo');
+      p.freeBoost = fb; p.boost = tank; p.boosting = false;
+    }
 
     // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
     const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
@@ -3747,6 +3765,8 @@ try {
     [!report.relax.objective && report.relax.enemies === 0 && report.relax.pickups === 0 && report.relax.bodyClass && report.relax.panelHidden, 'Relax mode clears objectives, enemies and pickups'],
     [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],
     [report.longestPowerup >= 45, 'power-ups last longer'],
+    [report.powerupDurShort?.length === 0, `every timed power-up lasts at least 1.5x its old duration (short: ${JSON.stringify(report.powerupDurShort)})`],
+    [(({ turbo: t }) => t && !t.idle && t.held && t.tank >= 0.01 && t.turboMul > t.plainMul)(report), `Turbo only boosts while held, faster than plain boost and free (${JSON.stringify(report.turbo)})`],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
     [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],
     [report.droneFalling && report.droneCrashed, 'a drone that loses its rotors falls and crashes'],
