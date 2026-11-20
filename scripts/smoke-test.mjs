@@ -746,7 +746,7 @@ try {
       out.garyCut = { aimErr: +e.dashDir.angleTo(aim).toFixed(3), burst: e.burst };
       // Ram him (no shots in flight, none due): the first bump is mid-cut, the second after it.
       const hits = [], damage = p.damage;
-      p.damage = function (n) { hits.push(n); return damage.call(this, n); };
+      p.damage = function (n, ...rest) { hits.push(n); return damage.call(this, n, ...rest); };
       const bump = () => {
         G.enemies.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
         Object.assign(e, { cd: 99, burst: 0, contactCd: 0 }); e.pos.copy(p.pos); e.vel.set(0, 0, 0);
@@ -2614,7 +2614,7 @@ try {
       step(30 * 2.5, false);
       out.owl.newShots = E.shots.filter((s) => !shots1.has(s)).length;
       out.owl.lost = hp1 - p.health;
-      // Kite Twins: flying through the string hurts (12) and says so; shooting a kite snaps the string.
+      // Kite Twins: flying through the string hurts (12 × 1.5 = 18) and says so; shooting a kite snaps the string.
       fresh();
       G.powerups.active.set('freeze', 999);
       const ka = E.spawn('kites', ahead(120)), pair = ka.pair, kb = pair?.kites[1];
@@ -2998,7 +2998,7 @@ try {
       E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
       park(); step(2);
       const hits = [], damage = p.damage;
-      p.damage = function (n) { hits.push(n); return damage.call(this, n); };
+      p.damage = function (n, ...rest) { hits.push(n); return damage.call(this, n, ...rest); };
       const lives0 = p.lives = 5;
       g.burped = 99; // no Grumblings in the way
       const back = g.eye.wn.clone().negate(); // round the back: plain rock, nothing fires
@@ -3126,7 +3126,7 @@ try {
     const warns = [], warn = E.warn;
     E.warn = function (pos, r, color, tt, onFire, opts) { const rec = { r, t: tt, at: G.time, dir: opts?.dir?.clone(), shape: opts?.shape, fired: -1 }; warns.push(rec); return warn.call(this, pos, r, color, tt, (hz) => { rec.fired = +(G.time - rec.at).toFixed(2); onFire?.(hz); }, opts); };
     const hits = [], damage = p.damage;
-    p.damage = function (n) { hits.push([n, +G.time.toFixed(2)]); return damage.call(this, n); };
+    p.damage = function (n, ...rest) { hits.push([n, +G.time.toFixed(2)]); return damage.call(this, n, ...rest); };
     E.list.filter((x) => !x.quest).forEach((x) => E.removeEnemy(x));
     e.hp = 32;
     step(2);
@@ -3499,12 +3499,12 @@ try {
     out.hearts3 = hearts();
     p.health = 10;
     G.devmenu.levelUp();
-    out.levelUp = { health: p.health, max: p.maxHealth, note: [...G.ui.notes, ...G.ui.queue].some((n) => /Hull repaired/.test(n.text)) };
+    out.levelUp = { health: p.health, max: p.maxHealth, note: [...G.ui.notes, ...G.ui.queue].some((n) => /Hull \+50/.test(n.text)) };
     p.health = 50; p.sinceHit = 0;
-    step(30 * 9);
-    out.regen = { at9s: p.health, rate: p.stats.regen };
+    step(30 * 11);
+    out.regen = { at11s: p.health, rate: p.stats.regen };
     step(30 * 3);
-    out.regen.at12s = p.health;
+    out.regen.at14s = p.health;
     crash();
     out.crash1 = { lives: p.lives, hearts: hearts(), dead: p.dead };
     settle();
@@ -3730,7 +3730,7 @@ try {
     [(({ rematch: r }) => r && r.atTurn >= 120 && r.speed <= 33 && r.reIn >= 0 && r.firstAtk >= 4)(report.breathing || {}), `turn-back rematch after 14 s of fleeing: the boss is fight + 120 m+ away, comes in at 33 m/s or less (30 m/s faster than you fly away, plus slack) until it re-engages, and attacks no sooner than 4 s after the turn (${JSON.stringify(report.breathing?.rematch)})`],
     [(({ standoff: s }) => s && s.arrived && s.attackIn >= 0 && s.attackIn <= 7.5)(report.breathing || {}), `circling a waiting boss (not fleeing) gets it attacking within ~7 s of reaching its standoff (${JSON.stringify(report.breathing?.standoff)})`],
     [(({ standoff: s }) => s && s.pulledWaiting === 0 && s.engaged && Math.abs(s.pulledTo) < 1)(report.breathing || {}), 'persuasion "approach" leaves a waiting boss where it is and pulls an engaged one no closer than its standoff'],
-    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.hull >= 70))(report.breathing || {}), 'boss breakaway: the hull mends from 50 to 70+ hp within 12 s of breaking away'],
+    [(({ kingDrone, octopus }) => [kingDrone, octopus].every((b) => b && b.hull >= 54))(report.breathing || {}), 'boss breakaway: the hull mends from 50 to 54+ hp within 12 s of breaking away (normal mending would not have started)'],
     [(({ repeat: r }) => r && r.first.max === 8 && r.second.max < r.first.max && r.second.t > 0 && r.second.t < r.second.max / 0.85 + 0.2 && r.afterHit.max === 8)(report.breathing || {}), 'boss breakaway: each one in a row without hurting the boss is shorter; hurting it resets that'],
     [(({ kingDrone, octopus, twins }) => [kingDrone, octopus].every((b) => b && b.shook === 1 && b.back === 1 && b.lostYou && !b.barBack && b.nags === 0) && twins?.both && twins.shook === 1)(report.breathing || {}), 'boss breakaway: one "shook off" toast (one for twins), one "coming back" toast, boss bar shows "(lost you)" while away, no wrong-way nag'],
     [Object.keys(report.fleeLead || {}).length >= 3 && Object.values(report.fleeLead).every((b) => b.turn < 10 && b.lost < 25), `fleeing a lead boss (180° boost turn, then straight) costs under 25 hp in 15 s (${JSON.stringify(report.fleeLead || {})})`],
@@ -3810,8 +3810,8 @@ try {
     [(({ settingsDefault: d, settings: s }) => !d.invert && !d.muted && d.stored === null && s.before.invert && s.before.muted && s.invert && s.music === false && s.muted && s.master === 0 && /Remembered/.test(s.note))(F) && F.settingsCleared, 'settings: I, N and M survive a reload, with a "Remembered" note at take-off'],
     [F.junk.length === 3 && F.junk.every((j) => !j.invert && !j.muted && j.furthest === null && j.text === '' && !j.shown) && !F.junkErrors.length && F.junkCleared, `storage: junk settings and furthest-zone data boot with the defaults, no errors, no "Furthest" line (${JSON.stringify(F.junk)} ${F.junkErrors})`],
     [livesAtStart.lives === 3 && livesAtStart.hearts === '❤️❤️❤️' && !livesAtStart.over, 'lives: a run starts with 3 lives, shown as hearts'],
-    [(({ levelUp: u }) => u.health === u.max && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) repairs the hull, and says so'],
-    [(({ regen: r }) => r.at9s === 50 && r.at12s > 50 && r.at12s <= 50 + r.rate * 2.2)(L.run), 'hull: no repairs for 10 s after a hit, then slowly (stats.regen hp/s)'],
+    [(({ levelUp: u }) => u.health === Math.min(u.max, 60) && u.note)(L.run), 'lives: levelling up (the dev menu button, same path) patches 50 hull (10 -> 60), and says so'],
+    [(({ regen: r }) => r.at11s === 50 && r.at14s > 50 && r.at14s <= 50 + 0.6 * r.rate * 2.2)(L.run), 'hull: no repairs for 12 s after a hit, then slowly (0.6 × stats.regen hp/s)'],
     [(({ crash1: c, respawn1: r }) => c.lives === 2 && c.dead && c.hearts === '❤️❤️🖤' && !r.dead && r.full && r.lives === 2)(L.run), 'lives: a crash costs a life, and you respawn with a full hull'],
     [L.run.relax.lives === 2 && !L.run.relax.dead, 'lives: a crash in Relax Mode costs no life'],
     [(({ last: l, over: o }) => l.lives === 0 && l.hearts === '🖤🖤🖤' && !l.overAtOnce && o.gameOver && o.paused && o.shown && o.cardScore === String(o.score) && o.cardText.includes(`Level ${o.level}`) && /New best/.test(o.cardText) && o.saved === o.score)(L.run), 'lives: the third crash shows the Game Over card (after the explosion) with score, level and a saved best'],
@@ -3879,9 +3879,9 @@ try {
     [['umbrella', 'grudgeRock', 'sniperOwl', 'kites', 'moth'].every((t) => RUSH.picks.all.includes(t)) && !RUSH.picks.all.includes('pebble') && RUSH.picks.third === 0, `new enemies: they join the spawn mix (pebbles never on their own), at most 2 Sniper Owls (${JSON.stringify(RUSH.picks)})`],
     [(({ front: f, back: b }) => f.lost === 0 && b.dmg > 0 && b.lost === b.dmg)(RUSH.umbrella), `Umbrella Goon: no damage from the front, full damage from behind (${JSON.stringify(RUSH.umbrella)})`],
     [RUSH.dog.dead && RUSH.dog.bits === 3 && RUSH.dog.beforeBit > 0 && RUSH.dog.bitDead && RUSH.dog.newBits === 0, `Grudge Rock: breaks into 3 pebbles, which don't split again (${JSON.stringify(RUSH.dog)})`],
-    [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 18 && RUSH.thunder.shade >= 0.6, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 18 on its axis, the zap sounds on landing, and the cloud body is light slate (${JSON.stringify(RUSH.thunder)})`],
+    [RUSH.thunder && RUSH.thunder.rings === 2 * RUSH.thunder.spines && RUSH.thunder.spines >= 3 && !RUSH.thunder.thick && !RUSH.thunder.other && !RUSH.thunder.dark && RUSH.thunder.castZaps === 0 && RUSH.thunder.landZaps === 1 && RUSH.thunder.lost === 27 && RUSH.thunder.shade >= 0.6, `Thunderclaus volley: two yellow rings and a thin spine per strike (no dark column), the bolt costs 27 (18 × 1.5) on its axis, the zap sounds on landing, and the cloud body is light slate (${JSON.stringify(RUSH.thunder)})`],
     [(({ owl: o }) => o.lock >= 1.499 && o.lock <= 1.6 && o.broken && o.newShots === 0 && o.lost === 0)(RUSH), `Sniper Owl: a red line for 1.5 s before it fires; a barrel roll during the line breaks it: no shot, no damage (${JSON.stringify(RUSH.owl)})`],
-    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 12 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
+    [(({ kites: k }) => k.pair && k.gap >= 60 && k.lost === 18 && k.toast && k.inScene && k.snapped)(RUSH), `Kite Twins: flying through the string hurts (12 × 1.5 = 18), and shooting a kite snaps the string (${JSON.stringify(RUSH.kites)})`],
     [(({ moth: m }) => m.latched && m.boost <= 0.75 && m.lost > 0 && m.off && m.paid.kills === 1 && m.paid.score === 70 && m.paid.dead && m.dropped)(RUSH), `Clingy Moth: latches on and drains boost; a stunt shakes it off for its points (once); getting shot down drops it (${JSON.stringify(RUSH.moth)})`],
     // ---- Grumbleglobe, the Planet With Opinions (see the GLOBE block)
     ...(({ zone: z, arrival: a }) => [
