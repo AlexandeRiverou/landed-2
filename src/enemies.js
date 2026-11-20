@@ -86,7 +86,7 @@ const RUSH_KEEP = 1.1; // see keepUp
 const STRAGGLER = 550, ACTIVE_R = 700, ACTIVE_BEHIND = 300, RUSH_RETURN = 250;
 const KILL_MEND = 3; // hull each kill mends during Hold The Line
 // Kill streak: kills less than STREAK_WINDOW s apart chain, and the 2nd, 3rd and 4th+ kill in a chain score
-// STREAK_MULT[1], [2], [3] times their points (shown on the "+N" popup). Dying ends the chain.
+// STREAK_MULT[1], [2], [3] times their points (shown on the "+N" popup). Dying, or a new plane (player.spawn), ends it.
 const STREAK_WINDOW = 3;
 const STREAK_MULT = [1, 1.5, 2, 3];
 // Grumblings aim GRUMBLE_LEAD s ahead of you, each at its own spot up to GRUMBLE_SPREAD m off that point (circling

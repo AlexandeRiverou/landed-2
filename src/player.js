@@ -133,6 +133,7 @@ export class Player {
     this.health = this.maxHealth;
     this.dead = false;
     this.invuln = 3;
+    if (G.enemies) G.enemies.streakAt = -Infinity; // a new plane starts a new kill streak
     this.maneuver = null; // a crash ends any stunt
     this.dodging = false;
     this.landed = null;
