@@ -8,13 +8,19 @@ import { objective, flatForward, underRoof } from './objectives.js';
 import { waterLine, heightAt, craterDepthAt, padAt } from './world.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
-const W = 24, L = 180;   // strip width and length in metres, before persuasion grows it
+const W = 40, L = 260;   // strip width and length in metres, before persuasion grows it (was 24 × 180: too fiddly)
+const GROW_MAX = 1.6;    // persuasion's grow() caps the strip at this scale (64 × 416 m)
 const LIFT = 0.3;        // the asphalt sits this far over the flattened ground, the paint a little more
 // The ground flattened under it: this much wider and longer on each side (m), blending back to the land over BLEND m.
 const PAD_SIDE = 6, PAD_END = 12, BLEND = 40;
 // A good spot needs at most this much height range under the strip (m), and this much headroom under a cave roof.
 const FLAT = { span: 22, room: 60 };
 const NEED = 2, STOP = 12; // seconds on the strip after touchdown, or slower than this (m/s): done
+// The glide-path assist: lined up with the strip (heading within ~30°), within `side` m of its centre line, from
+// `ahead` m out to the far end, under a cone of `floor` m + `cone` m per metre out from the threshold, wings level,
+// nose not climbing and not boosting: the plane eases down to player.js APPROACH_SLOW × cruise speed. A slower plane
+// sinks less for the same nose angle and rolls out sooner, so a decent approach lands. A steep dive still crashes.
+export const GLIDE = { ahead: 450, side: 45, floor: 18, cone: 0.3, heading: 0.86, noseUp: 0.12 };
 
 // Strip-local (x across, z along; -z is the landing direction) to world, for a strip at c turned by yaw.
 const toWorld = (c, yaw, lx, lz, out) => out.set(c.x + lx * Math.cos(yaw) + lz * Math.sin(yaw), 0, c.z - lx * Math.sin(yaw) + lz * Math.cos(yaw));
@@ -116,7 +122,7 @@ export function mkLanding(G) {
   const g = makeRunway();
   G.scene.add(g);
   const { asphalt, paint, lights, approach } = g.userData;
-  let margin = 3, need = NEED, nearCounts = false, touched = false, onFor = 0;
+  let margin = 6, need = NEED, nearCounts = false, touched = false, onFor = 0;
   let pad = null;
   // Put the strip at strip.c / strip.yaw / strip.scale: flatten the ground there (the old spot goes back to normal)
   // and stand everything on it. Approach lights out past the end stand on the land there.
@@ -151,9 +157,20 @@ export function mkLanding(G) {
     signText: ['RUNWAY', 'THAT WAY →', '(LAND ON IT)'],
     hints: [
       'Line up with the white dashes from far out. Turning on the ground is slow.',
-      'Come in slow and level: no boost, wings flat, nose just under the horizon. Ease it down.',
+      'Line up and come in low, wings flat, no boost: the plane slows itself down on a good approach. Ease it down.',
       'Touch down near the green lights, then let it roll. Pitch down to sink, level off right before the ground.',
     ],
+    // On a proper approach to this strip right now? (player.js fly asks, every frame, to ease the speed down.)
+    onGlidePath(pl) {
+      if (pl.landed || pl.maneuver || pl.boosting) return false;
+      const [lx, lz] = local(pl.pos.x, pl.pos.z), s = strip.scale, out = lz - (L * s) / 2; // out: metres short of the threshold
+      if (Math.abs(lx) > (W * s) / 2 + GLIDE.side || out > GLIDE.ahead || lz < -(L * s) / 2) return false;
+      const alt = pl.pos.y - strip.c.y;
+      if (alt < 0 || alt > GLIDE.floor + Math.max(0, out) * GLIDE.cone) return false;
+      const head = -pl.forward.x * Math.sin(strip.yaw) - pl.forward.z * Math.cos(strip.yaw); // along the landing direction
+      return head > GLIDE.heading * Math.hypot(pl.forward.x, pl.forward.z) && pl.forward.y < GLIDE.noseUp
+        && Math.abs(pl.bank()) < 0.44 && pl.up.y > 0.7;
+    },
     target() { // over the threshold, where you aim to touch down
       toWorld(strip.c, strip.yaw, 0, (L * strip.scale) / 2 - 20, tgt);
       return tgt.setY(underRoof(G, tgt.x, tgt.z, G.terrain.surfaceHeight(tgt.x, tgt.z) + 12, 10));
@@ -179,7 +196,7 @@ export function mkLanding(G) {
       G.audio.success();
       return 'done';
     },
-    grow(f) { if (!p.landed) { strip.scale = Math.min(strip.scale * f, 2.2); layout(); } }, // a bigger strip, on more flattened ground
+    grow(f) { if (!p.landed) { strip.scale = Math.min(strip.scale * f, GROW_MAX); layout(); } }, // a bigger strip, on more flattened ground
     approach(G, f) { // a flat spot part of the way toward you; it stays put if there isn't one
       const c = strip.c.clone().lerp(p.pos, f);
       const s = findStrip(G, c, flatForward(G), { dMin: 0, dMax: 160, spread: Math.PI, tries: 40, scale: strip.scale, wide: 0 });
