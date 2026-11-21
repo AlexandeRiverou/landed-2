@@ -90,6 +90,9 @@ const KILL_MEND = 3; // hull each kill mends during Hold The Line
 // STREAK_MULT[1], [2], [3] times their points (shown on the "+N" popup). Dying, or a new plane (player.spawn), ends it.
 const STREAK_WINDOW = 3;
 const STREAK_MULT = [1, 1.5, 2, 3];
+// Hit-stop: shooting down anything bigger than small fry freezes the game this long (s), so the kill lands with a
+// thump. Never with reduced motion. main.js's frame() spends it; G.step (scripted tests) ignores it.
+export const HIT_STOP = 0.05;
 // Grumblings aim GRUMBLE_LEAD s ahead of you, each at its own spot up to GRUMBLE_SPREAD m off that point (circling
 // slowly); GRUMBLE_GAP s after one bites, the rest of the clump doesn't.
 const GRUMBLE_LEAD = 1, GRUMBLE_SPREAD = 20, GRUMBLE_GAP = 0.3;
@@ -1611,6 +1614,7 @@ export class Enemies {
       G.stats.kills++;
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
     } else if (byPlayer && !e.paid) this.payout(e);
+    if (byPlayer && !SMALL[e.type] && !e.def.quiet && !G.comfort?.reducedMotion) G.hitStop = Math.max(G.hitStop || 0, HIT_STOP);
     if (e.def.squeak) G.audio.tone(1400, 0.08, { type: 'square', vol: 0.05, slide: 600 });
     else G.audio.explode();
     this.remove(i);

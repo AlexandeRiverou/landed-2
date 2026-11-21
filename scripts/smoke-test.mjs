@@ -1246,6 +1246,21 @@ try {
       out.sizePU = { mega, tiny, whiff: TINY.whiff, rate: TINY.rate, megaBoss: MEGA.boss };
     }
 
+    // Hit-stop (Nov 2026): shooting down a regular freezes frame() for HIT_STOP; small fry (a bee) and kills not by
+    // the player don't, and nothing does with reduced motion.
+    {
+      const E = G.enemies, { HIT_STOP } = await import('./src/enemies.js');
+      const at = G.player.pos.clone().addScaledVector(G.player.forward, 200).setY(G.player.pos.y + 150), hs = {}, rm = G.comfort.reducedMotion;
+      const keep = { score: G.score, kills: G.stats.kills, streak: E.streak, streakAt: E.streakAt };
+      const killOne = (type, by) => { G.hitStop = 0; const e = E.spawn(type, at.clone(), { quiet: true }); E.kill(E.list.indexOf(e), by); return +G.hitStop.toFixed(3); };
+      G.comfort.reducedMotion = false;
+      Object.assign(hs, { drone: killOne('drone', true), bee: killOne('bee', true), crash: killOne('drone', false) });
+      G.comfort.reducedMotion = true; hs.reduced = killOne('drone', true);
+      G.comfort.reducedMotion = rm; G.hitStop = 0;
+      G.score = keep.score; G.stats.kills = keep.kills; E.streak = keep.streak; E.streakAt = keep.streakAt;
+      out.hitStop = { ...hs, want: HIT_STOP };
+    }
+
     // Destructible terrain: bullets and enemy orbs that hit the ground dig craters, and the mesh follows.
     const spot = G.player.pos.clone().addScaledVector(G.player.forward, 80);
     const ground0 = G.terrain.surfaceHeight(spot.x, spot.z);
@@ -3962,6 +3977,7 @@ try {
     [report.relax.backObjective === 'boss', 'leaving relax mode brings back the interrupted boss'],
     [report.longestPowerup >= 45, 'power-ups last longer'],
     [report.powerupDurShort?.length === 0, `every timed power-up lasts at least 1.5x its old duration (short: ${JSON.stringify(report.powerupDurShort)})`],
+    [(({ hitStop: h }) => h.want >= 0.04 && h.want <= 0.06 && h.drone === h.want && h.bee === 0 && h.crash === 0 && h.reduced === 0)(report), `A kill you make freezes the frame for a beat, except small fry, crashes and with reduced motion (${JSON.stringify(report.hitStop)})`],
     [(({ sizePU: { mega: m, tiny: t, whiff, rate, megaBoss } }) => m.scale > 2 && m.popped && m.pts >= m.want && m.boss >= megaBoss * 0.5 && m.dazed && m.cd && m.bump === 0 && m.armored > 0 && Math.abs(m.armored * 2 - m.plain) < 0.01 && t.scale === 0.5 && t.whiffed && t.pts === whiff && t.hurt === 0 && t.low === rate && t.high === 0)(report), `Mega Ram pops regulars for 1.5x points, rams and dazes bosses, halves hits; Tiny Ace whiffs shots for points and pays daredevil points low down only (${JSON.stringify(report.sizePU)})`],
     [(({ turbo: t }) => t && !t.idle && t.held && t.tank >= 0.01 && t.turboMul > t.plainMul)(report), `Turbo only boosts while held, faster than plain boost and free (${JSON.stringify(report.turbo)})`],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
