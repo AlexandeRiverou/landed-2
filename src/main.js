@@ -283,7 +283,8 @@ function frame() {
     G.terrain.update(G.player.pos, 1);
     G.sky.update(dt);
     G.audio.update();
-  } else step(dt);
+  } else if (G.hitStop > 0) G.hitStop -= dt; // hit-stop on a kill (enemies.js HIT_STOP): hold the frame a beat
+  else step(dt);
   renderer.render(scene, camera);
 }
 

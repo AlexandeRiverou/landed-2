@@ -496,7 +496,7 @@ found secrets are remembered between flights. The full spoiler list is in [`docs
 
 **Settings and comfort** (`src/main.js`): pitch invert (`I`), music (`N`) and mute (`M`) are saved in the browser
 (`localStorage['landed-settings']`), and take-off reminds you of any that aren't the default ("Remembered: pitch
-inverted, music off. (I / N / M to change)"). If your system asks for reduced motion, the game drops the camera shake
+inverted, music off. (I / N / M to change)"). If your system asks for reduced motion, the game drops the camera shake, the hit-stop on kills
 and the persuasion engine's cinematic camera turn, stops the HUD marker and the big edge arrow from
 throbbing, and halves every screen flash. The crash flash is softer for everyone.
 
