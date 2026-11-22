@@ -48,6 +48,9 @@ const WHEELS = 2.5; // the plane's centre sits this high on the ground: wheels d
 const TAXI_SPEED = 10, BRAKE = 10, THROTTLE = 12, TAXI_TURN = 0.9, LIFTOFF = 0.7, BONUS_AIRTIME = 15;
 // Lined up on a runway's glide path (runway.js GLIDE), the plane eases down to this × cruise speed on its own.
 export const APPROACH_SLOW = 0.6;
+// Within CHAIN_SLOW_RANGE m of a chain's next link (rings, constellation stars, melody notes: objectives with chainSlow),
+// the plane eases down to CHAIN_SLOW × cruise on its own, so it can turn into the link. Boost still overrides it.
+export const CHAIN_SLOW = 0.65, CHAIN_SLOW_RANGE = 220;
 // Softest first: a touchdown gets the first grade whose sink (m/s) and bank (rad) limits it meets.
 const LANDING_GRADES = [
   { id: 'butter', title: 'BUTTER!', sink: 1.5, bank: 0.09, points: 150, texts: 'landButter' },
@@ -109,6 +112,8 @@ export class Player {
     this.landed = null;      // on the ground: { yaw, t, ground } (see taxi)
     this.onGlide = false;    // on a runway's glide path this frame: easing down to APPROACH_SLOW (see fly)
     this.glideNoted = null;  // the runway objective whose glide-path note already showed
+    this.onChain = false;    // near a chain's next link this frame: easing down to CHAIN_SLOW (see fly)
+    this.chainNoted = null;  // the chain objective whose slow-down note already showed
     this.lastLanding = null; // the latest touchdown: { grade, title, sink, bank, points, x, z }
     this.airTime = 0;        // seconds airborne since the last touchdown or respawn (landing bonus needs BONUS_AIRTIME)
     this.everLanded = false;
@@ -230,7 +235,15 @@ export class Player {
       G.ui.notify('On the glide path: easing the throttle for you.', 'info', 2.5, 1);
     }
     this.onGlide = glide;
-    const target = (boosting ? this.baseSpeed * this.boostMul() : glide ? this.baseSpeed * APPROACH_SLOW : this.baseSpeed) - this.forward.y * 10;
+    const cur = G.objectives.current, link = !boosting && !glide && cur?.chainSlow ? cur.target() : null;
+    const chain = !!link && link.distanceToSquared(this.pos) < CHAIN_SLOW_RANGE * CHAIN_SLOW_RANGE;
+    if (chain && this.chainNoted !== cur) { // once per chain
+      this.chainNoted = cur;
+      G.ui.notify('Chain ahead: easing the throttle so you can steer. Boost to go full speed.', 'info', 2.5, 1);
+    }
+    this.onChain = chain;
+    const cruise = glide ? APPROACH_SLOW : chain ? CHAIN_SLOW : 1;
+    const target = (boosting ? this.baseSpeed * this.boostMul() : this.baseSpeed * cruise) - this.forward.y * 10;
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
 
     this.prevPos.copy(this.pos);

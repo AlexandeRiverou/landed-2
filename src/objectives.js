@@ -213,6 +213,7 @@ export function mkChain(G, style = 'slalom') {
   mark();
   return objective({
     type: style === 'slalom' ? 'chain' : style, reward: 80 + n * 25 + (style === 'trial' ? 40 : 0), noun: 'the ring chain',
+    chainSlow: style !== 'trial', // player.js eases the plane down near the next ring (not in the race against the clock)
     title: pick(S.titles), desc: S.desc(n),
     caps: new Set(['grow', 'approach', 'teleport', ...(timeLimit ? ['easier'] : [])]),
     signText: ['RINGS', 'THAT WAY →', '(SEVERAL!)'],
