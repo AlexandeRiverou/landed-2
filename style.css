@@ -95,6 +95,19 @@ html, body {
 #lore-card p { margin: 4px 0 2px; font-size: 14px; font-weight: 600; line-height: 1.35; font-style: italic; }
 #lore-card .lore-hint { font-size: 10px; opacity: 0.55; text-align: right; }
 @media (pointer: coarse) { #lore-card { right: auto; left: 50%; bottom: auto; top: 9%; transform: translate(-50%, -18px); } #lore-card.show { transform: translate(-50%, 0); } }
+/* The HUD noticing a hidden find within 260 m: a slow dashed ring on it, or a sparkle at the screen edge its way. */
+#find-pip { position: absolute; display: none; transform: translate(-50%, -50%); pointer-events: none; }
+#find-pip .ring {
+  width: 46px; height: 46px; border-radius: 50%; border: 2px dashed rgba(255, 236, 150, 0.95);
+  box-shadow: 0 0 12px rgba(255, 224, 120, 0.75), inset 0 0 10px rgba(255, 224, 120, 0.45); animation: pip-spin 5s linear infinite;
+}
+#find-pip.note .ring { border-color: rgba(205, 238, 255, 0.95); box-shadow: 0 0 12px rgba(170, 220, 255, 0.75), inset 0 0 10px rgba(170, 220, 255, 0.45); }
+#find-pip .spark { display: none; font-size: 22px; text-shadow: 0 0 8px #fff3a0, 0 0 3px var(--ink); animation: pip-pulse 0.8s ease-in-out infinite alternate; }
+#find-pip.edge .ring { display: none; }
+#find-pip.edge .spark { display: block; }
+#find-pip.still .ring, #find-pip.still .spark { animation: none; }
+@keyframes pip-spin { to { transform: rotate(360deg); } }
+@keyframes pip-pulse { to { transform: scale(1.3); } }
 /* Game Over card: the final score big, the run's level and tally under it. */
 #go-score { font-size: 44px; font-weight: 700; line-height: 1; color: #7a4cff; }
 #gameover .go-label { font-size: 11px; letter-spacing: 2px; opacity: 0.7; margin-bottom: 4px; }

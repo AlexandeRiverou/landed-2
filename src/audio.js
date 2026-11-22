@@ -103,7 +103,7 @@ export class Sfx {
   explode() { this.noise(1.0, { vol: 0.5, freq: 900 }); this.tone(90, 0.8, { type: 'sawtooth', vol: 0.15, slide: -60 }); }
   firework() { this.noise(0.5, { vol: 0.12, freq: 2500 }); }
   zap() { this.tone(1400, 0.2, { type: 'sawtooth', vol: 0.08, slide: -1200 }); this.noise(0.2, { vol: 0.2, freq: 5000 }); }
-  ping(pan = 0, pitch = 1) { this.tone(1200 * pitch, 0.18, { type: 'sine', vol: 0.12, pan }); }
+  ping(pan = 0, pitch = 1, vol = 0.12) { this.tone(1200 * pitch, 0.18, { type: 'sine', vol, pan }); }
   honk(p = 1, delay = 0) { this.tone(330 * p, 0.22, { type: 'sawtooth', vol: 0.12, slide: -60, delay }); this.tone(320 * p, 0.22, { type: 'square', vol: 0.05, slide: -60, delay }); }
   quack() { this.tone(640, 0.09, { type: 'sawtooth', vol: 0.09, slide: -280 }); this.tone(600, 0.14, { type: 'sawtooth', vol: 0.09, slide: -300, delay: 0.13 }); }
   sparkle() { [1568, 2093, 2637, 3136].forEach((f, i) => this.tone(f, 0.2, { type: 'sine', vol: 0.07, delay: i * 0.07 })); }
