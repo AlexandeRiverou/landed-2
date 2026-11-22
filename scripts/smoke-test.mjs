@@ -47,7 +47,11 @@ try {
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
-  const firstPowerupTimer = await page.evaluate(() => window.G.powerups.timer);
+  const firstPowerupTimer = await page.evaluate(() => {
+    const t = window.G.powerups.timer;
+    window.G.powerups.timer = 40; // the checks below were timed with the old 40 s first gift; keep them measuring what they did
+    return t;
+  });
   // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
   const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
   const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
