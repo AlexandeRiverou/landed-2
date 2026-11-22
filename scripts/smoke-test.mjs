@@ -200,7 +200,7 @@ try {
         if (document.getElementById('marker').style.display === 'block') res.markerSeen++;
       }
       // Off screen behind the plane with no arrow unlocked: a faint arrow, no label. Persuasion steps make it normal, then big.
-      G.powerups.has = () => false; // no Objective Radar arrow
+      G.powerups.has = () => false; // no power-up changes the arrow
       const arrowAt = (level) => {
         G.ui.edgeArrow = level; G.ui.showDistance = true;
         O.current.target().copy(p.pos).addScaledVector(p.forward, -300);
@@ -1182,7 +1182,7 @@ try {
     step(30 * Math.ceil(longest - 5 + 3));
     out.powerupsActiveAfterAMinute = G.powerups.active.size;
     // Durations were stretched ~1.6x (Nov 2026): every timed power-up lasts at least 1.5x what it used to.
-    const OLD_DUR = { shield: 30, rapid: 30, triple: 30, homing: 30, turbo: 20, slowmo: 25, freeze: 14, double: 45, ghost: 20, mega: 25, tiny: 30, radar: 45 };
+    const OLD_DUR = { shield: 30, rapid: 30, triple: 30, homing: 30, turbo: 20, slowmo: 25, freeze: 14, double: 45, ghost: 20, mega: 25, tiny: 30 };
     out.powerupDurShort = Object.entries(OLD_DUR).filter(([id, d]) => !(window.POWERUPS_FOR_TEST[id]?.dur >= d * 1.5)).map(([id]) => id);
     // Turbo never boosts for you: with it active and boost not held, no boost. Held, it's faster than plain boost and
     // the tank doesn't drain, even from nearly empty.
@@ -1242,8 +1242,26 @@ try {
       const s3 = G.score; P.daredevil(TINY.pay + 0.05); tiny.high = G.score - s3;
       p.pos.y = y0;
       P.active.clear(); P.update(0);
+      // Shockwave (replaced Objective Radar, Nov 2026): a pulse pops a drone in range, chips a blimp, wipes a shot in
+      // range, leaves a drone out of range alone, then waits SHOCK.every s; with nothing near it holds its charge; a boss
+      // in range loses a slice of its hull.
+      const { SHOCK } = await import('./src/powerups.js');
+      P.active.set('shock', 10); P.shockT = 0;
+      const ahead = (m) => p.pos.clone().addScaledVector(p.forward, m).addScaledVector(p.up, 2);
+      const nearD = E.spawn('drone', ahead(30)), farD = E.spawn('drone', ahead(160)), blimp = E.spawn('blimp', ahead(-40));
+      const orb = E.fireOrb(ahead(20), p.forward.clone(), 0, 5), bhp0 = blimp.hp;
+      const s4 = G.score;
+      P.shockwave(0.01);
+      const shock = { popped: nearD.dead, farAlive: !farD.dead, blimpHit: +(bhp0 - blimp.hp).toFixed(2), shotGone: !E.shots.includes(orb), pts: G.score - s4, cd: +P.shockT.toFixed(2) };
+      const bhp1 = blimp.hp; P.shockwave(1); shock.waits = blimp.hp === bhp1;
+      for (const e of [farD, blimp]) if (!e.dead) E.removeEnemy(e);
+      P.shockT = 0; P.shockwave(0.01); shock.holds = P.shockT === 0;
+      const sb = E.spawnBoss('thunder', ahead(30)), sbh = sb.hp;
+      P.shockwave(0.01); shock.boss = +((sbh - sb.hp) / sb.maxHp).toFixed(3);
+      E.removeEnemy(sb); E.hazards.clear();
+      P.active.clear(); P.update(0); P.shockT = 0;
       E.spawnTimer = st; E.calmTimer = calm;
-      out.sizePU = { mega, tiny, whiff: TINY.whiff, rate: TINY.rate, megaBoss: MEGA.boss };
+      out.sizePU = { mega, tiny, shock, whiff: TINY.whiff, rate: TINY.rate, megaBoss: MEGA.boss, shockDmg: SHOCK.dmg, shockEvery: SHOCK.every };
     }
 
     // Hit-stop (Nov 2026): shooting down a regular freezes frame() for HIT_STOP; small fry (a bee) and kills not by
@@ -1944,7 +1962,7 @@ try {
       G.objectives.cooldown = 1e9;
       G.objectives.start(G.objectives.makeBoss('kingDrone'), 'boss');
       for (const e of G.enemies.list) if (e.boss) e.enraged = true;
-      G.powerups.activate('radar');
+      G.powerups.activate('shock');
       G.ui.notify('A first note, long enough to wrap onto a second line on a phone.', 'info', 4, 2);
       G.ui.notify('A second note, also rather chatty.', 'warn', 4, 2);
       p.invuln = 99; G.step(1 / 30);
@@ -3979,6 +3997,7 @@ try {
     [report.powerupDurShort?.length === 0, `every timed power-up lasts at least 1.5x its old duration (short: ${JSON.stringify(report.powerupDurShort)})`],
     [(({ hitStop: h }) => h.want >= 0.04 && h.want <= 0.06 && h.drone === h.want && h.bee === 0 && h.crash === 0 && h.reduced === 0)(report), `A kill you make freezes the frame for a beat, except small fry, crashes and with reduced motion (${JSON.stringify(report.hitStop)})`],
     [(({ sizePU: { mega: m, tiny: t, whiff, rate, megaBoss } }) => m.scale > 2 && m.popped && m.pts >= m.want && m.boss >= megaBoss * 0.5 && m.dazed && m.cd && m.bump === 0 && m.armored > 0 && Math.abs(m.armored * 2 - m.plain) < 0.01 && t.scale === 0.5 && t.whiffed && t.pts === whiff && t.hurt === 0 && t.low === rate && t.high === 0)(report), `Mega Ram pops regulars for 1.5x points, rams and dazes bosses, halves hits; Tiny Ace whiffs shots for points and pays daredevil points low down only (${JSON.stringify(report.sizePU)})`],
+    [(({ sizePU: { shock: k, shockDmg, shockEvery } }) => k.popped && k.pts > 0 && k.farAlive && k.blimpHit === shockDmg && k.shotGone && k.cd === shockEvery && k.waits && k.holds && k.boss > 0)(report), `Shockwave pops and chips enemies in range, wipes their shots, spares the far ones, recharges, holds its charge with nothing near and chips bosses (${JSON.stringify(report.sizePU?.shock)})`],
     [(({ turbo: t }) => t && !t.idle && t.held && t.tank >= 0.01 && t.turboMul > t.plainMul)(report), `Turbo only boosts while held, faster than plain boost and free (${JSON.stringify(report.turbo)})`],
     [report.weakPointDamage === report.weakPointExpected, 'weak points multiply damage'],
     [report.gondolaStopsBombs && report.cannonDisarmed, 'breaking a part disables that attack'],

@@ -195,8 +195,7 @@ export class UI {
       return;
     }
     const dist = Math.round(p.pos.distanceTo(t));
-    this.radar = G.powerups.has('radar'); // Objective Radar power-up = free GPS + arrow
-    e.objDist.textContent = this.showDistance || this.radar ? `📍 ${dist} m away` : obj.virtual ? '' : '📍 Distance: classified';
+    e.objDist.textContent = this.showDistance ? `📍 ${dist} m away` : obj.virtual ? '' : '📍 Distance: classified';
     this.updatePointer(t, dist);
   }
 
@@ -211,8 +210,8 @@ export class UI {
     const camX = _v.x, camY = _v.y;
     _v.copy(t).project(cam);
     const onScreen = !behind && Math.abs(_v.x) < 0.92 && Math.abs(_v.y) < 0.88;
-    const label = this.showDistance || this.radar ? `${dist} m` : '';
-    const arrow = Math.max(this.edgeArrow, this.radar ? 1 : 0);
+    const label = this.showDistance ? `${dist} m` : '';
+    const arrow = this.edgeArrow;
     if (onScreen) {
       e.marker.style.display = 'block';
       e.marker.style.left = `${((_v.x + 1) / 2) * w}px`;

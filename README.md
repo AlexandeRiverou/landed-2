@@ -234,12 +234,13 @@ between visits and shown on the title card.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 40 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
-Points and Objective Radar 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
+Points 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
 hold boost, it's faster, 2.1× cruise instead of 1.7×, and free; it never boosts for you), Slow-Mo, Time Freeze, Double Points,
 Repair Kit, Ghost Mode (can't crash into the ground), Mega Ram (huge and armoured, enemy hits do half: ram regular
 enemies for 1.5× points, ram a boss for 12% of its hull and a 2.5 s daze), Tiny Ace (half size: a shot that would have
 hit a normal plane whiffs past for +15, and flying within 15 m of the ground, water or a tunnel roof pays 15 points a
-second) and Objective Radar.
+second) and Shockwave (45 s: every 3 s, when an enemy or an enemy shot is within 60 m, a blast ring bursts out of the
+plane, popping small fry, chipping bigger enemies and bosses, and wiping enemy shots in range).
 
 **Progression** (`src/progression.js`): your score is XP. Each level promotes you to a new rank (Cadet Who Means Well
 → Sky Intern → … → Supreme Commander Of Up) and grants a permanent perk for the flight: more hull, faster boost

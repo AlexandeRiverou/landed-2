@@ -18,7 +18,7 @@ export const POWERUPS = {
   ghost: { name: 'Ghost Mode', icon: '👻', color: '#e8e8ff', dur: 35, text: 'Ghost Mode! You can\'t crash into the ground or sea. Go wild.' },
   mega: { name: 'Mega Ram', icon: '🦖', color: '#ff9a3a', dur: 40, text: 'Mega Ram! You\'re HUGE and armoured. Ram enemies for bonus points, and ram bosses to daze them.' },
   tiny: { name: 'Tiny Ace', icon: '🐜', color: '#c8ff7a', dur: 50, text: 'Tiny Ace! Shots whiff past you for points. Hug the ground or fly through tunnels for daredevil points.' },
-  radar: { name: 'Objective Radar', icon: '📡', color: '#ffe08a', dur: 70, text: 'Objective Radar! Arrow and distance to the objective, no nagging needed.' },
+  shock: { name: 'Shockwave', icon: '💥', color: '#ffe08a', dur: 45, text: 'Shockwave! Anything that gets too close gets a blast ring to the face. Personal space, enforced.' },
 };
 const IDS = Object.keys(POWERUPS);
 // Mega Ram: regular enemies pop on contact for bonus× their points (a "RAM!" popup, still part of the kill streak). A
@@ -28,6 +28,10 @@ export const MEGA = { scale: 2.2, bonus: 1.5, boss: 0.12, cd: 1.5, daze: 2.5, sh
 // Tiny Ace: half the size, so an enemy shot that would have hit a normal plane whiffs past for +whiff points. Flying
 // within low m of the ground, the water or a tunnel roof earns rate daredevil points a second, paid every pay s.
 export const TINY = { scale: 0.5, whiff: 15, low: 15, rate: 15, pay: 1 };
+// Shockwave: every SHOCK.every s, if an enemy or an enemy shot is within range m, a blast ring bursts out of the plane.
+// Regular enemies in range take dmg (times their armor: small fry pop, blimps and clouds take two), enemy shots in range
+// are wiped, and a boss in range loses boss× its max hull. Kills pay as usual and count toward the kill streak.
+export const SHOCK = { every: 3, range: 60, dmg: 3, boss: 0.02 };
 const OPPOSITES = { mega: 'tiny', tiny: 'mega' };
 
 const FIRST_SPAWN = 40;                  // seconds into a flight before the first one appears
@@ -171,6 +175,7 @@ export class PowerUps {
     }
     p.sizeScale = this.has('mega') ? MEGA.scale : this.has('tiny') ? TINY.scale : 1;
     this.daredevil(dt);
+    this.shockwave(dt);
     if (this.has('ghost') && !p.dead) p.model.group.visible = Math.floor(G.time * 8) % 3 !== 0; // ghostly flicker
     this.renderTray();
   }
@@ -187,6 +192,51 @@ export class PowerUps {
     const pts = Math.round(TINY.rate * TINY.pay);
     G.score += pts;
     G.fx.popText(p.pos.clone().addScaledVector(p.up, 6), `Daredevil +${pts}`);
+  }
+
+  // Shockwave: a pulse every SHOCK.every s, held back until something is in range so every ring hits.
+  shockwave(dt) {
+    const G = this.G, p = G.player;
+    if (!this.has('shock') || p.dead || p.landed) { this.shockT = 0; return; }
+    this.shockT = Math.max(0, (this.shockT ?? 0) - dt);
+    if (this.shockT > 0) return;
+    const E = G.enemies, r = SHOCK.range * Math.max(1, p.sizeScale), r2 = r * r;
+    const near = (e) => !e.dead && !e.planet && e.pos.distanceToSquared(p.pos) < (r + e.radius) ** 2;
+    if (!E.list.some(near) && !E.shots.some((s) => s.pos.distanceToSquared(p.pos) < r2)) return;
+    this.shockT = SHOCK.every;
+    this.pulse(r);
+    for (let i = E.shots.length - 1; i >= 0; i--) {
+      const s = E.shots[i];
+      if (s.pos.distanceToSquared(p.pos) >= r2) continue;
+      G.scene.remove(s.mesh);
+      E.shots.splice(i, 1);
+    }
+    let hits = 0;
+    for (let i = E.list.length - 1; i >= 0; i--) {
+      const e = E.list[i];
+      if (!near(e)) continue;
+      hits++;
+      if (e.boss) e.hp -= e.maxHp * SHOCK.boss * (e.vulnerable || 1) * (e.shield ?? 1);
+      else e.hp -= SHOCK.dmg * (e.def.armor ?? 1);
+      G.fx.sparkle(e.pos, '#ffe08a');
+      if (e.hp <= 0) { G.fx.explosion(e.pos); E.kill(i, true); }
+    }
+    if (hits) G.shake?.(0.35, 0.15);
+  }
+
+  // The visible ring: a flat, bright torus that races out to the shockwave's edge and fades, plus a spark ring.
+  pulse(r) {
+    const G = this.G, p = G.player;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1, 0.08, 6, 48),
+      new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    ring.position.copy(p.pos);
+    ring.quaternion.copy(p.model.group.quaternion);
+    ring.rotateX(Math.PI / 2); // flat in the plane of the wings
+    G.fx.addTimed(ring, 0.45, (o, t) => { o.scale.setScalar(4 + (r - 4) * (1 - t * t)); o.material.opacity = 0.9 * t; });
+    G.fx.emit(p.pos, 40, { colors: ['#ffe08a', '#ffffff', '#ffb03a'], speed: r * 1.6, life: 0.4, size: 5, ring: true, uniform: true, drag: 0.5 });
+    G.audio.tone(140, 0.25, { type: 'sawtooth', vol: 0.09, slide: 60 });
   }
 
   renderTray() {
