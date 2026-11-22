@@ -349,6 +349,7 @@ export function mkConstellation(G) {
   paint();
   return objective({
     type: 'constellation', reward: 60 + n * 25, noun: 'the next star',
+    chainSlow: true, // player.js eases the plane down near the next link
     title: pick([S.title, 'Join The Dots (Sky Edition)', 'Constellation Prize']),
     desc: `${n} faint stars ahead make ${S.name}. Fly through them in numbered order and draw it across the sky. Skipping ahead is cheating. The stars will know.`,
     caps: new Set(['grow', 'teleport']),
@@ -798,6 +799,7 @@ export function mkMelody(G) {
   const sing = (s, delay = 0) => { G.audio.tone(freqOf(s), 0.45, { type: 'triangle', vol: 0.2, delay }); G.audio.tone(freqOf(s) * 2, 0.3, { type: 'sine', vol: 0.05, delay }); };
   return objective({
     type: 'melody', reward: 60 + n * 22, noun: 'the next note',
+    chainSlow: true, // player.js eases the plane down near the next link
     title: pick(['Sky Melody', 'Air Guitar, But Plane', 'The Flying Jukebox']),
     desc: `Fly through the ${n} floating notes in order to play "${tune.name}". Wrong note? The tune starts over. Music is cruel.`,
     caps: new Set(['grow', 'approach', 'teleport']),

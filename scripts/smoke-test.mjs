@@ -392,6 +392,28 @@ try {
       for (let k = 0; k < con.stars; k++) visit(con.target().clone());
       step(45); // a moment to admire the drawing
       out.quests.constellation = G.objectives.current !== con && G.objectives.completed === done0 + 1;
+      // Chains: within range of the next link the plane eases down so it can turn into it (boost still overrides);
+      // far from it, cruise speed comes back. The ring time trial is a race, so it keeps full speed.
+      {
+        const mel = fresh('melody'), at = mel.target().clone();
+        const hold = (spot, frames, boost = false) => {
+          if (boost) G.input.keys.add('ShiftLeft');
+          for (let k = 0; k < frames; k++) {
+            p.maneuver = null; p.invuln = 5; p.freeBoost = 0; if (boost) p.boost = 1; p.quat.setFromAxisAngle(p.up.set(0, 1, 0), 0); p.updateAxes();
+            p.pos.copy(spot); p.prevPos.copy(spot); step(1);
+          }
+          G.input.keys.delete('ShiftLeft');
+          return { on: p.onChain, speed: Math.round(p.speed) };
+        };
+        p.speed = p.baseSpeed;
+        const near = hold(at.clone().add(new p.pos.constructor(150, 0, 0)), 90);
+        const boost = hold(at.clone().add(new p.pos.constructor(150, 0, 0)), 60, true);
+        const far = hold(at.clone().add(new p.pos.constructor(900, 0, 0)), 150);
+        out.chainSlow = { near, boost, far, base: p.baseSpeed, open: G.objectives.current === mel };
+        const tr = fresh('trial');
+        out.chainSlow.trial = tr.chainSlow;
+        tr.dispose(G); G.objectives.current = null; // back to no objective, as after the constellation
+      }
       // A falling star never starts inside the ground: aimed at a valley floor with a wall 400 m over you all around
       // it, it starts over the wall (offset sideways, it would otherwise be born inside a hill and fizzle uncatchably).
       {
@@ -3918,6 +3940,7 @@ try {
     [report.quests.rollAnyDt, 'barrel roll quest: each roll counts once at any frame rate (dt 0.0349, 1/60, 0.0371)'],
     [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],
     [report.quests.constellation && report.quests.constellationOrder, 'constellation: stars only count in order, and joining them all completes it'],
+    [(({ near, boost, far, base, open, trial }) => open && near.on && near.speed < base * 0.75 && !boost.on && boost.speed > base && !far.on && far.speed > base * 0.9 && trial === false)(report.chainSlow), `chain slow-down: near a chain's next link the plane eases to about 0.65x cruise, boost overrides it, far away cruise comes back, the ring time trial keeps full speed (${JSON.stringify(report.chainSlow)})`],
     [report.quests.starClear, 'a falling star never starts inside the ground (born over a hill, it would fizzle uncatchably)'],
     [report.quests.meteors && report.quests.photo, 'falling stars can be caught, and the shy whale can be photographed'],
     [report.quests.treasure && report.quests.treasureDry, 'X marks the spot: on dry land, and shooting the X digs out the treasure'],
