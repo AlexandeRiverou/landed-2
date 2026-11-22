@@ -34,7 +34,7 @@ export const TINY = { scale: 0.5, whiff: 15, low: 15, rate: 15, pay: 1 };
 export const SHOCK = { every: 3, range: 60, dmg: 3, boss: 0.02 };
 const OPPOSITES = { mega: 'tiny', tiny: 'mega' };
 
-const FIRST_SPAWN = 40;                  // seconds into a flight before the first one appears
+const FIRST_SPAWN = 25;                  // seconds into a flight before the first one appears
 const SPAWN_EVERY = [55, 85];            // then one every 55–85 s (shortened by a level-up perk)
 const PICKUP_LIFE = 45;                  // a missed pickup floats away after this long
 const PICKUP_RADIUS = 13;

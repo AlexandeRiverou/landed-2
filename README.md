@@ -233,7 +233,7 @@ away). The last of the 12 notes only turns up once you've read the other 11. Not
 between visits and shown on the title card.
 
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
-40 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
+25 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
 Points 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you
 hold boost, it's faster, 2.1× cruise instead of 1.7×, and free; it never boosts for you), Slow-Mo, Time Freeze, Double Points,
 Repair Kit, Ghost Mode (can't crash into the ground), Mega Ram (huge and armoured, enemy hits do half: ram regular
