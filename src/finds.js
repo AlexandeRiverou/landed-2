@@ -197,12 +197,12 @@ export class Finds {
     const flash = Math.max(0, Math.sin(k.t * 3.9)) ** 12;
     this.glint.position.copy(k.pos);
     const d = k.pos.distanceTo(p.pos), close = clamp01(1 - d / FINDS.chime), still = G.comfort?.reducedMotion;
-    // Closer in the twinkle grows and never quite dims: at 220 m it's twice the size it is far out.
+    // Within 220 m the twinkle grows (about 2.5x its far-off size right next to it) and never quite dims.
     this.glint.material.opacity = Math.max(0.35 + 0.65 * flash, 0.4 + 0.5 * close);
     this.glint.material.rotation = still ? 0 : k.t * 0.6;
     this.glint.scale.setScalar(0.028 + 0.03 * flash + 0.045 * close);
-    // The pillar of light: nothing from far away; it breathes (holds still with
-    // reduced motion). Fading in from 450 m, full by 220 m. Terrain still hides its foot, but it stands 150 m tall, so it shows over the peak it's behind.
+    // The pillar of light: nothing from far away, fading in from 450 m, full by 220 m; it breathes (holds still with
+    // reduced motion). Terrain still hides its foot, but it stands 150 m tall, so it shows over the peak it's behind.
     const beamA = clamp01((FINDS.beam - d) / (FINDS.beam - FINDS.chime));
     this.beam.visible = beamA > 0 && !p.dead;
     this.beam.material.opacity = beamA * (still ? 0.6 : 0.5 + 0.15 * Math.sin(k.t * 2.4));
