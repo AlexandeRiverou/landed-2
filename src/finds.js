@@ -1,25 +1,31 @@
 // Hidden finds: rare coins and lore notes tucked where only curious pilots look. One waits somewhere off your path
 // at a time: skimming the ground in a dip, behind a peak (on its far side, so the mountain hides it), or high in the
-// sky. A faint twinkle gives it away from afar (a mountain in the way hides the twinkle too), and close up a soft
-// chime pings faster the nearer you get, panned to its side. Coins pay points, refill boost and patch the hull; lore
+// sky. From far off only a faint twinkle gives it away (a mountain in the way hides the twinkle too). Closer in it gets
+// warmer and warmer: a soft pillar of light rises from it (tall enough to show over the peak it hides behind), then a
+// chime pings faster, higher and louder the nearer you get, panned to its side, the twinkle grows, motes of light drift
+// up from it, and the HUD notices ("something glints nearby") with a ring on it or a sparkle at the screen edge. Coins pay points, refill boost and patch the hull; lore
 // notes (paper planes) pay points and open a short card. Lore and the coin tally are remembered between visits.
 import * as THREE from 'three';
 import { rand } from './texts.js';
 import { flatForward, groundAt } from './objectives.js';
 import { world } from './world.js';
+import { curveDrop } from './curve.js';
 
 const LORE_KEY = 'landed.lore', COIN_KEY = 'landed.coins';
 
 // Timing and placement. A find appears first `first` s into a flight, then `every` s after the last one was grabbed
 // or lost; it waits `ahead` m in front and `side` m off to one side (never on your line), for `life` s.
 export const FINDS = {
-  first: 45, every: [55, 95], ahead: [380, 620], side: [90, 220], life: 100, lose: 1600, radius: 11,
+  first: 30, every: [45, 75], ahead: [340, 540], side: [70, 170], life: 120, lose: 1600, radius: 16,
   low: 6,          // m over the lowest ground of a dip
   tuck: 22,        // m past a peak, on its far side, and…
   tuckUp: 7,       // …this far over the ground there
   sky: [200, 300], // m over you (or the ground, whichever is higher)
   top: 1080,       // never above this (the soft ceiling starts at 1150)
-  chime: 150,      // m: within this the chime pings, every 1.2 s far out down to 0.3 s close in
+  chime: 220,      // m: within this the chime pings, every 1.2 s far out down to 0.3 s close in, and the twinkle grows
+  beam: 450,       // m: the light pillar fades in from here and is at full strength by `chime`
+  hint: 260,       // m: within this the HUD says something glints nearby and marks where
+  motes: 200,      // m: within this motes of light drift up from it (not with reduced motion)
   lore: 0.4,       // chance a find is a lore note while notes are left to find
   spots: { low: 0.4, peak: 0.35, sky: 0.25 },
 };
@@ -42,7 +48,9 @@ export const LORE = [
   { id: 'last', title: 'The Last Page', text: 'You found every note. The world has no edge, but this pile of paper does. Thank you for looking around.', last: true },
 ];
 
-const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+const BEAM = { r: 2.6, up: 150, down: 20 };        // the light pillar: radius, m above and below the find
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _c = new THREE.Vector3();
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
 export class Finds {
   constructor(G) {
@@ -57,6 +65,7 @@ export class Finds {
     this.coins = loadCoins();
     this.build();
     this.buildCard();
+    this.buildPip();
     this.refreshTitle();
   }
 
@@ -77,8 +86,15 @@ export class Finds {
     this.glint.material.color.set(kind === 'note' ? '#dff4ff' : '#fff0a0');
     this.glint.position.copy(pos);
     this.glint.visible = true;
-    this.G.scene.add(mesh, this.glint);
-    this.find = { kind, spot, note, mesh, pos: mesh.position, base: pos.y, life: FINDS.life, t: Math.random() * 6, ping: 0 };
+    this.beam.material.color.set(kind === 'note' ? '#a9dcff' : '#ffd84a');
+    this.beam.position.copy(pos);
+    this.beam.visible = false;
+    // Under a roof (caverns, tunnels) the pillar stops short of the rock instead of shining through it.
+    const roof = this.G.terrain.ceilingHeight(pos.x, pos.z, pos.y);
+    this.beam.scale.y = Number.isFinite(roof) ? THREE.MathUtils.clamp((roof - pos.y) / BEAM.up, 0.05, 1) : 1;
+    this.pip.classList.toggle('note', kind === 'note');
+    this.G.scene.add(mesh, this.glint, this.beam);
+    this.find = { kind, spot, note, mesh, pos: mesh.position, base: pos.y, life: FINDS.life, t: Math.random() * 6, ping: 0, mote: 0, near: false };
     if (!this.hinted) {
       this.hinted = true;
       this.G.ui.notify('✨ Something glints out there. Hidden treasures hide low over the ground, behind peaks and up high.', 'info', 5, 1);
@@ -88,7 +104,8 @@ export class Finds {
 
   clear() {
     if (!this.find) return;
-    this.G.scene.remove(this.find.mesh, this.glint);
+    this.G.scene.remove(this.find.mesh, this.glint, this.beam);
+    this.pip.style.display = 'none';
     this.find = null;
   }
 
@@ -179,12 +196,33 @@ export class Finds {
     // The twinkle: dim most of the time, a bright flash about every 1.6 s. A mountain in front hides it.
     const flash = Math.max(0, Math.sin(k.t * 3.9)) ** 12;
     this.glint.position.copy(k.pos);
-    this.glint.material.opacity = 0.35 + 0.65 * flash;
-    this.glint.material.rotation = k.t * 0.6;
-    this.glint.scale.setScalar(0.028 + 0.03 * flash);
+    const d = k.pos.distanceTo(p.pos), close = clamp01(1 - d / FINDS.chime), still = G.comfort?.reducedMotion;
+    // Within 220 m the twinkle grows (about 2.5x its far-off size right next to it) and never quite dims.
+    this.glint.material.opacity = Math.max(0.35 + 0.65 * flash, 0.4 + 0.5 * close);
+    this.glint.material.rotation = still ? 0 : k.t * 0.6;
+    this.glint.scale.setScalar(0.028 + 0.03 * flash + 0.045 * close);
+    // The pillar of light: nothing from far away, fading in from 450 m, full by 220 m; it breathes (holds still with
+    // reduced motion). Terrain still hides its foot, but it stands 150 m tall, so it shows over the peak it's behind.
+    const beamA = clamp01((FINDS.beam - d) / (FINDS.beam - FINDS.chime));
+    this.beam.visible = beamA > 0 && !p.dead;
+    this.beam.material.opacity = beamA * (still ? 0.6 : 0.5 + 0.15 * Math.sin(k.t * 2.4));
 
-    const d = k.pos.distanceTo(p.pos);
     if (!p.dead && d < FINDS.radius * G.progress.pickupMul * Math.max(1, p.sizeScale)) { this.collect(); return; }
+    // Motes of light drifting up from it.
+    if (!p.dead && !still && d < FINDS.motes) {
+      k.mote -= dt;
+      if (k.mote <= 0) {
+        k.mote = 0.22;
+        _c.set(k.pos.x + rand(-4, 4), k.pos.y + rand(-2, 2), k.pos.z + rand(-4, 4));
+        G.fx.emit(_c, 2, { colors: k.kind === 'note' ? ['#dff4ff', '#ffffff'] : ['#ffe27a', '#fff6c0'], speed: 4, life: 1.6, size: 3.5, up: 8, drag: 0.6 });
+      }
+    }
+    // The HUD notices: one line the first time you come near, then a ring on it (or a sparkle at the screen edge
+    // pointing its way) that firms up as you close in.
+    if (!p.dead && d < FINDS.hint) {
+      if (!k.near) { k.near = true; G.ui.notify(`✨ Something glints nearby, ${this.whereIs(k.pos)}.`, 'info', 3.5, 1); }
+      this.updatePip(k.pos, d);
+    } else this.pip.style.display = 'none';
     // Warmer, warmer: a chime that speeds up and rises as you close in, on the side it's on.
     if (!p.dead && d < FINDS.chime) {
       k.ping -= dt;
@@ -192,10 +230,44 @@ export class Finds {
         const c = d / FINDS.chime;
         k.ping = 0.3 + 0.9 * c;
         const pan = THREE.MathUtils.clamp(_v.subVectors(k.pos, p.pos).normalize().dot(p.right), -1, 1) * 0.8;
-        G.audio.ping(pan, 1.5 - 0.6 * c);
+        G.audio.ping(pan, 1.5 - 0.6 * c, 0.07 + 0.11 * (1 - c));
       }
     }
     if (k.life <= 0 || d > FINDS.lose) { this.clear(); }
+  }
+
+  // Which way it is, in words, from the plane's point of view.
+  whereIs(pos) {
+    const p = this.G.player, rel = _v.subVectors(pos, p.pos);
+    const fwd = rel.dot(p.forward), right = rel.dot(p.right), up = rel.y;
+    if (fwd < -Math.abs(right)) return 'behind you';
+    if (up > 60 && up > Math.abs(right)) return 'high above';
+    if (up < -60 && -up > Math.abs(right)) return 'down low';
+    if (Math.abs(right) > fwd * 0.5) return right > 0 ? 'off to your right' : 'off to your left';
+    return 'just ahead';
+  }
+
+  // A ring on the find when it's on screen, a pulsing sparkle at the screen edge when it isn't.
+  updatePip(pos, d) {
+    const cam = this.G.camera, el = this.pip, w = innerWidth, h = innerHeight;
+    const t = _c.copy(pos);
+    t.y -= curveDrop(t.x, t.z, cam.position); // on a tiny planet, mark where it's drawn
+    _v.copy(t).applyMatrix4(cam.matrixWorldInverse);
+    const behind = _v.z > 0, camX = _v.x, camY = _v.y;
+    _v.copy(t).project(cam);
+    const on = !behind && Math.abs(_v.x) < 0.94 && Math.abs(_v.y) < 0.9;
+    el.style.display = 'block';
+    el.style.opacity = (0.35 + 0.65 * clamp01(1 - d / FINDS.hint)).toFixed(2);
+    el.classList.toggle('edge', !on);
+    el.classList.toggle('still', !!this.G.comfort?.reducedMotion);
+    if (on) {
+      el.style.left = `${((_v.x + 1) / 2) * w}px`;
+      el.style.top = `${((1 - _v.y) / 2) * h}px`;
+    } else {
+      const ang = Math.atan2(camY, camX);
+      el.style.left = `${w / 2 + Math.cos(ang) * (w / 2 - 40)}px`;
+      el.style.top = `${h / 2 - Math.sin(ang) * (h / 2 - 50)}px`;
+    }
   }
 
   collect() {
@@ -279,6 +351,37 @@ export class Finds {
       map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, sizeAttenuation: false, blending: THREE.AdditiveBlending,
     }));
     this.glint.scale.setScalar(0.03);
+
+    // The pillar of light: an open tube, brightest just over the find and fading out toward its top.
+    const bc = document.createElement('canvas');
+    bc.width = 4; bc.height = 64;
+    const bx = bc.getContext('2d'), bg = bx.createLinearGradient(0, 0, 0, 64);
+    const foot = BEAM.up / (BEAM.up + BEAM.down);   // where the find sits, from the top
+    bg.addColorStop(0, 'rgba(255,255,255,0)');
+    bg.addColorStop(foot * 0.75, 'rgba(255,255,255,0.45)');
+    bg.addColorStop(foot, 'rgba(255,255,255,1)');
+    bg.addColorStop(1, 'rgba(255,255,255,0)');
+    bx.fillStyle = bg;
+    bx.fillRect(0, 0, 4, 64);
+    const bgeo = new THREE.CylinderGeometry(BEAM.r, BEAM.r, BEAM.up + BEAM.down, 10, 1, true);
+    bgeo.translate(0, (BEAM.up - BEAM.down) / 2, 0);
+    this.beam = new THREE.Mesh(bgeo, new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(bc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    }));
+    this.beam.renderOrder = 2;
+  }
+
+  buildPip() {
+    const pip = document.createElement('div');
+    pip.id = 'find-pip';
+    const ring = document.createElement('div');
+    ring.className = 'ring';
+    const spark = document.createElement('div');
+    spark.className = 'spark';
+    spark.textContent = '✨';
+    pip.append(ring, spark);
+    (document.getElementById('ui') || document.body).append(pip); // under the pause and game over overlays
+    this.pip = pip;
   }
 
   // ---------- the lore card (no pause: tap or click it to put it away, or it folds away by itself) ----------
