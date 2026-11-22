@@ -46,6 +46,12 @@ try {
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
+  // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
+  const firstPowerupTimer = await page.evaluate(() => {
+    const t = window.G.powerups.timer;
+    window.G.powerups.timer = 40; // the checks below were timed with the old 40 s first gift; keep them measuring what they did
+    return t;
+  });
   // In a browser (no desktop bridge) the desktop-only Quit / Fullscreen buttons stay hidden.
   const desktopShown = () => [...document.querySelectorAll('.desktop-row, .desktop-quit, .desktop-fs')].filter((el) => el.getClientRects().length).length;
   const browserDesktop = { count: await page.evaluate(() => document.querySelectorAll('.desktop-quit').length), shown: await page.evaluate(desktopShown) };
@@ -4048,6 +4054,7 @@ try {
     [report.droneFalling && report.droneCrashed, 'a drone that loses its rotors falls and crashes'],
     [report.pickupSpawned && report.pickupCollected, 'power-up spawns ahead and can be collected'],
     [report.powerupsActiveMidway >= 10 && report.powerupsActiveAfterAMinute === 0, 'every power-up runs, then wears off'],
+    [firstPowerupTimer > 0 && firstPowerupTimer <= 25, `the first power-up comes within 25 s of take-off (timer at boot: ${firstPowerupTimer})`],
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.pit.depth >= 30 && report.pit.mesh >= 25 && report.pit.cellMax <= 100, 'a 20-bullet burst digs a 30 m+ pit that shows on the mesh within 0.2 s, and crater lists stay short'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
