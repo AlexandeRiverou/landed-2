@@ -159,7 +159,7 @@ export function mkDelivery(G) {
 
 // ---------- barrel roll ----------
 
-const ROLL_RATE_MIN = 1.5; // rad/s about the nose: only a real roll is this fast (a normal bank tops out at 2, and only to 52°)
+const ROLL_RATE_MIN = 1.5; // rad/s about the nose: only a real roll is this fast (a normal bank tops out at 2.3, and only to 52°)
 // A roll counts at 90% of the turn: the measured sum of a full 360° stunt can land a hair short (float rounding,
 // or a tiny last frame below ROLL_RATE_MIN), depending on frame timing. Half a roll (an Immelmann's) stays far off.
 const ROLL_COUNTS_AT = 0.9;

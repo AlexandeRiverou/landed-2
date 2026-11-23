@@ -11,7 +11,7 @@ const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matr
 // Shooting: about 4 volleys a second; slower bullets live longer, so the reach stays ~680 m.
 const FIRE_INTERVAL = 0.26, BULLET_SPEED = 300, BULLET_LIFE = 2;
 const BULLET_CRATER = { r: 13, depth: 4 }; // per ground hit; repeat hits dig +depth/2 and widen +depth/4 (world.js addCrater)
-const PITCH_RATE = 1.1, ROLL_RATE = 2.0, YAW_RATE = 0.45, TURN = 0.95, MAX_BANK = 0.9, BANK_RESPONSE = 4;
+const PITCH_RATE = 1.1, ROLL_RATE = 2.3, YAW_RATE = 0.45, TURN = 0.95, MAX_BANK = 0.9, BANK_RESPONSE = 5;
 
 // Double-tap stunts. Each is a short script of steps: level the wings, then turn about a local axis
 // (X = pitch, nose up is +; Z = roll, a right roll is -). Controls are ignored until it's done.
