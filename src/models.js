@@ -932,6 +932,49 @@ export function makePuffer() {
   return g;
 }
 
+// HMS Overkill, the aircraft carrier boss: a long grey hull (bow toward +Z) with a flight deck, an island tower on
+// the starboard side (its bridge windows glow: the weak spot) and six deck guns that swivel to aim and can be shot off.
+// CARRIER_HULL lists its solid boxes in model units [x0, x1, y0, y1, z0, z1]: bullets hit them and planes bump off them.
+export const CARRIER_HULL = [[-7, 7, -2, 5.6, -33, 30], [-4, 4, -2, 5.6, 30, 36], [3, 7.4, 5.6, 15, -3, 9]];
+export function makeCarrier() {
+  const g = new THREE.Group();
+  const hull = lam('#6f7a86'), dark = lam('#4a525c'), deck = lam('#3a3f47'), white = basic('#f2f2f2'), yellow = basic('#ffd23a');
+  add(g, Box(12, 6, 62), hull, { y: 1.5, z: -2 }); // the hull, waterline to deck
+  add(g, Cyl(0.2, 6, 8, 4), hull, { y: 1.5, z: 32.6, rx: PI / 2, s: [1, 1, 0.55] }); // the bow, a diamond wedge
+  add(g, Box(12.2, 1.2, 62.2), lam('#b8402a'), { y: -1.2, z: -2 }); // red antifouling at the waterline
+  add(g, Box(14, 0.6, 66), deck, { y: 4.6, z: 0 }); // the flight deck overhangs the hull
+  add(g, Box(0.35, 0.05, 60), yellow, { y: 4.93, z: 0 }); // centre line
+  for (let z = -30; z <= 30; z += 6) add(g, Box(1.4, 0.05, 0.5), white, { x: -3.5, y: 4.93, z }); // runway dashes
+  add(g, Box(5, 0.05, 0.5), white, { y: 4.93, z: -31 });
+  // The island: tower, bridge, mast and a spinning radar.
+  add(g, Box(4, 9, 10), dark, { x: 5.2, y: 9.9, z: 3 });
+  const bridge = add(g, Box(4.3, 1.3, 6), basic('#9ae8ff'), { x: 5.2, y: 12.5, z: 5.2 });
+  weak(g, bridge, 3, 2);
+  add(g, Cyl(0.25, 0.35, 6, 5), dark, { x: 5.2, y: 17, z: 2 });
+  const radar = new THREE.Group();
+  radar.position.set(5.2, 19.6, 2);
+  add(radar, Box(4, 1.2, 0.3), lam('#d8dde3'));
+  g.add(radar);
+  // Deck guns on sponsons along both edges, clear of the island.
+  const guns = [];
+  for (const [x, z] of [[-6.4, -24], [6.4, -24], [-6.4, -9], [-6.4, 8], [6.4, 18], [-6.4, 24]]) {
+    const gun = new THREE.Group();
+    gun.position.set(x, 5.6, z);
+    add(gun, Cyl(1.4, 1.7, 1, 8), dark);
+    const aim = new THREE.Group();
+    aim.position.y = 0.8;
+    add(aim, Sph(1.1, 8, 5), hull);
+    for (const s of [-0.45, 0.45]) add(aim, Cyl(0.22, 0.28, 3.4, 6), lam('#2a2a30'), { x: s, z: 1.8, rx: PI / 2 });
+    gun.add(aim);
+    g.add(gun);
+    breakable(g, gun, 2.4, 'gun', 3);
+    guns.push({ gun, aim });
+  }
+  g.userData.guns = guns;
+  g.userData.radar = radar;
+  return g;
+}
+
 // ---------- objective pieces ----------
 
 export function makeRing(R, color) {

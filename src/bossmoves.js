@@ -14,6 +14,8 @@ const TAU = Math.PI * 2;
 
 // A special manoeuvre (teleport, dive, joust, hop, lane snap, jet) may only start engaged, in front-ish, not on a rematch opener.
 export const special = (e) => !e.chase && !e.behind && !e.fresh;
+// The carrier's steaming: water must be `depth` m deep `probe` m past its bow; it turns at `turn` rad/s.
+export const STEAM = { probe: 120, depth: 4, turn: 0.3 };
 
 // ---------- small helpers ----------
 
@@ -692,6 +694,42 @@ export const MOVES = {
         }, { shape: 'ring', owner: e });
       }
       G.audio.tone(120, 0.5, { type: 'sine', vol: 0.05, slide: 500, delay: 0.1 }); // the whistle on the way up
+    },
+  },
+
+  // HMS Overkill: steams slowly along open water, broadside on to you at first. When the water ahead runs out (it
+  // probes STEAM.probe m past its bow) it turns toward whichever side is open, and stops if neither is.
+  steam: {
+    step(en, e, c) {
+      const G = en.G, s = e.mesh.scale.x, m = e.mv ||= { yaw: null, turn: 0 };
+      if (m.yaw === null) { const f = flatFwd(c.p, _a); m.yaw = Math.atan2(-f.z, f.x); } // heading across your nose
+      const open = (yaw) => {
+        const d = 36 * s + STEAM.probe, x = e.pos.x + Math.sin(yaw) * d, z = e.pos.z + Math.cos(yaw) * d;
+        return G.terrain.surfaceHeight(x, z) < waterLine() - STEAM.depth;
+      };
+      let go = 1;
+      if (open(m.yaw)) m.turn = 0;
+      else {
+        if (!m.turn) m.turn = open(m.yaw + 0.7) ? 1 : open(m.yaw - 0.7) ? -1 : 1;
+        go = open(m.yaw + m.turn * 0.7) ? 0.4 : 0; // squeeze round a headland, or stop and turn on the spot
+      }
+      m.yaw += m.turn * STEAM.turn * c.dt;
+      e.vel.set(Math.sin(m.yaw), 0, Math.cos(m.yaw)).multiplyScalar(en.cruise(e) * go);
+      e.mesh.rotation.y = m.yaw;
+      return true;
+    },
+    // Flak: grey puffs mark spots along your path for 1.3 s, then burst (16 m, 12 hull).
+    flak(en, e, n) {
+      const G = en.G, p = G.player;
+      for (let k = 0; k < n; k++) {
+        const at = p.pos.clone().addScaledVector(p.forward, p.speed * 1.3 + k * 35).add(_c.set(rand(-18, 18), rand(-10, 10), rand(-18, 18)));
+        en.warn(at, 16, '#b8bcc4', 1.3, (hz) => {
+          G.fx.explosion(hz.pos);
+          G.audio.noise(0.3, { vol: 0.15, freq: 900 });
+          if (!p.dead && p.pos.distanceTo(hz.pos) < 16) p.damage(12);
+        }, { shape: 'sphere', owner: e });
+      }
+      G.audio.tone(900, 0.4, { type: 'sine', vol: 0.04, slide: -500 });
     },
   },
 

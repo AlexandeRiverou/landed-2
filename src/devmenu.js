@@ -241,7 +241,7 @@ export class DevMenu {
     const duo = this.duo.checked && !def.ground; // the fort never comes as twins
     const obj = G.objectives.makeBoss(kind, { mod: this.mod.value || null, duo });
     G.objectives.start(obj, 'boss');
-    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs flat land), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
+    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs ${def.sea ? 'open sea' : 'flat land'}), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
     else if (this.duo.checked && !duo) G.ui.notify(`${def.short} doesn't do twins. Just the one.`, 'info', 3, 2);
     this.close();
   }

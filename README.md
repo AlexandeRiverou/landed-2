@@ -289,6 +289,10 @@ doesn't by itself, but flying on from where it put you does.
 - The Mother of All Spiky Balloons: guarded by a spinning ring of mines. Find the gap. Mind the spike nova.
 - Fort Grumpington (a ground boss; never in space): pops up to fire mortars at marked rings, then ducks. Shoot it
   while it's up, and aim for the barrel.
+- HMS Overkill the aircraft carrier (a sea boss; only where there's open water): a 230 m ship that steams along the
+  sea with six deck guns (broadsides), flak bursts at marked grey spheres and a rattling island gun. It has 300 hp and
+  a long health bar: shoot the guns off (4% each) and hit the glowing bridge. Its hull is solid: fly into it and
+  you're bumped up over the deck. Minions and a deck landing come later.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
   Every tentacle shot off means fewer orbs.
 - Captain Clawdia the Sky Crab (a lead boss): snaps sideways between lanes in front of you. Bubble streams, pincer
@@ -319,7 +323,7 @@ out than it fights from. There it waits ("The Goose Queen is waiting for you. Yo
 starts when you fly back in to about 60 m beyond its fight distance, shoot it, or spend 4 s not flying away. Its
 first attack comes a couple of seconds later (sooner if your shot woke it), and it's never a strafing run or a dive.
 Run off again without hurting it and the next break is shorter (6 s, then 4.5 s, never under 4 s); land a hit and
-you get the full 8 s again. Fort Grumpington sits on the ground and never loses you.
+you get the full 8 s again. Fort Grumpington and HMS Overkill never lose you.
 
 Bosses taunt you (never while they've lost you), and get ENRAGED below half
 health. Shooting off parts weakens them (the crown makes them take more damage, Gary Prime's propeller slows him, the
@@ -522,8 +526,8 @@ Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, s
 card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 15, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land;
-  where there is none, King Drone comes instead and you get a notice. The fort never comes as twins. The
+- **Bosses:** start any of the 16, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
+  and HMS Overkill open sea; where there is none, King Drone comes instead and you get a notice. Neither comes as twins. The
   **Grumbleglobe** button jumps to its zone and starts the planet fight (it ignores the modifier and Twins).
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.

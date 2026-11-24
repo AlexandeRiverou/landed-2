@@ -4,7 +4,7 @@
 // Grumbleglobe's pores only) Grumblings.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, CARRIER_HULL, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -267,6 +267,17 @@ export const BOSSES = {
     taunts: ['Fort Grumpington: "GET OFF MY LAWN. (The sky is my lawn.)"', 'Fort Grumpington: "In my day, planes were made of WOOD."', 'Fort Grumpington: "I have one setting: grump."'],
     rage: ['Fort Grumpington is extremely grumped.', 'The fort is shouting at clouds now. Literally.'],
   },
+  // Sea boss (sea: true): spawns on open water ahead, steams along it and never leaves it. Solid hull boxes (`boxes`, model
+  // units) take the hits and bump planes, a long health bar (`long`), and no twins or breakaways (ground: true).
+  carrier: {
+    make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 14.9, crownZ: 6.5, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 25,
+    face: 'none', ground: true, sea: true, boxes: CARRIER_HULL, markerUp: 70, long: true,
+    name: 'HMS Overkill, the Unsinkable Aircraft Carrier', short: 'HMS Overkill', noun: 'HMS Overkill',
+    move: 'steam',
+    desc: 'A floating fortress with six deck guns, flak and a very loud captain. It takes a LOT of shooting: knock out the guns and hit the glowing bridge.',
+    taunts: ['HMS Overkill: "This is your captain speaking. Please return to your seat. Forever."', 'HMS Overkill: "I have six guns and a gift shop."', 'HMS Overkill: "Unsinkable. It says so right on the brochure."'],
+    rage: ['All hands to the guns! Even the cook.', 'The captain has taken off his hat. This is serious.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -345,6 +356,7 @@ const BOSS_BREAK_TEXT = {
   barrel: 'Barrel smashed! The fort can only manage sad little mortars now.',
   wing: 'Wing clipped! She\'s flying slower now.',
   tentacle: 'Tentacle severed! Fewer arms, fewer orbs in the spiral.',
+  gun: 'Deck gun destroyed! One less cannon on that deck.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -381,7 +393,7 @@ export class Enemies {
     const mesh = new THREE.Group();
     const body = def.make(false);
     const crown = makeCrown(def.crownS);
-    crown.position.set(0, def.crownY, def.crownZ || 0);
+    crown.position.set(def.crownX || 0, def.crownY, def.crownZ || 0);
     body.add(crown);
     (body.userData.parts ||= []).push({ obj: crown, r: 2.4 * def.crownS, mult: 2, hp: 10, name: 'crown' });
     for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown') part.hp *= 6;
@@ -579,7 +591,8 @@ export class Enemies {
       e.burst--;
       e.burstT = 0.12;
       const [speed, dmg, color, size] = e.burstShot || e.def.burstShot || [105, 7, '#ff3ad0', 0.8]; // this attack's, the boss's, or the default bolt
-      this.fireOrb(e.pos, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(e.pos), speed, dmg, color, size);
+      const from = e.def.sea ? _s.copy(e.pos).setY(e.pos.y + 13 * e.mesh.scale.x) : e.pos; // the carrier fires from its island
+      this.fireOrb(from, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(from), speed, dmg, color, size);
     }
     // Sir Puffington stays puffed up (and bulletproof-ish) for a while, then pops a spike nova.
     if (e.puffT > 0 && (e.puffT -= dt) <= 0) {
@@ -735,6 +748,25 @@ export class Enemies {
           G.audio.tone(600, 0.15, { type: 'triangle', vol: 0.05, slide: -300 });
         }
         break;
+      case 'carrier': {
+        cd = 2.6;
+        const guns = e.mesh.userData.guns.filter((g) => g.gun.visible); // shot-off guns are hidden
+        if (n % 3 === 1 && guns.length) {
+          // Broadside: every deck gun still standing fires a pair at where you're heading.
+          const tgt = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 70) * 0.6);
+          for (const g of guns) {
+            const from = g.aim.getWorldPosition(new THREE.Vector3());
+            for (let k = 0; k < 2; k++) this.fireOrb(from, _w.copy(tgt).sub(from).add(_s.set(rand(-14, 14), rand(-8, 8), rand(-14, 14))), 70, 9, '#ffb03a', 1.1);
+          }
+          G.audio.tone(130, 0.35, { type: 'square', vol: 0.07, slide: -60 });
+        } else if (n % 3 === 2) BOSS_MOVES.steam.flak(this, e, e.enraged ? 5 : 4); // flak bursts along your path
+        else {
+          // Close-in guns on the island: a long rattle (longer once the deck guns are gone).
+          e.burst = guns.length ? 8 : 12;
+          e.burstShot = [110, 5, '#ffe14a', 0.7];
+        }
+        break;
+      }
       case 'fortGrump': {
         cd = 2.4;
         const muzzle = e.pos.clone().add(new THREE.Vector3(0, 6 * e.mesh.scale.x, 0));
@@ -1051,7 +1083,8 @@ export class Enemies {
       if (e.boom) { this.mineBlast(e); this.kill(i, false); continue; }
 
       e.pos.addScaledVector(e.vel, dt);
-      if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
+      if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
+      else if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else {
         const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), waterLine()) + (e.boss ? e.radius : 12); // tunnels: enemies can follow you in
         if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
@@ -1061,13 +1094,16 @@ export class Enemies {
       }
       this.animate(e, dt);
       if (e.marker) {
-        e.marker.position.set(e.pos.x, e.pos.y + e.radius * (e.mesh.scale.x || 1) + 6, e.pos.z);
+        e.marker.position.set(e.pos.x, e.pos.y + (e.def.markerUp ?? e.radius * (e.mesh.scale.x || 1)) + 6, e.pos.z);
         e.marker.visible = dist > 70 && !calm;
       }
 
       // Player contact.
       e.contactCd = Math.max(0, (e.contactCd || 0) - dt);
-      if (!p.dead && !calm && dist < e.radius + 4 * p.sizeScale && e.contactCd <= 0) {
+      // A boss with a solid hull (the carrier) is touched where its boxes are, not inside a sphere round its middle.
+      const touching = e.def.boxes ? dist < e.radius * 1.8 && this.inHull(e, p.pos, 4 * p.sizeScale) : dist < e.radius + 4 * p.sizeScale;
+      if (e.def.boxes && touching && !p.dead && !calm) this.bumpOffHull(e);
+      if (!p.dead && !calm && touching && e.contactCd <= 0) {
         // Mega Ram flattens anything smaller than a boss (for bonus points), and rams a boss (see ram).
         if (G.powerups.has('mega') && !e.boss) { e.rammed = true; G.fx.explosion(e.pos); G.shake?.(0.5, 0.15); this.kill(i, true); continue; }
         if (G.powerups.has('mega') && !e.planet) this.ram(e, toP);
@@ -1092,7 +1128,7 @@ export class Enemies {
         const bp = p.bullets[b].pos;
         if (bp.distanceToSquared(e.pos) > broad) continue;
         const part = this.hitPart(e, bp);
-        if (!part && bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2) continue;
+        if (!part && (e.def.boxes ? !this.inHull(e, bp, 2) : bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2)) continue;
         if (this.guarded(e, p.bullets[b], bp)) { p.removeBullet(b); continue; }
         const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1) * (e.shield ?? 1) * (e.dazed > 0 ? 1.5 : 1); // dazed bosses take ×1.5
         p.removeBullet(b);
@@ -1111,6 +1147,23 @@ export class Enemies {
     this.breather = bosses.length > 0 && bosses.every((e) => (e.planet ? e.planet.far : e.chase === 'loose' || e.chase === 'catch')); // a planet: you're out of its range
     this.updateShots(dt);
     this.hazards.update(dt);
+  }
+
+  // Is `pos` inside one of the boss's hull boxes (def.boxes, model units), padded by `pad` m?
+  inHull(e, pos, pad = 0) {
+    const s = e.mesh.scale.x, k = pad / s;
+    e.mesh.updateMatrixWorld();
+    e.mesh.worldToLocal(_pp.copy(pos));
+    return e.def.boxes.some(([x0, x1, y0, y1, z0, z1]) => _pp.x > x0 - k && _pp.x < x1 + k && _pp.y > y0 - k && _pp.y < y1 + k && _pp.z > z0 - k && _pp.z < z1 + k);
+  }
+
+  // A plane that flies into the hull is lifted out over the deck (it's solid; landing on it comes later).
+  bumpOffHull(e) {
+    const p = this.G.player, s = e.mesh.scale.x;
+    e.mesh.worldToLocal(_pp.copy(p.pos));
+    const top = e.def.boxes.reduce((t, b) => (_pp.x > b[0] && _pp.x < b[1] && _pp.z > b[4] && _pp.z < b[5] ? Math.max(t, b[3]) : t), e.def.boxes[0][3]);
+    const y = e.pos.y + top * s + 6 * p.sizeScale;
+    if (p.pos.y < y) { p.pos.y = y; p.prevPos.y = Math.max(p.prevPos.y, y); }
   }
 
   hitPart(e, pos) {
@@ -1170,6 +1223,7 @@ export class Enemies {
       case 'puff': e.radius *= 0.9; if (!e.boss && n >= total) e.hp = 0; else if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crown': e.vulnerable = 1.3; break;
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
+      case 'gun': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1516,6 +1570,8 @@ export class Enemies {
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
     if (u.barrel) u.barrel.lookAt(this.G.player.pos);
+    if (u.guns) for (const g of u.guns) g.aim.lookAt(this.G.player.pos);
+    if (u.radar) u.radar.rotation.y += dt * 2;
     if (u.legs) u.legs.forEach((l, k) => { l.rotation.x = Math.sin(e.t * 8 + k * 1.3) * 0.3; });
     if (u.claws) {
       e.snap = Math.max(0, (e.snap || 0) - dt);
@@ -1610,7 +1666,8 @@ export class Enemies {
     const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
     if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
     if (e.boss) {
-      for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-20, 20), rand(-15, 15), rand(-20, 20)))), k * 150);
+      const w = e.def.boxes ? 90 : 20; // a carrier goes up all along its length
+      for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-w, w), rand(-15, 15), rand(-w, w)))), k * 150);
       G.stats.kills++;
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
     } else if (byPlayer && !e.paid) this.payout(e);

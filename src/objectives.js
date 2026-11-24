@@ -651,11 +651,26 @@ function shuffle(list) {
 function bossSpot(G, def) {
   if (!def.ground) return pointAhead(G, 420, 560, 0.4, 70, 110);
   if (G.zones.current.noGround) return null;
+  if (def.sea) return seaSpot(G);
   const flat = (x, z) => G.enemies.isGentleGround(x, z) && [[15, 0], [-15, 0], [0, 15], [0, -15]].every(([dx, dz]) => G.enemies.isGentleGround(x + dx, z + dz));
   for (let k = 0; k < 80; k++) {
     const s = pointAhead(G, 380, 750, 1.1);
     const g = G.terrain.surfaceHeight(s.x, s.z);
     if (g > waterLine() + 2 && flat(s.x, s.z)) return s.setY(g);
+  }
+  return null;
+}
+
+// Where the carrier appears: open water ahead, deep enough SEA_CLEAR m all round (it's 230 m long). Null when there's none.
+const SEA_CLEAR = 150;
+function seaSpot(G) {
+  const deep = (x, z) => G.terrain.surfaceHeight(x, z) < waterLine() - 4;
+  for (let k = 0; k < 80; k++) {
+    const s = pointAhead(G, 450, 800, 1.1);
+    if (!deep(s.x, s.z)) continue;
+    let ok = true;
+    for (let a = 0; a < 8 && ok; a++) ok = deep(s.x + Math.cos(a * Math.PI / 4) * SEA_CLEAR, s.z + Math.sin(a * Math.PI / 4) * SEA_CLEAR);
+    if (ok) return s.setY(waterLine());
   }
   return null;
 }
@@ -674,7 +689,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
     for (const e of list) { maxHp += e.maxHp; if (!e.dead) hp += Math.max(0, e.hp); }
     const all = (chase) => alive().length > 0 && alive().every((e) => e.chase === chase);
     // Lost you: the bar dims. Coming back: nothing. Waiting at the standoff: it's your move.
-    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged), away: all('loose'), note: all('loose') ? 'lost you' : all('wait') ? 'your move' : '' };
+    return { name, hp, maxHp, long: !!def.long, enraged: alive().some((e) => e.enraged), away: all('loose'), note: all('loose') ? 'lost you' : all('wait') ? 'your move' : '' };
   };
   G.ui.bossBar(bar());
   G.ui.notify(`⚠ BOSS INCOMING: ${name}!${M ? ` ${M.text}` : ''}${duo ? ' There are TWO of them.' : ''}`, 'bad', 5);
@@ -699,11 +714,11 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
       if (b.hp !== this.lastHp) { if (this.lastHp !== undefined) this.progressed = true; this.lastHp = b.hp; }
       return alive().length ? null : 'done';
     },
-    grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } },
+    grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) if (!e.def.sea) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } }, // a carrier is big enough
     // A boss on a break isn't pulled at all, an engaged one never closer than its standoff (the dug-in fort: as ever).
     approach(G, f) {
       for (const e of alive()) {
-        if (e.chase) continue;
+        if (e.chase || e.def.sea) continue; // a ship can't be dragged over land
         const d = e.pos.distanceTo(G.player.pos);
         e.pos.lerp(G.player.pos, e.def.ground ? f * 0.6 : Math.min(f * 0.6, Math.max(0, 1 - bossStandoff(e.def) / Math.max(d, 1))));
       }
