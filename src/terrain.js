@@ -141,13 +141,21 @@ export class Terrain {
     this.G = G;
     this.chunks = new Map();
     this.version = 0;
+    this.rebuildAt = null; // a delayed rebuildAll() happens at this G.time
     this.dirty = new Set(); // chunks with fresh craters
     this.nextDirtyBuild = 0;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.water = new Water(G);
   }
 
-  rebuildAll() { this.version++; clearTunnels(); clearCity(); } // the tunnels follow the new mountains, the city its new ground
+  // Every chunk rebuilds for the new world (the tunnels follow the new mountains, the city its new ground). With a
+  // delay (s), the swap waits that long: a zone change lets its fog bank roll in first. Pending counts as stale.
+  rebuildAll(delay = 0) {
+    clearTunnels(); clearCity();
+    if (delay > 0) { this.rebuildAt = this.G.time + delay; return; }
+    this.rebuildAt = null;
+    this.version++;
+  }
 
   // Blast a crater: the height function changes at once; the chunks under it rebuild over the next frames.
   deform(x, z, r, depth) {
@@ -173,11 +181,13 @@ export class Terrain {
   }
 
   get stale() {
+    if (this.rebuildAt !== null) return true;
     for (const c of this.chunks.values()) if (c.version !== this.version) return true;
     return false;
   }
 
   update(pos, budget = 2) {
+    if (this.rebuildAt !== null && this.G.time >= this.rebuildAt) this.rebuildAll();
     const pcx = Math.floor(pos.x / CHUNK), pcz = Math.floor(pos.z / CHUNK);
     for (let b = 0; b < budget; b++) {
       let best = null, bestD = Infinity;
