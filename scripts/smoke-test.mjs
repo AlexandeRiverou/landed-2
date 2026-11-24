@@ -51,6 +51,19 @@ const seedRandom = async (page) => {
     };
     Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
     Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+    // Held frames: while F.hold is set, the game's requestAnimationFrame callbacks wait (no real-time step or render),
+    // so only the test's own G.step calls move the world. F.onStart (a seed) holds them from the Fly click on, and
+    // reseeds just before the game's own click handler rolls the first flight.
+    const F = { hold: false, onStart: null };
+    Object.defineProperty(window, '__smokeFrames', { value: F });
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else cb(t); });
+    document.addEventListener('click', (e) => {
+      if (F.onStart === null || !e.target?.closest?.('#start')) return;
+      a = F.onStart >>> 0;
+      F.onStart = null;
+      F.hold = true;
+    }, true);
   }, mix(SEED, pageNo, 0));
   // page.evaluate(fn, arg) runs `async (arg) => { reseed; return fn(arg) }` instead: one call, so no frame can come
   // between the reseed and the check. Playwright sends String(fn) to the page, so the wrapper only needs its text.
@@ -114,6 +127,10 @@ try {
     toast: document.getElementById('secret-toast').classList.contains('show') && document.getElementById('secret-toast').textContent,
     count: document.getElementById('secrets-count').textContent,
   }));
+  // From the Fly click until the long simulated report below is done, real-time frames are held: how many ran between
+  // the click and the report changed where the plane was, and so what ground lay under each check (a drone placed
+  // 120 m ahead sometimes sat inside a hill). The report steps the simulation itself.
+  await page.evaluate((s) => { window.__smokeFrames.onStart = s; }, mix(SEED, 0xf1, 0));
   await page.click('#start');
   await page.evaluate(async () => {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
@@ -1896,6 +1913,7 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // real-time frames again, for the checks below
   // Loops under a cave roof (Crystal Caverns): a loop or upside-down objective finds a tall chamber ahead (the dome)
   // and targets it; from there, holding W (boosting or not) loops without touching the roof, thanks to the tuck; the
   // hints fit a cave; easier() tightens the tuck. Outside caves loops are as before. No safety net: a crash is only
