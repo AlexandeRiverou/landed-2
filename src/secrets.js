@@ -1,4 +1,4 @@
-// Hidden Easter eggs ("secrets"): the Konami code, words typed mid-flight, special dates, two flight feats and a
+// Hidden Easter eggs ("secrets"): the Konami code, words typed mid-flight, special dates, three flight feats and a
 // title that gets clicked far too often. Found secrets are remembered between visits; the title card counts them.
 import * as THREE from 'three';
 import { makeRivalJet } from './models.js';
@@ -55,6 +55,7 @@ export const SECRETS = [
   { id: 'aprilFools', name: 'Upside-Down Day', kind: 'date', line: 'Happy April 1st. The intern renamed everything.', hint: 'Some days, the sky dresses up.' },
   { id: 'edge', name: 'Edge Of Space', kind: 'feat', line: 'There\'s nothing up here. Go back down.', hint: 'How high is too high?' },
   { id: 'lawnmower', name: 'Lawnmower', kind: 'feat', line: 'Upside down, five metres up. The grass is impressed.', hint: 'The grass needs a trim. From an unusual angle.' },
+  { id: 'aboard', name: 'Welcome Aboard', kind: 'feat', line: 'You landed on HMS Overkill. Mid-fight. The captain wants a word.', hint: 'Some runways float. Some of them shoot back.' },
   { id: 'tinkerer', name: 'Title Tinkerer', kind: 'title', line: 'You clicked the title until it did a barrel roll. Happy?', hint: 'This title has been clicked before. Not enough, though.' },
 ];
 const BY_ID = new Map(SECRETS.map((s) => [s.id, s]));
@@ -274,6 +275,13 @@ export class Secrets {
     const G = this.G, p = G.player;
     G.fx.emit(_a.copy(p.pos).addScaledVector(p.up, 3), 80, { colors: ['#5ac83a', '#8ae05a', '#3a8a2a'], speed: 25, life: 1.4, size: 4, gravity: -30, up: 15 });
     G.ui.notify('Lawnmower! You mowed the lawn upside down. The grass is impressed and slightly scared.', 'good', 4.5, 2);
+  }
+
+  // The carrier deck landing (player.js deckTouchdown pays and patches; this is the ship's horn).
+  fx_aboard() {
+    const A = this.G.audio;
+    A.tone(98, 1.1, { type: 'sawtooth', vol: 0.06, slide: -6 });
+    A.tone(147, 1.1, { type: 'sawtooth', vol: 0.04, slide: -8 });
   }
 
   fx_tinkerer() {
