@@ -18,6 +18,7 @@ import { Zones } from './zones.js';
 import { DevMenu } from './devmenu.js';
 import { Secrets } from './secrets.js';
 import { Finds } from './finds.js';
+import { Hangar } from './hangar.js';
 import { PullUp } from './pullup.js';
 import { pick, T } from './texts.js';
 import { installCurvature } from './curve.js';
@@ -62,6 +63,7 @@ G.mutations = new Mutations(G);
 G.progress = new Progress(G);
 G.powerups = new PowerUps(G);
 G.finds = new Finds(G); // rare hidden coins and lore notes for explorers
+G.hangar = new Hangar(G); // title-card Hangar (planes bought with hidden coins) and Lore shelf
 G.zones = new Zones(G);
 G.input = new Input(canvas);
 G.input.invert = settings.invert;
@@ -200,6 +202,7 @@ function endRun() {
   $('go-best').textContent = best ? '🏆 New best run!' : `Your best: ${p.best.score} points · Level ${p.best.level}`;
   $('go-continue').classList.toggle('hidden', !canContinue());
   $('continue').textContent = `CONTINUE FROM ${G.zones.current.name.toUpperCase()}`;
+  G.hangar.refresh(); // coins and notes found this flight
   $('gameover').classList.remove('hidden');
   G.audio.setEngine(0, false);
   G.audio.music?.duck(true);

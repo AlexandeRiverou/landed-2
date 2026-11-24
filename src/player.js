@@ -1,6 +1,6 @@
 // Arcade flight: pitch/roll on the local axes, bank turns you, auto-levels when you let go.
 import * as THREE from 'three';
-import { makePlane, PLANE_SKINS, deckSpot } from './models.js';
+import { makePlane, PLANE_SKINS, PLANE_KINDS, deckSpot } from './models.js';
 import { pick, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA } from './powerups.js';
@@ -130,18 +130,41 @@ export class Player {
 
   setSkin(s) { this.skin = s; this.model.setSkin(s); }
 
-  // A fresh run (boot, and "Fly again" after a Game Over): full lives, base stats, the first skin and speed.
+  // Fly another plane (the hangar store, src/hangar.js): `def` is { id, mods } with mods like { speed, hull, fireRate }.
+  // The new shape shows at once in its factory paint; its stats come with the next fresh run (resetRun), and at once
+  // while the title card is still up.
+  usePlane(def) {
+    this.plane = def;
+    if (this.model.kind !== def.id) {
+      const old = this.model.group;
+      this.model = makePlane(def.id);
+      this.model.group.position.copy(old.position);
+      this.model.group.quaternion.copy(old.quaternion);
+      this.model.group.scale.copy(old.scale);
+      this.model.group.visible = old.visible;
+      old.parent?.add(this.model.group);
+      old.removeFromParent();
+      old.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); // the old plane's own geometry and paint
+    }
+    if (!this.G.started) this.resetRun();
+    else this.setSkin(PLANE_KINDS[def.id]?.skin || PLANE_SKINS[0]);
+  }
+
+  // A fresh run (boot, and "Fly again" after a Game Over): full lives, base stats, the first skin and speed, each
+  // scaled by the plane you fly (hangar.js PLANES mods; the Sky Pup has none).
   resetRun() {
+    const m = this.plane?.mods || {};
     this.lives = LIVES;
     this.stats = { ...BASE_STATS };
-    this.maxHealth = this.health = BASE_HEALTH;
-    this.baseSpeed = BASE_SPEED; // the speed mutation raises it
+    for (const k in this.stats) if (m[k]) this.stats[k] *= m[k];
+    this.maxHealth = this.health = m.hull || BASE_HEALTH;
+    this.baseSpeed = BASE_SPEED * (m.speed || 1); // the speed mutation raises it
     this.boost = 1;
     this.freeBoost = 0;
     this.sinceHit = 99;
     this.loopRequirement = 1;
     this.loopTuck = TUCK;
-    this.setSkin(PLANE_SKINS[0]);
+    this.setSkin(PLANE_KINDS[this.model.kind]?.skin || PLANE_SKINS[0]);
   }
 
   spawn(x, z, yaw = 0) {
