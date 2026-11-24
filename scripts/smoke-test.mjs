@@ -3115,6 +3115,8 @@ try {
           p.invuln = 0; p.grace = 99;
           G.step(1 / 30);
           const t = (i + 1) / 30;
+          // What the pair and the sky were doing 3 s in, kept in the report so a failure says why the pair fell behind.
+          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
           if (kp.phase === 'park' && !kp.back && t > 2 && r.windAt === null) {
             const a = Math.round(kp.centre.clone().sub(p.pos).dot(p.forward));
             r.ahead = [Math.min(r.ahead[0], a), Math.max(r.ahead[1], a)];
