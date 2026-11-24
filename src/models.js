@@ -959,7 +959,7 @@ function eyes(g, ex, y, z, r, white = '#ffffff', pupil = '#111111', weakR = 0) {
   return out;
 }
 
-// Flying Squirrel (Meadowlands, Autumn Woods, Giant's Garden, Ringworld): a fluffy glider with a big tail, in threes.
+// Flying Squirrel (Meadowlands, Autumn Woods, Giant's Garden, Ringworld): a fluffy glider with a big tail, in fours.
 export function makeFlyingSquirrel(hat) {
   const g = new THREE.Group(), fur = lam('#9a5b2e'), belly = lam('#e8c49a'), skin = lam('#7a4422', { side: THREE.DoubleSide });
   add(g, Sph(1.4, 8, 6), fur, { s: [1, 0.8, 1.4] });
@@ -987,7 +987,7 @@ export function makeCrystalBat(hat) {
   for (const x of [-0.5, 0.5]) add(g, Cone(0.35, 1.4, 4), shard, { x, y: 1.6, z: 1.5, rz: -x * 0.5 });
   eyes(g, 0.4, 0.8, 2.3, 0.28, '#e0fff8', '#0a0a1a');
   flappers(g, (w, sd) => {
-    for (let k = 0; k < 3; k++) add(w, Cone(0.7, 2.6, 4), shard, { x: sd * (1.4 + k * 1.2), y: -0.2 * k, rz: sd * (PI / 2), ry: 0.3 * k });
+    for (let k = 0; k < 3; k++) add(w, Cone(0.7, 2.6, 4), shard, { x: sd * (1.4 + k * 1.2), y: -0.2 * k, rz: -sd * (PI / 2), ry: 0.3 * k });
   });
   if (hat) partyHat(g, 2);
   return g;
@@ -1055,9 +1055,10 @@ export function makeSandNoodle(hat) {
     const a = (k / 8) * PI * 2;
     add(body, Cone(0.45, 1.4, 4), tooth, { x: Math.cos(a) * 2.1, y: 8.6, z: Math.sin(a) * 2.1, rx: Math.sin(a) * 0.5, rz: -Math.cos(a) * 0.5 });
   }
-  const mouth = add(body, Cyl(1.7, 1.7, 0.3, 10), gullet, { y: 8.2 });
+  const mouth = add(body, Cyl(1.7, 1.7, 0.5, 10), gullet, { y: 8.6 });
   weak(g, mouth, 2.2);
   eyes(body, 1.6, 6.4, 2.7, 0.55, '#fff2c8', '#1a0a00');
+  for (const x of [-1.6, 1.6]) add(body, Sph(0.35, 6, 4), gullet, { x, y: 5.6, z: 2.9 }); // glowing cheeks, warm with the gullet
   g.add(body);
   const ring = add(g, Tor(4.5, 0.6, 5, 12), basic('#e8c47a', { transparent: true, opacity: 0.7 }), { y: 0.3, rx: PI / 2 });
   g.userData.body = body;
@@ -1127,7 +1128,7 @@ export function makeSwordfish(hat) {
   return g;
 }
 
-// Dragonling (Princess Kingdom, Cloud Kingdom, Sky Islands): a small pink dragon. Its belly fire builds, then it
+// Dragonling (Princess Kingdom, Cloud Kingdom, Sky Islands): a small pink dragon. The fire in its mouth swells, then it
 // rockets at you on its own tail flame. Flaps all the while.
 export function makeDragonling(hat) {
   const g = new THREE.Group(), scale = lam('#e85aa0'), belly = lam('#ffd0e0'), wingMat = lam('#b83a7a', { side: THREE.DoubleSide });
@@ -1139,6 +1140,7 @@ export function makeDragonling(hat) {
   const eye = add(g, Sph(0.5, 8, 6), basic('#ffe14a'), { x: 0.75, y: 1.9, z: 4.1 });
   add(g, Sph(0.5, 8, 6), basic('#ffe14a'), { x: -0.75, y: 1.9, z: 4.1 });
   weak(g, eye, 0.8);
+  const mouth = add(g, Sph(0.7, 8, 6), basic('#ffb03a'), { y: 0.8, z: 5.2, s: [1, 0.6, 0.6] }); // the fire inside, swells as it winds up
   add(g, Cone(0.9, 4, 6), scale, { z: -4, rx: -PI / 2 }); // tail
   flappers(g, (w, sd) => {
     add(w, new THREE.CircleGeometry(2.6, 3), wingMat, { x: sd * 3, y: 0.8, rx: -PI / 2, rz: sd > 0 ? 0 : PI });
@@ -1148,7 +1150,7 @@ export function makeDragonling(hat) {
   const flame = add(g, Cone(1.2, 3.6, 8), basic('#ffd23a', { transparent: true, opacity: 0.55 }), { z: -7.8, rx: -PI / 2 });
   g.userData.jet = jet;
   g.userData.flame = flame;
-  g.userData.eye = eye;
+  g.userData.eye = mouth;
   if (hat) partyHat(g, 3.4);
   return g;
 }
