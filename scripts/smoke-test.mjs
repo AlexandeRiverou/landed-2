@@ -4098,6 +4098,37 @@ try {
     out.charger = C;
     out.consts = { wind: COMET.wind, speed: COMET.speed, shots: MAGMA.shots };
     clear();
+    // Every land has at least one enemy of its own (Grumbleglobe: its Grumblings), and none turns up outside its lands.
+    // Each new land enemy, flown in its first land, goes through its move: a swooper flares, an ambusher rises out of
+    // the ground (and can be hurt only then), a charger winds up and charges.
+    const { TYPES } = await import('./src/enemies.js');
+    const own = Object.keys(TYPES).filter((k) => TYPES[k].lands);
+    out.perLand = {}; out.stray = [];
+    for (const z of ZONES) {
+      if (z.siege) continue;
+      into(z.name);
+      const seen = new Set(); for (let k = 0; k < 800; k++) seen.add(E.pickType());
+      out.perLand[z.name] = own.filter((t) => seen.has(t));
+      for (const t of out.perLand[z.name]) if (!TYPES[t].lands.includes(z.name)) out.stray.push(`${t}@${z.name}`);
+    }
+    out.moves = {};
+    for (const t of own.filter((k) => !LAND.includes(k))) {
+      const d = TYPES[t];
+      into(d.lands[0]);
+      p.pos.y = Math.min(Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 90, G.terrain.ceilingHeight(p.pos.x, p.pos.z) - 30);
+      const e = E.spawn(t, d.act === 'ambush' ? ahead(150) : ahead(d.act === 'charge' ? 160 : 25, d.act === 'charge' ? 10 : 0));
+      e.cd = 0;
+      if (d.act === 'ambush') { step(1); e.state = 'under'; e.stateT = 0; e.hold = 0.5; }
+      const seen = new Set(), M = { shieldUp: null };
+      for (let k = 0; k < 30 * 8 && !e.dead; k++) {
+        if (d.act === 'ambush') e.pos.copy(ahead(150));
+        G.step(1 / 30);
+        seen.add(e.state);
+        if (d.act === 'ambush' && e.state === 'up') M.shieldUp = e.shield;
+      }
+      out.moves[t] = { act: d.act, states: [...seen], shieldUp: M.shieldUp };
+      clear();
+    }
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer; E.calmTimer = calm;
@@ -4455,6 +4486,8 @@ try {
     [(({ landEnemies: q }) => q.meadow.length === 0 && q.volcano.includes('emberBat') && q.volcano.includes('magmaSpitter') && !q.volcano.includes('cometCharger') && q.belt.length === 1 && q.belt[0] === 'cometCharger' && q.moon.includes('cometCharger'))(report), `land enemies: Ember Bats and Magma Spitters only in Volcano Land, Comet Chargers only in space lands (${JSON.stringify(report.landEnemies && { meadow: report.landEnemies.meadow, volcano: report.landEnemies.volcano, belt: report.landEnemies.belt, moon: report.landEnemies.moon })})`],
     [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.shotsMax >= k.shots)(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
     [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
+    [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
+    [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
