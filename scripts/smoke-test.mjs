@@ -3112,7 +3112,22 @@ try {
         r.lead = r.hitAt !== null && r.windAt !== null ? +(r.hitAt - r.windAt).toFixed(2) : null;
         return r;
       };
-      out.kiteHunt = { straight: kiteRun(false), rolled: kiteRun(true) };
+      // Over flat, drained ground (as the stunts are): the pair stays KITE_FLOOR m over the ground, so a mountain in the
+      // way had it climb out of reach and fall behind, and the check failed or passed with whatever world was rolled.
+      {
+        const FLAT = { amp: 0, roughness: 0, hillBase: 0, terrace: 0, mesa: 0, canyon: 0, spikes: 0, seaLevel: -400 };
+        const land = Object.fromEntries(Object.keys(FLAT).map((k) => [k, G.world[k]]));
+        Object.assign(G.world, FLAT);
+        G.terrain.rebuildAll();
+        G.terrain.update(p.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+        try {
+          out.kiteHunt = { straight: kiteRun(false), rolled: kiteRun(true) };
+        } finally {
+          Object.assign(G.world, land);
+          G.terrain.rebuildAll();
+          G.terrain.update(p.pos, 999);
+        }
+      }
       // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
       fresh();
       const moth = E.spawn('moth', ahead(6));
