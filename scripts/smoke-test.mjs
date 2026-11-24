@@ -1489,6 +1489,20 @@ try {
     G.objectives.next();
     G.objectives.complete(false);
     out.zoneAdvanced = G.zones.index === zone0 + 1;
+    // Smooth arrival: a fog bank rolls in before the land swaps (rebuild waits, counted as stale), then lifts; the sky
+    // colours blend slowly (still on their way after 2 s, settled after 15 s).
+    {
+      const fog = G.scene.fog, sky = G.sky, far0 = Math.min(1380, 1250 * sky.fogNow);
+      const pending = G.terrain.rebuildAt !== null && G.terrain.stale, v0 = G.terrain.version;
+      const gap = () => sky.cur.horizon.clone().sub(sky.tgt.horizon).toArray().reduce((m, c) => Math.max(m, Math.abs(c)), 0);
+      const gap0 = gap();
+      step(30);
+      const at1 = { far: fog.far / far0, rebuilt: G.terrain.version > v0 };
+      step(30);
+      const at2 = { gap: gap() };
+      step(13 * 30);
+      out.zoneShift = { pending, at1, gap0: +gap0.toFixed(3), gap2: +at2.gap.toFixed(3), far15: +(fog.far / Math.min(1380, 1250 * sky.fogNow)).toFixed(2), gap15: +gap().toFixed(3), stale15: G.terrain.stale };
+    }
     out.zoneBanner = [...document.querySelectorAll('#banner li')].map((l) => l.textContent);
     out.zones = [];
     const zoneCount = (await import('./src/zones.js')).ZONES.length;
@@ -4250,6 +4264,7 @@ try {
     [report.bulletCrater > 1 && report.orbCrater > 1, 'bullets and orbs that hit the ground leave craters'],
     [report.pit.depth >= 30 && report.pit.mesh >= 25 && report.pit.cellMax <= 100, 'a 20-bullet burst digs a 30 m+ pit that shows on the mesh within 0.2 s, and crater lists stay short'],
     [report.zoneAdvanced, 'completing objectives advances to the next zone'],
+    [(({ zoneShift: z }) => z.pending && z.at1.far < 0.6 && z.at1.rebuilt && (z.gap0 < 0.05 || z.gap2 > z.gap0 * 0.25) && z.far15 > 0.9 && z.gap15 < 0.02 && !z.stale15)(report), `a new zone eases in: fog bank before the land swaps, slow sky blend, clear again after 15 s (${JSON.stringify(report.zoneShift)})`],
     [report.zones.length >= 30, 'every zone loads (30+)'],
     // ---- Cloud Kingdom (see the zones loop)
     [(({ cloudKingdom: k }) => k && k.near >= 3 && k.aboveGround && k.islands > 0 && k.onTop >= k.islands)(report), 'Cloud Kingdom: cloud islands float near the player, each with a centrepiece standing on its top'],

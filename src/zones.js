@@ -8,6 +8,10 @@ import { CURVE, AXIS_CURVE, CURVE_AXIS, noCurve } from './curve.js';
 import { disposeTree } from './models.js';
 
 export const ZONE_EVERY = 3; // completed objectives per zone
+// Arriving in a zone eases in (David: "everything changes too quickly"): the fog bank (sky.js SHIFT) gets REBUILD_DELAY
+// s to roll in before the land swaps; the old sky decor (planets, suns) fades out over DECOR_OUT s, the new fades in
+// over DECOR_IN s.
+export const ZONE_SHIFT = { REBUILD_DELAY: 0.9, DECOR_OUT: 1.5, DECOR_IN: 5 };
 
 // Random world changes that would break a zone's identity are locked while you're in it.
 const LOCK = ['sky', 'palette', 'theme', 'seed'];
@@ -181,6 +185,8 @@ export class Zones {
     this.asteroids = new Asteroids(G);
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
+    this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
+    this.rising = null;             // and the new fading in ({ t, mats })
     G.scene.add(this.decor);
     this.el = { label: document.getElementById('zone'), card: document.getElementById('zone-card') };
     this.cardTimer = 0;
@@ -226,6 +232,7 @@ export class Zones {
     clearPads(); // nor its flattened runway ground
     clearTunnels(); // nor its tunnels
     clearCity(); // nor its city plan (it was made for the old world's ground)
+    if (!instant) G.sky.shift(); // fog bank in, slow colour blend
     G.sky.setPreset(z.sky, instant);
     G.sky.weather.set(z.weather);
     G.sky.clouds.setStyle(z.clouds[0], z.clouds[1], z.clouds[2] ?? 440); // default cloud layer height
@@ -234,17 +241,25 @@ export class Zones {
     G.sky.azimuth = z.sunAzimuth ?? Math.random() * Math.PI * 2;
     G.sky.decor.clear();
     this.asteroids.configure(z.asteroids || 0, !!z.comets);
-    this.buildDecor(z.decor);
+    this.buildDecor(z.decor, !instant);
     if (!instant) {
-      G.terrain.rebuildAll();
+      G.terrain.rebuildAll(ZONE_SHIFT.REBUILD_DELAY);
       G.player.grace = 8; // the ground may jump up under you while the new world forms
       this.showCard();
     }
   }
 
-  buildDecor(kind) {
-    for (const c of this.decor.children) disposeTree(c); // planets, suns, rings: free their textures and geometry
-    this.decor.clear();
+  buildDecor(kind, fade = false) {
+    this.dropFading();
+    this.rising = null;
+    if (fade && this.decor.children.length) { // the old planets fade out instead of vanishing
+      this.fading = { group: this.decor, t: 0, mats: fadeable(this.decor) };
+      this.decor = new THREE.Group();
+      this.G.scene.add(this.decor);
+    } else {
+      for (const c of this.decor.children) disposeTree(c); // planets, suns, rings: free their textures and geometry
+      this.decor.clear();
+    }
     this.decks = [];
     if (kind === 'earthBelow') {
       // A huge Earth filling the view below you: you're in orbit.
@@ -294,6 +309,41 @@ export class Zones {
       arch.position.y = -250;
       this.decor.add(arch);
     }
+    if (fade) this.fadeIn();
+  }
+
+  // The old decor (fading out after a zone change) goes for good.
+  dropFading() {
+    if (!this.fading) return;
+    for (const c of this.fading.group.children) disposeTree(c);
+    this.G.scene.remove(this.fading.group);
+    this.fading = null;
+  }
+
+  // Fade the new decor in (called once it's built).
+  fadeIn() {
+    this.rising = this.decor.children.length ? { t: 0, mats: fadeable(this.decor) } : null;
+    if (this.rising) for (const m of this.rising.mats) m.mat.opacity = 0;
+  }
+
+  // Decor cross-fade: old out over DECOR_OUT s, new in over DECOR_IN s (starting once the fog bank is in).
+  updateFade(dt) {
+    const f = this.fading;
+    if (f) {
+      f.t += dt / ZONE_SHIFT.DECOR_OUT;
+      if (f.t >= 1) this.dropFading();
+      else for (const m of f.mats) m.mat.opacity = m.opacity * (1 - f.t);
+    }
+    const r = this.rising;
+    if (r) {
+      r.t += dt / ZONE_SHIFT.DECOR_IN;
+      const k = THREE.MathUtils.smoothstep(r.t, 0.15, 1);
+      for (const m of r.mats) m.mat.opacity = m.opacity * k;
+      if (r.t >= 1) { // back to how it was made: opaque things draw as opaque again
+        for (const m of r.mats) { m.mat.opacity = m.opacity; if (m.mat.transparent !== m.transparent) { m.mat.transparent = m.transparent; m.mat.needsUpdate = true; } }
+        this.rising = null;
+      }
+    }
   }
 
   showCard() {
@@ -312,6 +362,8 @@ export class Zones {
     this.asteroids.update(dt);
     const cam = G.camera.position;
     this.decor.position.copy(cam);
+    if (this.fading) this.fading.group.position.copy(cam);
+    this.updateFade(dt);
     for (const d of this.decks) { // the cloud decks travel with you, so their bands scroll to stay put in the world
       const t = d.material.map;
       d.position.y = d.userData.y - cam.y;
@@ -331,6 +383,18 @@ export class Zones {
 }
 
 const DECK = 9000; // size of a gas giant cloud deck
+
+// Every material in a decor group, made see-through so it can fade, with the opacity and transparency it was made with.
+function fadeable(group) {
+  const out = [], seen = new Set();
+  group.traverse((o) => {
+    if (!o.material || seen.has(o.material)) return;
+    seen.add(o.material);
+    out.push({ mat: o.material, opacity: o.material.opacity, transparent: o.material.transparent });
+    if (!o.material.transparent) { o.material.transparent = true; o.material.needsUpdate = true; }
+  });
+  return out;
+}
 
 // Wavy horizontal bands of colour (a gas giant, or a cloud deck when it should tile).
 function bandTexture(colors, tile = false) {

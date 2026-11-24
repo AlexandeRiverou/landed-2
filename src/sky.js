@@ -2,6 +2,11 @@
 import * as THREE from 'three';
 import { rand } from './texts.js';
 
+// A zone change (Sky.shift, from Zones.enter): a fog bank rolls in fast (to `veil` of the usual fog distances), stays
+// for `hold` s (longer while the new land is still being built), then lifts slowly; the sky, light and fog colours
+// glide over to the new zone's at the slower `blend` rate for `blendFor` s instead of snapping across in ~3 s.
+export const SHIFT = { veil: 0.3, hold: 2.2, close: 2.6, lift: 0.45, blend: 0.32, blendFor: 9 };
+
 export const TOD = {
   noon: { top: '#2f6fd0', horizon: '#a8d3f5', bottom: '#c6e2f6', sun: '#fff3d6', sunI: 2.4, hemiSky: '#cfe7ff', hemiGround: '#6b7a4a', hemiI: 1.1, elev: 62, stars: 0 },
   morning: { top: '#4a86d6', horizon: '#f6d6ad', bottom: '#e8d9c4', sun: '#ffe0b0', sunI: 2.0, hemiSky: '#ffe4c4', hemiGround: '#6a6a4a', hemiI: 1.0, elev: 22, stars: 0 },
@@ -85,6 +90,9 @@ export class Sky {
     this.fogBoost = 1;         // persuasion: clear the fog
     this.fogScale = 1;         // mutation: foggier / clearer world
     this.fogNow = 1;
+    this.veil = 1;             // zone change: fog bank (1 = none; SHIFT.veil = thickest)
+    this.veilHold = 0;         // seconds the fog bank still stays in
+    this.blendT = 0;           // seconds of slow colour blending left
     this.decor = new THREE.Group(); // planets and other sky junk, follows the camera
     G.scene.add(this.decor);
     this.preset = null;
@@ -100,11 +108,19 @@ export class Sky {
     for (const k of NUM_KEYS) { this.tgt[k] = p[k]; if (instant) this.cur[k] = p[k]; }
   }
 
+  // Ease into a new zone: fog bank in, slow colour blend (see SHIFT). Call before setPreset.
+  shift() {
+    this.veilHold = SHIFT.hold;
+    this.blendT = SHIFT.blendFor;
+  }
+
   update(dt) {
     const G = this.G;
     const a = 1 - Math.exp(-dt * 0.9);
-    for (const k of COLOR_KEYS) this.cur[k].lerp(this.tgt[k], a);
-    for (const k of NUM_KEYS) this.cur[k] += (this.tgt[k] - this.cur[k]) * a;
+    const blend = this.blendT > 0 ? 1 - Math.exp(-dt * SHIFT.blend) : a;
+    this.blendT = Math.max(0, this.blendT - dt);
+    for (const k of COLOR_KEYS) this.cur[k].lerp(this.tgt[k], blend);
+    for (const k of NUM_KEYS) this.cur[k] += (this.tgt[k] - this.cur[k]) * blend;
 
     const el = THREE.MathUtils.degToRad(this.cur.elev);
     const want = new THREE.Vector3(Math.cos(el) * Math.sin(this.azimuth), Math.sin(el), Math.cos(el) * Math.cos(this.azimuth));
@@ -133,8 +149,12 @@ export class Sky {
 
     this.fogNow += (this.fogBoost * this.fogScale - this.fogNow) * a;
     G.scene.fog.color.copy(this.cur.horizon);
-    G.scene.fog.near = Math.min(900, 260 * this.fogNow);
-    G.scene.fog.far = Math.min(1380, 1250 * this.fogNow);
+    // The fog bank holds while the new land builds (time runs at a quarter), so the swap happens out of sight.
+    if (this.veilHold > 0) this.veilHold -= dt * (G.terrain?.stale ? 0.25 : 1);
+    const thick = this.veilHold > 0;
+    this.veil += ((thick ? SHIFT.veil : 1) - this.veil) * (1 - Math.exp(-dt * (thick ? SHIFT.close : SHIFT.lift)));
+    G.scene.fog.near = Math.min(900, 260 * this.fogNow) * this.veil;
+    G.scene.fog.far = Math.min(1380, 1250 * this.fogNow) * this.veil;
 
     this.weather.update(dt, cam);
     this.clouds.update(dt, pp, this.cur);
