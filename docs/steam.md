@@ -66,9 +66,11 @@ passes. Each one builds the app, zips it as `landed-<version>-<platform>.zip` (`
 `macos-universal`), boot-tests the packaged app, and attaches the zip to the run.
 
 - **Pull requests:** download the zips from the run's artifacts. `<version>` is the short commit hash there.
-- **Releases:** every GitHub Release gets the three desktop zips next to the web zip, e.g.
-  `landed-v1.0.1-windows-x64.zip`. The release waits for all three desktop builds, so a desktop failure blocks the
-  release. GitHub Pages still deploys the web build.
+- **Releases:** every GitHub Release gets the desktop zips next to the web zip, e.g.
+  `landed-v1.0.1-windows-x64.zip`. The release waits for the Windows and Linux builds, so a failure on either blocks
+  the release. The macOS build is optional (`continue-on-error`): if it fails or times out, the release still
+  publishes, just without the macOS zip, and the run shows the macOS job as failed. GitHub Pages still deploys the
+  web build.
 
 Each zip holds one folder (`landed-<version>-<platform>/`) with the same contents as the matching
 `export/desktop/` folder.
