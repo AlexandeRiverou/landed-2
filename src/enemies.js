@@ -13,7 +13,7 @@ import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
 import { MOVES as BOSS_MOVES, Hazards, guardStep, animateBoss, endMoves, dropBoss, daze } from './bossmoves.js';
 
-const TYPES = {
+export const TYPES = {
   drone: { hp: 2, radius: 5, dmg: 18, speed: 38, make: makeDrone, score: 50, minScore: 0, weight: 3, kamikaze: true, name: 'Angry Drone' },
   mine: { hp: 1, radius: 6, dmg: 25, speed: 10, make: makeMine, score: 30, minScore: 0, weight: 2, kamikaze: true, name: 'Spiky Balloon', intro: 'Spiky Balloon! Get close and it blinks red. Then it pops. Shoot it or get out of there.' },
   gull: { hp: 1, radius: 4, dmg: 8, speed: 58, make: makeGull, score: 25, minScore: 150, weight: 2, kamikaze: true, name: 'Seagull Gang' },
