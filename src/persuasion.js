@@ -6,6 +6,9 @@ import { makeArrow3D, makeSign, makeTextSprite, makeRing, disposeTree } from './
 import { pick, rand, fmt, T, weightedPick } from './texts.js';
 import { crossRing, flatForward, groundAt, underRoof } from './objectives.js';
 import { curveDrop } from './curve.js';
+import { columnFade, columnHeight } from './lightcolumn.js';
+
+const BEAM_H = 900; // m: the light pillar is at least this tall (taller when the objective floats higher)
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -372,9 +375,11 @@ function sonar(G, o) {
   };
 }
 
+// The light pillar: a column of light standing on the ground under the objective, tall enough to pass it (however
+// high it floats over the ground, see lightcolumn.js), stopping at a cave roof, fading out softly at the top.
 function beam(G, o) {
-  const geo = new THREE.CylinderGeometry(7, 7, 900, 14, 1, true);
-  const mat = new THREE.MeshBasicMaterial({ color: '#7affd8', transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  const geo = new THREE.CylinderGeometry(7, 7, 1, 14, 1, true).translate(0, 0.5, 0); // unit tall, base at y = 0
+  const mat = new THREE.MeshBasicMaterial({ color: '#7affd8', alphaMap: columnFade(), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const m = new THREE.Mesh(geo, mat);
   G.scene.add(m);
   let t = 0;
@@ -383,7 +388,9 @@ function beam(G, o) {
       const tg = o.target();
       if (!tg) return;
       t += dt;
-      m.position.set(tg.x, groundAt(G, tg.x, tg.z) + 450, tg.z);
+      const ground = groundAt(G, tg.x, tg.z);
+      m.position.set(tg.x, ground, tg.z);
+      m.scale.y = columnHeight(ground, tg.y, BEAM_H, G.terrain.ceilingHeight(tg.x, tg.z, tg.y));
       mat.color.setHSL((t * 0.1) % 1, 1, 0.65);
       mat.opacity = 0.28 + Math.sin(t * 5) * 0.08;
     },

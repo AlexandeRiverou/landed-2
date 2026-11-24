@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { makeRing, makeGalleryTarget, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { WAVES, GARY } from './enemies.js';
+import { columnFade, columnHeight } from './lightcolumn.js';
 import { objective, pointAhead, groundAt, clearance, inFront, faceFlat, anim, moveToward, spinRing, crossRing, underRoof, fitUnderRoof, loopDome, BUZZ } from './objectives.js';
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -394,23 +395,32 @@ const TURN_SHOW = 2.5; // s the TURN BACK callout shows
 const TURN_AGAIN = 8; // s after a TURN BACK callout before it may show again (same wave)
 const MOVE_AFTER = 12; // s outside the line in all during one wave: then the beacon moves under you
 const MOVED_SHOW = 2.5; // s the THE LINE MOVED callout shows
-// The beacon column: BEACON_H m tall (less under a roof), BEACON_R m wide (radius: seen from 400 m), BEACON_DIM opaque
+// The beacon column: at least BEACON_H m tall, taller so it always passes your altitude (cloud and island lands put
+// the ground far below), stopped by a roof, fading out at the top (lightcolumn.js); BEACON_R m wide (radius: seen from 400 m), BEACON_DIM opaque
 // near it, brightening to BEACON_LIT from BEACON_NEAR × LINE_R out to the edge, so it stands out when you need it.
 // Within BEACON_CLOSE m it fades down to BEACON_GHOST, so a column planted right under you never fills the screen.
 const BEACON_H = 300, BEACON_R = 3, BEACON_DIM = 0.45, BEACON_LIT = 0.9, BEACON_NEAR = 0.8, BEACON_CLOSE = 60, BEACON_GHOST = 0.06;
 
 // The line: a tall see-through column of light (a unit-tall cylinder, stretched by plantBeacon).
 function makeBeacon(G, at) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(BEACON_R, BEACON_R, 1, 16, 1, true), new THREE.MeshBasicMaterial({ color: '#ffc23a', transparent: true, opacity: BEACON_DIM, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(BEACON_R, BEACON_R, 1, 16, 1, true), new THREE.MeshBasicMaterial({ color: '#ffc23a', alphaMap: columnFade(), transparent: true, opacity: BEACON_DIM, depthWrite: false, side: THREE.DoubleSide, fog: false }));
   plantBeacon(G, m, at);
   G.scene.add(m);
   return m;
 }
-// Stand it on the ground under `at` (cut short under a roof).
+// Stand it on the ground under `at`, tall enough to pass `at` (cut short under a roof).
 function plantBeacon(G, m, at) {
-  const ground = groundAt(G, at.x, at.z), h = Math.max(20, Math.min(BEACON_H, G.terrain.ceilingHeight(at.x, at.z, at.y) - ground));
+  const ground = groundAt(G, at.x, at.z);
+  m.userData.ground = ground;
+  m.position.set(at.x, ground, at.z);
+  stretchBeacon(G, m, at.y);
+}
+// Keep it on its ground, tall enough to pass y (you climb mid-wave): the cylinder is centred, so it stands at h / 2.
+function stretchBeacon(G, m, y) {
+  const ground = m.userData.ground, x = m.position.x, z = m.position.z;
+  const h = columnHeight(ground, y, BEACON_H, G.terrain.ceilingHeight(x, z, y));
   m.scale.y = h;
-  m.position.set(at.x, ground + h / 2, at.z);
+  m.position.y = ground + h / 2;
 }
 
 export function mkSurvive(G) {
@@ -475,6 +485,7 @@ export function mkSurvive(G) {
     onUpdate(dt, G) {
       const p = G.player, head = `🛡 WAVE ${F.wave}/${N}`;
       this.progressed = F.phase !== 'wave' || !away(); // out past the line mid-wave isn't progress (persuasion may nag)
+      stretchBeacon(G, beacon, p.pos.y);
       const d = off();
       beacon.material.opacity = d < BEACON_CLOSE ? THREE.MathUtils.mapLinear(d, 0, BEACON_CLOSE, BEACON_GHOST, BEACON_DIM)
         : THREE.MathUtils.mapLinear(THREE.MathUtils.clamp(d / LINE_R, BEACON_NEAR, 1), BEACON_NEAR, 1, BEACON_DIM, BEACON_LIT);
