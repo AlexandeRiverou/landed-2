@@ -27,7 +27,7 @@ const BOOST_DRAIN = 0.25, BOOST_REGEN = 0.2, WHOOSH_GAP = 0.6;
 // Boost speed over base speed. With Turbo active, boost goes faster (TURBO_BOOST) and costs no tank, but only while
 // you hold it: Turbo never forces speed on you.
 export const BOOST_MUL = 1.7, TURBO_BOOST = 2.1;
-const MANEUVER_COOLDOWN = 1.2, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
+const MANEUVER_COOLDOWN = 0.9, SLIDE = 24; // seconds between stunts; metres a barrel roll moves you sideways
 const SURFACE_HOLD = 7; // underwater, you're held this far below the sea surface
 // Cave tuck: under a rock roof, pulling up (pitch held up) scales the pitch rate by your speed over BASE_SPEED from
 // the start, so boosting (or the speed mutation) can't make a loop bigger. Past TUCK_FROM rad of loop the rate also
