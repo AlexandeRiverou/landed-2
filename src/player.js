@@ -1,12 +1,12 @@
 // Arcade flight: pitch/roll on the local axes, bank turns you, auto-levels when you let go.
 import * as THREE from 'three';
-import { makePlane, PLANE_SKINS } from './models.js';
+import { makePlane, PLANE_SKINS, deckSpot } from './models.js';
 import { pick, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA } from './powerups.js';
 
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
-const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _d = new THREE.Vector3(), _m = new THREE.Matrix4();
 
 // Shooting: about 4 volleys a second; slower bullets live longer, so the reach stays ~680 m.
 const FIRE_INTERVAL = 0.26, BULLET_SPEED = 300, BULLET_LIFE = 2;
@@ -59,6 +59,12 @@ const LANDING_GRADES = [
   { id: 'technically', title: 'That counts. Technically.', sink: Infinity, bank: Infinity, points: 10, texts: 'landMeh' },
 ];
 const DUST = ['#c8b89a', '#a89878', '#e0d4bc'];
+// The secret deck landing (HMS Overkill, the carrier boss): a gentle approach this close (m) above its flight deck lands on
+// it (the hull bumps you off any closer). The first landing on each carrier patches your hull to full and pays `points`;
+// catching the angled deck's 3-wire (the one real carrier pilots aim for) pays `wire` more. On the deck you brake `brake`
+// × harder (arrester wires: a carrier deck is short). After a take-off it takes `air` s in the air before the deck
+// catches you again, so climbing away low and level doesn't land you straight back.
+export const DECK = { catch: 7, points: 300, wire: 100, brake: 3, air: 2.5 };
 
 // Lives and hull. Every crash costs a life (not in Relax Mode or god mode); the last one ends the run (main.js
 // endRun). The hull mends itself only after REGEN_DELAY s without a hit, at REGEN_RATE × stats.regen hp/s; levelling up
@@ -109,7 +115,7 @@ export class Player {
     this.bullets = [];
     this.ceilingWarned = 0;
     this.surfaceWarned = -99;
-    this.landed = null;      // on the ground: { yaw, t, ground } (see taxi)
+    this.landed = null;      // on the ground: { yaw, t, ground } (see taxi); on a carrier's deck also { deck, local, rel } (see rollDeck)
     this.onGlide = false;    // on a runway's glide path this frame: easing down to APPROACH_SLOW (see fly)
     this.glideNoted = null;  // the runway objective whose glide-path note already showed
     this.onChain = false;    // near a chain's next link this frame: easing down to CHAIN_SLOW (see fly)
@@ -249,6 +255,10 @@ export class Player {
     this.prevPos.copy(this.pos);
     this.pos.addScaledVector(this.forward, this.speed * dt).addScaledVector(this.wind, dt);
 
+    // A carrier's flight deck: come down on it gently and you land there (the secret; see deckTouchdown).
+    const deck = G.enemies.deckAt(this.pos, _d);
+    if (deck?.spot.at === 'deck' && this.pos.y < deck.y + DECK.catch && this.prevPos.y > deck.y && this.prevPos.y - this.pos.y > -1 && this.airTime > DECK.air && this.canLandOn(deck.y, dt)) { this.deckTouchdown(deck, dt); return true; }
+
     // Terrain + water. Heights are asked at your altitude: in a tunnel, the floor and roof are the tunnel's.
     const ground = G.terrain.surfaceHeight(this.pos.x, this.pos.z, this.pos.y);
     const sea = G.world.seaLevel;
@@ -379,28 +389,70 @@ export class Player {
   // Not mid-stunt, and never on the seabed. The ground under the last position must be close too (no wall in the way).
   canLand(ground, dt) {
     const G = this.G, p = this.pos, q = this.prevPos;
-    if (this.maneuver || G.world.underwater || ground <= waterLine()) return false;
-    const sink = (q.y - p.y) / dt;
-    return sink < LAND.sink && Math.abs(this.bank()) < LAND.bank && this.forward.y > LAND.noseDown && this.up.y > LAND.upright
-      && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.landableAt(p.x, p.z, p.y, ground);
+    if (G.world.underwater || ground <= waterLine()) return false;
+    return this.canLandOn(ground, dt) && Math.abs(ground - G.terrain.surfaceHeight(q.x, q.z, q.y)) < 2 && this.landableAt(p.x, p.z, p.y, ground);
+  }
+
+  // The approach part of a landing, on any surface at height y (the ground, or a carrier's deck): not mid-stunt, a
+  // gentle sink, wings level and the nose up enough.
+  canLandOn(y, dt) {
+    const sink = (this.prevPos.y - this.pos.y) / dt;
+    return !this.maneuver && sink < LAND.sink && Math.abs(this.bank()) < LAND.bank && this.forward.y > LAND.noseDown && this.up.y > LAND.upright;
   }
 
   touchdown(ground, dt) {
-    const G = this.G;
+    const grade = this.grade(dt);
+    this.landed = { yaw: Math.atan2(-this.forward.x, -this.forward.z), t: 0 };
+    this.sitOnGround(ground);
+    this.landingFx(grade);
+  }
+
+  // How soft this touchdown was: its LANDING_GRADES entry, and the points it pays (none for a hop). Records lastLanding.
+  grade(dt) {
     const sink = Math.max(0, (this.prevPos.y - this.pos.y) / dt), bank = Math.abs(this.bank());
     const grade = LANDING_GRADES.find((g) => sink <= g.sink && bank <= g.bank);
     const points = this.airTime >= BONUS_AIRTIME ? grade.points : 0; // no farming points by hopping
     this.lastLanding = { grade: grade.id, title: grade.title, sink: +sink.toFixed(2), bank: +((bank * 180) / PI).toFixed(1), points, x: this.pos.x, z: this.pos.z };
-    this.landed = { yaw: Math.atan2(-this.forward.x, -this.forward.z), t: 0 };
     this.everLanded = true;
     this.airTime = 0;
     this.events.push('landed');
-    G.score += points;
-    this.sitOnGround(ground);
+    this.G.score += points;
+    return { ...grade, points };
+  }
+
+  // Dust, a thump and the grade's line (`extra` follows it, for a deck landing).
+  landingFx(grade, extra = '') {
+    const G = this.G, points = grade.points;
     G.fx.emit(_v.copy(this.pos).addScaledVector(this.up, -WHEELS * this.sizeScale), 26, { colors: DUST, speed: 14, life: 1.1, size: 5, gravity: -6, up: 7 });
     G.audio.tone(72, 0.3, { type: 'sine', vol: 0.22, slide: -30 });
     G.audio.noise(0.2, { vol: 0.12, freq: 500 });
-    G.ui.notify(`${grade.title} ${pick(T[grade.texts])}${points ? ` +${points}` : ' (No points for hops: fly a while first.)'}`, 'good', 3.5, 2);
+    G.ui.notify(extra || `${grade.title} ${pick(T[grade.texts])}${points ? ` +${points}` : ' (No points for hops: fly a while first.)'}`, 'good', extra ? 5 : 3.5, 2);
+  }
+
+  // The secret: landing on HMS Overkill's flight deck mid-fight. Its deck carries you along as it steams and turns
+  // (rollDeck), its guns hold fire while you're parked there (enemies.js), and the first landing on each carrier patches
+  // your hull to full and pays DECK.points (more on the 3-wire). Taking off is the usual pull up.
+  deckTouchdown(deck, dt) {
+    const G = this.G, e = deck.e, wire = deck.spot.wire;
+    const grade = this.grade(dt), yaw = Math.atan2(-this.forward.x, -this.forward.z);
+    this.landed = { yaw, t: 0, deck: e, local: deck.local.clone().setY(e.def.deck.y), rel: yaw - e.mesh.rotation.y, ground: deck.y };
+    this.pos.y = deck.y + WHEELS * this.sizeScale;
+    this.quat.setFromAxisAngle(Y, yaw);
+    this.updateAxes();
+    this.lastLanding.deck = true;
+    this.lastLanding.wire = wire;
+    let line = `${grade.title} on the deck of ${e.def.short}!`;
+    if (!e.deckVisited) {
+      e.deckVisited = true;
+      const bonus = DECK.points + (wire === 3 ? DECK.wire : 0);
+      G.score += bonus;
+      this.health = this.maxHealth;
+      line = `Welcome aboard ${e.def.short}! ${wire === 3 ? 'You caught the 3-wire, like a real navy pilot. ' : wire ? `Caught the ${wire}-wire. ` : ''}The deck crew patched your hull. The captain is furious. +${bonus + grade.points}`;
+    } else if (wire) line += ` Caught the ${wire}-wire.`;
+    this.landingFx(grade, line);
+    G.fx.emit(_v.copy(this.pos), 30, { colors: ['#ffd23a', '#ffffff', '#5ad8ff'], speed: 20, life: 1.4, size: 4, gravity: -10, up: 12 });
+    G.secrets?.trigger('aboard');
+    G.ui.notify('Pull up to take off again. The guns can\'t aim this low, but its fighters can.', 'info', 4, 1);
   }
 
   // Wings level, the nose following the slope under the wheels.
@@ -420,12 +472,15 @@ export class Player {
   taxi(dt, input) {
     const G = this.G, L = this.landed;
     L.t += dt;
+    if (L.deck) L.yaw = L.deck.mesh.rotation.y + L.rel; // the carrier turned under you
     const boosting = this.throttle(dt, input), pull = input.pitch > 0.3;
     const target = boosting ? this.baseSpeed * this.boostMul() : pull ? this.baseSpeed : TAXI_SPEED;
-    const rate = this.speed > target ? BRAKE : boosting ? THROTTLE * 1.5 : THROTTLE;
+    const rate = this.speed > target ? BRAKE * (L.deck ? DECK.brake : 1) : boosting ? THROTTLE * 1.5 : THROTTLE;
     this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
     L.yaw -= THREE.MathUtils.clamp(input.roll + input.yaw, -1, 1) * TAXI_TURN * dt;
+    if (L.deck) L.rel = L.yaw - L.deck.mesh.rotation.y;
     if (pull && this.speed >= this.baseSpeed * LIFTOFF) { this.liftoff(); return true; }
+    if (L.deck) return this.rollDeck(dt);
 
     this.prevPos.copy(this.pos);
     const run = this.speed * dt;
@@ -456,6 +511,42 @@ export class Player {
     this.sitOnGround(ground);
     if (this.pos.y > G.terrain.ceilingHeight(this.pos.x, this.pos.z, this.pos.y) - 2.5 && !ghost) { this.crash('roof'); return false; }
     if (this.speed > 15 && Math.random() < 0.5) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -3).addScaledVector(this.up, -2), DUST[0]);
+    return true;
+  }
+
+  // Rolling on a carrier's deck, in its own frame (model units), so it carries you along as it steams and turns. Off
+  // the edge you're flying again; into the island is a crash (like a wall); a sunk carrier leaves you in the air.
+  rollDeck(dt) {
+    const G = this.G, L = this.landed, e = L.deck, s = e.mesh.scale.x;
+    this.prevPos.copy(this.pos);
+    if (e.dead || !G.enemies.list.includes(e)) {
+      this.landed = null;
+      this.pos.y += 4;
+      G.ui.notify('The deck went down under you. Good news: you\'re a plane.', 'warn', 2.5, 1);
+      return true;
+    }
+    const run = (this.speed * dt) / s;
+    L.local.x -= Math.sin(L.rel) * run;
+    L.local.z -= Math.cos(L.rel) * run;
+    const spot = deckSpot(L.local.x, L.local.z);
+    e.mesh.updateMatrixWorld();
+    this.pos.copy(e.mesh.localToWorld(_v.copy(L.local)));
+    if (!spot) { // rolled off the edge
+      this.landed = null;
+      G.ui.notify('Ran out of deck. Good news: you\'re still a plane.', 'info', 2.5, 0);
+      return true;
+    }
+    if (spot.at === 'island' && !(G.powerups.has('ghost') || this.god)) {
+      if (this.grace <= 0 && this.invuln <= 0) { this.crash('ground'); return false; }
+      this.landed = null;
+      this.pos.y += 30;
+      return true;
+    }
+    L.ground = this.pos.y;
+    this.pos.y += WHEELS * this.sizeScale;
+    this.quat.setFromAxisAngle(Y, L.yaw);
+    this.updateAxes();
+    if (this.speed > 15 && Math.random() < 0.5) G.fx.trail(_v.copy(this.pos).addScaledVector(this.forward, -3).addScaledVector(this.up, -2), '#8a9098');
     return true;
   }
 

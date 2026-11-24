@@ -3,7 +3,7 @@
 > **Spoiler warning.** This page lists every secret in Landed and exactly how to trigger it. If you'd rather find
 > them yourself, stop here: the title card counts what you've found and drops a cryptic hint for one you haven't.
 
-All of it lives in `src/secrets.js`. There are 10 secrets.
+All of it lives in `src/secrets.js`. There are 11 secrets.
 
 ## The secrets
 
@@ -18,6 +18,7 @@ All of it lives in `src/secrets.js`. There are 10 secrets.
 | **Upside-Down Day** | date | Play on April 1 | The title reads "Crashed", the button says FALL UPWARDS, the HUD says POINTZ / HULK / ZOOM, and every rank name is wrong. |
 | **Edge Of Space** | feat | Climb above 1100 m in a zone with ground (not space, not a cave, not the reef) | "There's nothing up here. Go back down." Re-arms once you drop back below 950 m. |
 | **Lawnmower** | feat | Fly upside down less than 5 m above the ground or sea for 3 s in a row | Grass clippings everywhere. |
+| **Welcome Aboard** | feat | Land on HMS Overkill's flight deck mid-fight: come in gently (wings level, nose up, a soft sink) less than 7 m above the deck. Over the stern is easiest | A ship's horn. The first landing on each carrier patches your hull to full and pays +300 (+100 more if you catch the angled deck's 3-wire). The deck carries you along, its guns hold fire while you're parked, and you take off with the usual pull up. |
 | **Title Tinkerer** | title | Click or tap the "Landed" title 7 times, each within 1.5 s of the last | The title does a barrel roll. |
 
 A few details:
@@ -31,9 +32,9 @@ A few details:
 
 ## Found secrets
 
-The first time you find one, a gold toast pops up ("🥚 Secret found: Name (n/10)") with a sparkle sound. Found ids
+The first time you find one, a gold toast pops up ("🥚 Secret found: Name (n/11)") with a sparkle sound. Found ids
 are saved in `localStorage['landed.secrets']`, so they survive reloads. The title card shows
-"🥚 Secrets: n/10 · Hint: ..." with a hint for a random secret you're still missing.
+"🥚 Secrets: n/11 · Hint: ..." with a hint for a random secret you're still missing.
 
 To forget them all: the developer menu's **Forget found secrets** button, or `G.secrets.reset()`.
 
@@ -49,7 +50,7 @@ To forget them all: the developer menu's **Forget found secrets** button, or `G.
    - **Anything else** (a flight feat, a click): detect it yourself, in `update(dt)` or an event listener, and call
      `this.trigger('id')`. Arm it so it doesn't fire every frame (see `edgeArmed` and `mowArmed`).
 4. Add a check to `scripts/smoke-test.mjs` that finds it through its real path where practical, and bump the counts
-   in the existing "all 10 found" checks.
+   in the existing "all N found" checks.
 
 **Secret words must never contain `R`, `N`, `M`, `P` or `I`.** Those are toggle keys (Relax Mode, music, mute, pause,
 invert), so typing the word would flip them. `src/secrets.js` throws at load if a word breaks this rule, and the smoke

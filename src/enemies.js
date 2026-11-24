@@ -4,7 +4,7 @@
 // Grumbleglobe's pores only) Grumblings.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, CARRIER_HULL, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, CARRIER_HULL, CARRIER_DECK, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -273,7 +273,7 @@ export const BOSSES = {
   // units) take the hits and bump planes, a long health bar (`long`), and no twins or breakaways (ground: true).
   carrier: {
     make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 13.8, crownZ: 7.1, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 15,
-    face: 'none', ground: true, sea: true, boxes: CARRIER_HULL, markerUp: 70, long: true,
+    face: 'none', ground: true, sea: true, boxes: CARRIER_HULL, deck: CARRIER_DECK, markerUp: 70, long: true,
     name: 'HMS Overkill, the Unsinkable Aircraft Carrier', short: 'HMS Overkill', noun: 'HMS Overkill',
     move: 'steam',
     desc: 'A floating fortress with six deck guns, flak and a very loud captain. It takes a LOT of shooting: knock out the guns and hit the glowing bridge.',
@@ -778,6 +778,8 @@ export class Enemies {
         break;
       case 'carrier': {
         cd = 2.6;
+        // You're parked on its deck: its guns can't point that low, and the deck crew are too busy staring at you.
+        if (p.landed?.deck === e) { cd = 1; break; }
         const guns = e.mesh.userData.guns.filter((g) => g.gun.visible); // shot-off guns are hidden (a wreck shows instead)
         if (n % 4 === 3 && this.launchFighters(e)) break; // fighters off the catapults
         if (n % 4 === 1 && guns.length) {
@@ -1130,7 +1132,11 @@ export class Enemies {
       // Player contact.
       e.contactCd = Math.max(0, (e.contactCd || 0) - dt);
       // A boss with a solid hull (the carrier) is touched where its boxes are, not inside a sphere round its middle.
-      const touching = e.def.boxes ? dist < e.radius * 1.8 && this.inHull(e, p.pos, 4 * p.sizeScale) : dist < e.radius + 4 * p.sizeScale;
+      // Parked on its deck (the secret, player.js) isn't touching it, and above the deck only its island is solid (so you
+      // can come in low over the stern to land). Coming down through the deck is.
+      const above = e.def.deck && p.pos.y > e.pos.y + e.def.deck.y * e.mesh.scale.x;
+      const touching = p.landed?.deck === e ? false
+        : e.def.boxes ? dist < e.radius * 1.8 && this.inHull(e, p.pos, 4 * p.sizeScale, above ? e.def.deck.solid : e.def.boxes) : dist < e.radius + 4 * p.sizeScale;
       if (e.def.boxes && touching && !p.dead && !calm) this.bumpOffHull(e);
       if (!p.dead && !calm && touching && e.contactCd <= 0) {
         // Mega Ram flattens anything smaller than a boss (for bonus points), and rams a boss (see ram).
@@ -1178,15 +1184,34 @@ export class Enemies {
     this.hazards.update(dt);
   }
 
-  // Is `pos` inside one of the boss's hull boxes (def.boxes, model units), padded by `pad` m?
-  inHull(e, pos, pad = 0) {
+  // Is `pos` inside one of the boss's hull boxes (def.boxes, or just `boxes`; model units), padded by `pad` m?
+  inHull(e, pos, pad = 0, boxes = e.def.boxes) {
     const s = e.mesh.scale.x, k = pad / s;
     e.mesh.updateMatrixWorld();
     e.mesh.worldToLocal(_pp.copy(pos));
-    return e.def.boxes.some(([x0, x1, y0, y1, z0, z1]) => _pp.x > x0 - k && _pp.x < x1 + k && _pp.y > y0 - k && _pp.y < y1 + k && _pp.z > z0 - k && _pp.z < z1 + k);
+    return boxes.some(([x0, x1, y0, y1, z0, z1]) => _pp.x > x0 - k && _pp.x < x1 + k && _pp.y > y0 - k && _pp.y < y1 + k && _pp.z > z0 - k && _pp.z < z1 + k);
   }
 
-  // A plane that flies into the hull is lifted out over the deck (it's solid; landing on it comes later).
+  // A flight deck under `pos` (a live boss with def.deck, the carrier): { e, y (deck top, world m), local (model units,
+  // written into `out`), spot: deckSpot's { at, wire } }, or null.
+  deckAt(pos, out = new THREE.Vector3()) {
+    for (const e of this.list) {
+      const d = this.deckOf(e, pos, out);
+      if (d) return d;
+    }
+    return null;
+  }
+
+  // The same, for one boss.
+  deckOf(e, pos, out = new THREE.Vector3()) {
+    if (!e.def.deck || e.dead || pos.distanceToSquared(e.pos) > (e.radius * 1.8) ** 2) return null;
+    e.mesh.updateMatrixWorld();
+    e.mesh.worldToLocal(out.copy(pos));
+    const spot = deckSpot(out.x, out.z);
+    return spot && { e, y: e.pos.y + e.def.deck.y * e.mesh.scale.x, local: out, spot };
+  }
+
+  // A plane that flies into the hull is lifted out over the deck (it's solid). A gentle one lands on it (player.js).
   bumpOffHull(e) {
     const p = this.G.player, s = e.mesh.scale.x;
     e.mesh.worldToLocal(_pp.copy(p.pos));

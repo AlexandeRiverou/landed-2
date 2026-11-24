@@ -941,6 +941,27 @@ export function makePuffer() {
 // GUN_HP: bullets it takes to shoot a deck gun off (bosses' other parts get ×6; these don't).
 export const GUN_HP = 6;
 export const CARRIER_HULL = [[-7, 7, -2, 5.6, -33, 30], [-4, 4, -2, 5.6, 30, 36], [-10.8, -7, 3.6, 5.6, -10, 16], [3, 7.4, 5.6, 15, -3, 9]];
+// The flight deck you can land on (the secret, player.js): its top (model y), the deck plates as [centre x, centre z,
+// half width, half length, turn] (the main deck and the angled deck), the island standing on it [x0, x1, z0, z1], and
+// the angled deck's four arrester wires (z along it). Above the deck only `solid` (the island's hull box) bumps planes.
+export const CARRIER_DECK = {
+  y: 4.9, plates: [[0, 0, 7, 33, 0], [-3.5, -6, 4, 20, -0.16]], island: [3, 7.4, -3, 9], wires: [-13, -11.4, -9.8, -8.2], solid: [CARRIER_HULL[3]],
+};
+// What's at deck point (x, z), model units: 'island', 'deck', or null (off the edge). With the angled deck's
+// arrester wire you touched down on (1-4), if any: { at, wire }.
+export function deckSpot(x, z) {
+  const D = CARRIER_DECK, [ix0, ix1, iz0, iz1] = D.island;
+  if (x > ix0 && x < ix1 && z > iz0 && z < iz1) return { at: 'island', wire: 0 };
+  let at = null, wire = 0;
+  for (const [cx, cz, hw, hl, ry] of D.plates) {
+    const dx = x - cx, dz = z - cz, c = Math.cos(ry), s = Math.sin(ry);
+    const u = dx * c - dz * s, v = dx * s + dz * c; // into the plate's own frame
+    if (Math.abs(u) > hw || Math.abs(v) > hl) continue;
+    at = 'deck';
+    if (ry && v < D.wires[3] + 0.8 && v > D.wires[0] - 0.8) wire = 1 + D.wires.reduce((k, w, i) => (Math.abs(v - w) < Math.abs(v - D.wires[k]) ? i : k), 0);
+  }
+  return at && { at, wire };
+}
 const CV = {
   hull: '#7c8794', hull2: '#929eab', gallery: '#5d6773', seam: '#6d7884', boot: '#1d1f24', red: '#b8402a',
   deck: '#33383f', deck2: '#3d434c', white: '#eef2f5', yellow: '#ffcf2e', line: '#7a808a', dark: '#262a31',

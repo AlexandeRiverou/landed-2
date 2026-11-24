@@ -671,6 +671,41 @@ try {
       const jets = G.enemies.list.filter((x) => x.type === 'fighter'), y0 = jets.map((x) => x.pos.y);
       step(15);
       r.climbed = jets.length > 0 && jets.every((x, k) => x.pos.y > y0[k] + 2 && !x.dead);
+      // The secret: a gentle, level approach over the stern lands on the deck (hull patched, a bonus, the secret found),
+      // the deck carries you along as it steams and its guns hold fire; pulling up takes off without a bump. A steep dive
+      // onto the deck doesn't land.
+      G.enemies.list.filter((x) => x.type === 'fighter').forEach((x) => G.enemies.removeEnemy(x));
+      const D = e.def.deck, top = e.pos.y + D.y * s, nose = e.mesh.rotation.y + Math.PI; // the plane flies along -Z, the bow is +Z
+      const approach = (lz, pitch) => {
+        e.mesh.updateMatrixWorld();
+        p.pos.copy(e.mesh.localToWorld(new V(-1, D.y, lz))); p.pos.y = top + 5; p.prevPos.copy(p.pos);
+        p.quat.setFromAxisAngle(new V(0, 1, 0), nose).multiply(new p.quat.constructor().setFromAxisAngle(new V(1, 0, 0), pitch)); p.updateAxes();
+        Object.assign(p, { landed: null, maneuver: null, airTime: 20, grace: 0, invuln: 0, speed: p.baseSpeed });
+      };
+      G.secrets.found.delete('aboard');
+      approach(-20, -0.7);
+      let dived = false;
+      for (let k = 0; k < 8; k++) { step(1); if (p.landed) dived = true; }
+      r.diveLanded = dived;
+      approach(-22, 0);
+      p.health = p.maxHealth / 2;
+      const score0 = G.score;
+      step(1);
+      const L = p.landed;
+      r.deck = { landed: L?.deck === e, secret: G.secrets.found.has('aboard'), patched: p.health === p.maxHealth, bonus: G.score - score0, onTop: L ? +(p.pos.y - top).toFixed(2) : null };
+      if (L?.deck === e) {
+        e.burst = 0; // a rattle already under way
+        const z0 = L.local.z, at0 = e.pos.clone(), shots0 = G.enemies.shots.length;
+        step(60);
+        r.deck.rode = p.landed?.deck === e && e.pos.distanceTo(at0) > 3 && L.local.z > z0 && L.local.z < 33 && Math.abs(p.pos.y - top - 2.5 * p.sizeScale) < 0.01;
+        r.deck.held = G.enemies.shots.length <= shots0;
+        e.contactCd = 0;
+        p.invuln = 5; // only the hull's bump is being checked here, not a shot on the way up
+        p.speed = p.baseSpeed; p.liftoff();
+        step(20);
+        r.deck.tookOff = !p.landed && !p.dead && p.pos.y > top + 3 && e.contactCd === 0;
+      }
+      p.pos.y = p.prevPos.y = top + 150;
       return r;
     };
     const startBoss = (kind, opts) => {
@@ -2303,6 +2338,7 @@ try {
     G.step(1 / 30);
     out.april = { found: s.found.has('aprilFools'), rank: G.progress.rank, rankChanged: G.progress.rank !== rank, label: document.getElementById('score-label').textContent, hud: document.getElementById('rank').textContent };
     s.trigger('tinkerer'); // its real path (7 title clicks) ran before take-off
+    s.trigger('aboard'); // its real path (landing on the carrier's deck) is in the boss checks
     out.list = s.list().length;
     out.all = s.list().every((x) => x.found);
     try { out.stored = JSON.parse(localStorage.getItem('landed.secrets')).length; } catch { out.stored = 0; }
@@ -4072,6 +4108,7 @@ try {
     [report.pads.groundKept && report.pads.whileRolling === 1 && report.pads.max === 1 && report.pads.after === 0, 'runways that end flatten no ground for good: only under a plane rolling on it, gone once it leaves'],
     [Object.keys(report.bosses).length >= 16, 'at least 16 bosses'],
     [(({ carrier: c }) => c.spawned && c.afloat && c.longBar && c.maxHp >= 300 && c.sternDist >= 80 && c.shots > 0 && c.hullHit && c.bumpedAbove >= 4 && c.gunCost === 0.04 && c.gunHidden && c.gunHits >= 3 && c.gunHits <= 8 && c.wreck && c.launched === 2 && c.climbed)(report), `HMS Overkill: spawns on open sea and stays afloat, a long health bar (300+ hp), its hull boxes take hits 80 m+ from its middle, a plane flown into the hull is lifted out over the deck, a deck gun shot off costs it 4% and takes only a few hits (3 to 8), leaving a wreck, and its catapults launch two climbing fighters (${JSON.stringify(report.carrier)})`],
+    [(({ carrier: c }) => !c.diveLanded && c.deck?.landed && c.deck.secret && c.deck.patched && c.deck.bonus >= 300 && c.deck.onTop === 2.5 && c.deck.rode && c.deck.held && c.deck.tookOff)(report), `HMS Overkill's secret: a gentle approach lands on its deck (hull patched, +300 or more, the Welcome Aboard secret), the deck carries you along with its guns quiet, and pulling up takes off unhurt; a steep dive onto it doesn't land (${JSON.stringify(report.carrier?.deck)}, dive landed: ${report.carrier?.diveLanded})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
@@ -4222,7 +4259,7 @@ try {
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
     [report.devmenu.carrier.boss === 'carrier' && report.devmenu.carrier.afloat, `dev menu: HMS Overkill from a desert zone still comes, on open sea, never King Drone instead (${JSON.stringify(report.devmenu.carrier)})`],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
-    [!S.sixClicks && S.title.found && S.title.rolled && /Secret found: Title Tinkerer \(1\/10\)/.test(S.title.toast) && /Secrets: 1\/10/.test(S.title.count), 'secrets: 7 clicks on the title (not 6) find one, with a toast and the title card counter'],
+    [!S.sixClicks && S.title.found && S.title.rolled && /Secret found: Title Tinkerer \(1\/11\)/.test(S.title.toast) && /Secrets: 1\/11/.test(S.title.count), 'secrets: 7 clicks on the title (not 6) find one, with a toast and the title card counter'],
     [S.whilePaused === 0 && S.whileLocked === 0, 'secrets: typed words and the Konami code are ignored while paused or in the dev menu'],
     [S.konami.found.includes('konami') && S.konami.rainbow > 25 && S.konamiAgain.fanfares === S.konami.fanfares && S.konamiAgain.rainbow > 25, 'secrets: the Konami code turns on rainbow mode; re-entering it replays without a new fanfare'],
     [S.quack.found.includes('quack') && S.quack.theme === 'duck', 'secrets: typing QUACK starts The Duckening'],
@@ -4234,8 +4271,8 @@ try {
     [S.feats.plainDay === null && S.feats.halloween.found && S.feats.halloween.sky === 'halloween' && S.feats.halloween.weather === 'spooky' && S.feats.halloween.theme === 'spooky', 'secrets: Halloween dresses the world up (sky, bats, spooky props); ordinary days do nothing'],
     [S.feats.christmas.found && S.feats.christmas.weather === 'snow', 'secrets: Christmas brings snow'],
     [S.feats.april.found && S.feats.april.rankChanged && S.feats.april.hud === S.feats.april.rank && S.feats.april.label === 'POINTZ', 'secrets: April 1 renames the ranks and the HUD'],
-    [S.feats.list === 10 && S.feats.all && S.feats.stored === 10, 'secrets: all 10 found and saved in localStorage'],
-    [S.reloaded.found === 10 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 10\/10/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
+    [S.feats.list === 11 && S.feats.all && S.feats.stored === 11, 'secrets: all 11 found and saved in localStorage'],
+    [S.reloaded.found === 11 && S.reloaded.holiday === 'aprilFools' && S.reloaded.logo === 'Crashed' && /Secrets: 11\/11/.test(S.reloaded.count), 'secrets: found secrets survive a reload, and the boot date check runs (April 1)'],
     [!report.devmenu.oneCorner && report.devmenu.touchOpened.open && report.devmenu.touchOpened.paused && report.devmenu.touchReleased, 'dev menu: touching both top corners for 3 s opens it (one corner does not)'],
     // ---- Hold The Line ("The Rush") and the newer regular enemies (see the RUSH block)
     [(({ htl: h }) => [1, 2, 3, 4, 5].every((w) => h.waves.includes(w)) && h.progress.length === 5 && h.progress.every((t) => /^🛡 WAVE \d\/5 · \d+s · \d+ left$/.test(t)) && h.reward === 350)(RUSH), `Hold The Line: "WAVE n/5 · <secs>s · <k> left" in the progress text, and the waves reach 5 (${JSON.stringify({ waves: RUSH.htl.waves, progress: RUSH.htl.progress })})`],

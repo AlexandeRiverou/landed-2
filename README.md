@@ -294,9 +294,9 @@ doesn't by itself, but flying on from where it put you does.
   a rattling island gun, and Deck Fighters launched two at a time off its bow catapults (four up at most), which hunt
   you like Gary. Its hits are light (6 a shell, 7 a flak burst, 3 the island gun, 15 a bump). It has 300 hp and a
   long health bar: each deck gun breaks after 6 hits (4% of the hull), leaving a smoking wreck, and the bridge is the
-  weak spot. Its hull is solid: fly into it and you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
+  weak spot. Its hull is solid: fly into it (or dive through the deck) and you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
   an angled landing deck, catapults and parked jets, an island with a funnel that smokes, radars, blinking lights and
-  a flag, and a foaming wake. A deck landing comes later.
+  a flag, and a foaming wake. It also hides a secret (docs/secrets.md has the spoiler).
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
