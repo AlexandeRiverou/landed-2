@@ -562,15 +562,16 @@ function add(group, geo, mat, t = {}) {
   return o;
 }
 
-// Weak points glow orange and multiply damage; breakable parts have their own hp and an effect
-// when destroyed (see Enemies.breakPart). Both are listed in g.userData.parts for hit testing.
+// Weak points multiply damage; breakable parts have their own hp and an effect when destroyed (see
+// Enemies.breakPart). Both are listed in g.userData.parts for hit testing.
+// A weak point wears a faint warm halo in its own colour, a little bigger than it, that breathes slowly: easy to find
+// when you look for it, never shouting. A hit flashes it white for a moment (part.hitT; Enemies.animateMark).
 function weak(g, obj, r, mult = 3, extra = {}) {
-  const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(r * 1.35, 12, 8),
-    new THREE.MeshBasicMaterial({ color: '#ff8a1a', transparent: true, opacity: 0.5, depthWrite: false }), // solid halo: shows even over white
-  );
-  obj.add(glow);
-  (g.userData.parts ||= []).push({ obj, r, mult, hp: Infinity, glow, ...extra });
+  const tint = new THREE.Color(obj.material?.color ?? '#ffb060').lerp(new THREE.Color('#ffc070'), 0.6);
+  const halo = new THREE.Mesh(Sph(1, 12, 8), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.14, depthWrite: false }));
+  halo.scale.setScalar(r * 1.15);
+  obj.add(halo);
+  (g.userData.parts ||= []).push({ obj, r, mult, hp: Infinity, glow: halo, mark: { halo, tint }, hitT: 0, ...extra });
 }
 function breakable(g, obj, r, name, hp, extra = {}) {
   (g.userData.parts ||= []).push({ obj, r, mult: 1, hp, name, ...extra });
@@ -929,6 +930,204 @@ export function makePuffer() {
   add(g, Box(0.4, 5, 3.5), lam('#e8a83a'), { z: -6.5 });
   g.userData.puff = puff;
   g.userData.wings = fins;
+  return g;
+}
+
+// HMS Overkill, the aircraft carrier boss: a long two-tone hull (bow toward +Z) with a painted flight deck and an
+// angled landing deck, an island tower on the starboard side (its bridge windows are the weak spot) with a funnel,
+// mast, radars and blinking lights, parked jets, a foaming wake, and six deck guns that swivel to aim and can be shot
+// off. The static detail is merged into two meshes (lit paint, glowing lights), so the extra detail costs no draw calls.
+// CARRIER_HULL lists its solid boxes in model units [x0, x1, y0, y1, z0, z1]: bullets hit them and planes bump off them.
+// GUN_HP: bullets it takes to shoot a deck gun off (bosses' other parts get ×6; these don't).
+export const GUN_HP = 6;
+export const CARRIER_HULL = [[-7, 7, -2, 5.6, -33, 30], [-4, 4, -2, 5.6, 30, 36], [-10.8, -7, 3.6, 5.6, -10, 16], [3, 7.4, 5.6, 15, -3, 9]];
+const CV = {
+  hull: '#7c8794', hull2: '#929eab', gallery: '#5d6773', seam: '#6d7884', boot: '#1d1f24', red: '#b8402a',
+  deck: '#33383f', deck2: '#3d434c', white: '#eef2f5', yellow: '#ffcf2e', line: '#7a808a', dark: '#262a31',
+  island: '#86919d', island2: '#9aa5b0', glass: '#2b3d52', jet: '#8d9aa8', jet2: '#5f6b78', accent: '#d8433a',
+  orange: '#ff8a1f', dome: '#e6eaee',
+};
+// 7-segment digits: seg(u, v, du, dv) makes one bar (u across, v up, the bar's size along each).
+const SEG7 = { 0: 'abcdef', 7: 'abc' };
+function digits7(str, w, h, t, seg) {
+  const out = [];
+  [...str].forEach((ch, i) => {
+    const u0 = i * (w + t * 2.2);
+    for (const s of SEG7[ch]) {
+      if (s === 'a') out.push(seg(u0 + w / 2, h, w, t));
+      if (s === 'd') out.push(seg(u0 + w / 2, 0, w, t));
+      if (s === 'g') out.push(seg(u0 + w / 2, h / 2, w, t));
+      if (s === 'f') out.push(seg(u0, h * 0.75, t, h / 2 + t / 2));
+      if (s === 'e') out.push(seg(u0, h * 0.25, t, h / 2 + t / 2));
+      if (s === 'b') out.push(seg(u0 + w, h * 0.75, t, h / 2 + t / 2));
+      if (s === 'c') out.push(seg(u0 + w, h * 0.25, t, h / 2 + t / 2));
+    }
+  });
+  return out;
+}
+// A group of parts built in its own frame, then turned by ry and moved to (x, y, z).
+function placed(parts, x, y, z, ry = 0) {
+  const g = mergeGeometries(parts);
+  g.applyMatrix4(_m.compose(_p.set(x, y, z), _q.setFromEuler(_e.set(0, ry, 0)), _s.set(1, 1, 1)));
+  return g;
+}
+// A parked jet, nose toward +Z: fuselage, nose, wings, twin tails, canopy (a hint of the air wing to come).
+function carrierJet(accent) {
+  return [
+    P(Box(0.9, 0.6, 3.8), CV.jet, { y: 0.55 }),
+    P(Cone(0.45, 1.3, 4), CV.jet, { y: 0.55, z: 2.55, rx: PI / 2, ry: PI / 4 }),
+    P(Box(3.6, 0.12, 1.5), CV.jet2, { y: 0.45, z: -0.2 }),
+    P(Box(1.8, 0.1, 0.7), CV.jet2, { y: 0.5, z: -1.7 }),
+    P(Box(0.1, 0.9, 0.8), accent, { x: -0.35, y: 1.15, z: -1.5, rz: 0.25 }),
+    P(Box(0.1, 0.9, 0.8), accent, { x: 0.35, y: 1.15, z: -1.5, rz: -0.25 }),
+    P(Box(0.5, 0.3, 1.1), CV.glass, { y: 0.95, z: 0.9 }),
+    P(Box(0.15, 0.45, 0.15), CV.dark, { y: 0.15, z: 1.4 }),
+  ];
+}
+// A Deck Fighter, launched off HMS Overkill's catapults: the parked jets' twin, 2.2× bigger, with a hot exhaust.
+export function makeDeckFighter() {
+  const g = new THREE.Group(), body = new THREE.Mesh(M(carrierJet(CV.accent)), lam('#ffffff', { vertexColors: true }));
+  body.scale.setScalar(2.2);
+  g.add(body);
+  add(g, Box(1.1, 0.8, 0.5), basic('#ffb03a'), { y: 1.2, z: -4.3 });
+  return g;
+}
+export function makeCarrier() {
+  const g = new THREE.Group(), S = [], L = []; // S: painted (lit) parts; L: lights (unlit, they glow)
+  // Hull: two-tone grey, a gallery band with a dark window strip, plating seams, portholes, a black boot top at the
+  // waterline over red antifouling, a diamond bow and a recessed stern.
+  S.push(P(Box(12, 6, 62), CV.hull, { y: 1.5, z: -2 }));
+  S.push(P(Cyl(0.2, 6, 8, 4), CV.hull, { y: 1.5, z: 32.6, rx: PI / 2, s: 1, sz: 0.55 }));
+  S.push(P(Box(12.5, 1.6, 61), CV.hull2, { y: 3.5, z: -2 }));
+  S.push(P(Box(12.6, 0.35, 58), CV.gallery, { y: 3.4, z: -3 }));
+  S.push(P(Box(12.15, 0.55, 62.15), CV.boot, { y: 0.1, z: -2 }));
+  S.push(P(Box(12.1, 1.4, 62.1), CV.red, { y: -1.1, z: -2 }));
+  for (let z = -29; z <= 26; z += 8) S.push(P(Box(12.08, 2.4, 0.14), CV.seam, { y: 1.5, z }));
+  for (let z = -28; z <= 16; z += 3.4) S.push(P(Box(12.12, 0.32, 0.45), CV.dark, { y: 2.35, z }));
+  S.push(P(Box(10, 2.6, 0.4), CV.dark, { y: 2.6, z: -32.9 }));
+  for (const s of [-1, 1]) S.push(P(Box(0.4, 0.7, 0.9), CV.dark, { x: s * 3.6, y: 3, z: 31.6 })); // hawse pipes
+  // The hull number 07 on both bows, readable from either side (starboard reads toward the stern, port toward the bow).
+  for (const s of [-1, 1]) {
+    S.push(...digits7('07', 1.2, 1.9, 0.28, (u, v, du, dv) => P(Box(0.08, dv, du), CV.white, { x: s * 6.08, y: 0.6 + v, z: s > 0 ? 25 - u : 20 + u })));
+  }
+  // Life-raft canisters and boats on the gallery: an orange accent.
+  for (const [x, z] of [[6.3, -20], [6.3, -15], [-6.3, -22], [-6.3, -2], [-6.3, 12]]) S.push(P(Cyl(0.35, 0.35, 1.2, 6), CV.orange, { x, y: 3.9, z, rx: PI / 2 }));
+  // Sponsons under the guns.
+  const GUNS = [[-6.4, -24], [6.4, -24], [-6.4, -9], [-6.4, 8], [6.4, 18], [-6.4, 24]];
+  for (const [x, z] of GUNS) S.push(P(Box(2.2, 1.4, 3.4), CV.gallery, { x: x + Math.sign(x) * 0.9, y: 3.9, z }));
+  // Flight deck: dark non-skid, white edge lines, a dashed yellow centre line, two bow catapults with blast deflectors,
+  // elevators outlined in yellow, and a big 07 on the bow.
+  const y = 4.93; // the painted lines sit on the deck
+  S.push(P(Box(14, 0.6, 66), CV.deck, { y: 4.6 }));
+  for (const s of [-1, 1]) S.push(P(Box(0.25, 0.05, 64), CV.white, { x: s * 6.75, y }));
+  for (let z = -30; z <= 22; z += 4) S.push(P(Box(0.3, 0.05, 2.2), CV.yellow, { x: 1.5, y, z }));
+  for (const x of [-2.5, 3]) {
+    S.push(P(Box(0.22, 0.06, 20), CV.line, { x, y, z: 22 }));
+    S.push(P(Box(0.9, 0.12, 0.6), CV.yellow, { x, y: 5, z: 31.5 }));
+    S.push(P(Box(3.4, 0.8, 0.18), CV.seam, { x, y: 5.15, z: 11.6, rx: -0.6 }));
+  }
+  for (const [ex, ez] of [[4.4, -9], [4.4, 13.5]]) {
+    S.push(P(Box(4.4, 0.06, 0.2), CV.yellow, { x: ex, y, z: ez - 2.6 }), P(Box(4.4, 0.06, 0.2), CV.yellow, { x: ex, y, z: ez + 2.6 }));
+    S.push(P(Box(0.2, 0.06, 5.4), CV.yellow, { x: ex - 2.2, y, z: ez }));
+  }
+  S.push(...digits7('07', 1.6, 2.8, 0.4, (u, v, du, dv) => P(Box(du, 0.06, dv), CV.white, { x: 2.2 - u, y, z: 28.4 + v })));
+  // The angled landing deck, swung out to port: lighter deck, edge lines, a dashed white centre line, four arrester
+  // wires and a red and white stripe at its far end.
+  const A = [P(Box(8, 0.62, 40), CV.deck2, { y: 4.61 })];
+  for (const s of [-1, 1]) A.push(P(Box(0.2, 0.06, 38), CV.white, { x: s * 3.8, y }));
+  for (let z = -18; z <= 18; z += 3) A.push(P(Box(0.25, 0.06, 1.5), CV.white, { y, z }));
+  for (let k = 0; k < 4; k++) A.push(P(Box(6.4, 0.08, 0.12), CV.line, { y, z: -13 + k * 1.6 }));
+  for (let k = 0; k < 6; k++) A.push(P(Box(1.3, 0.06, 0.6), k % 2 ? CV.white : CV.accent, { x: -3.25 + k * 1.3, y, z: 19.4 }));
+  S.push(placed(A, -3.5, 0, -6, -0.16));
+  // Parked jets, wingtip to wingtip on the starboard aft deck, and one on the port catapult.
+  for (const [x, z, a] of [[2.8, -14.5, -0.7], [2.8, -19.5, -0.7], [2.8, -24.5, -0.7], [-2.5, 22.5, 0]]) S.push(placed(carrierJet(CV.accent), x, 4.9, z, a));
+  // Close-in defence domes on the deck corners.
+  for (const [x, z] of [[-6, -31.5], [5.6, 31.2]]) S.push(P(Cyl(0.7, 0.9, 0.9, 8), CV.dark, { x, y: 5.35, z }), P(Sph(0.75, 8, 5), CV.dome, { x, y: 6.1, z }));
+  // The island: a stepped tower with its number, a bridge band (the weak spot, below), sensor panels, pri-fly on top,
+  // a funnel and a tripod mast with yards and whip antennas.
+  S.push(P(Box(4.2, 4.6, 11), CV.island, { x: 5.2, y: 7.6, z: 3 }));
+  S.push(P(Box(3.8, 3.4, 8), CV.island2, { x: 5.3, y: 11.6, z: 4 }));
+  S.push(P(Box(3.4, 1.4, 5), CV.island, { x: 5.2, y: 14, z: 3.6 }));
+  S.push(P(Box(3.6, 0.5, 5.6), CV.glass, { x: 5.2, y: 14.1, z: 3.6 }));
+  for (const [z, ry] of [[0.4, 0], [7.6, 0]]) S.push(P(Box(0.2, 1.7, 1.7), CV.dark, { x: 7.3, y: 11.2, z, ry }));
+  S.push(...digits7('07', 0.9, 1.8, 0.24, (u, v, du, dv) => P(Box(0.06, dv, du), CV.white, { x: 7.33, y: 6.6 + v, z: 5.5 - u })));
+  for (let k = 0; k < 4; k++) S.push(P(Box(4.3, 0.06, 0.25), CV.yellow, { x: 5.2, y, z: -4.4 + k * 0.55, ry: 0.5 })); // hazard stripes at the island's foot
+  S.push(P(Box(2.4, 2.4, 3), CV.island2, { x: 5.4, y: 16, z: -0.6 }), P(Box(2.6, 0.5, 3.2), CV.boot, { x: 5.4, y: 17.4, z: -0.6 }));
+  for (const [dx, dz] of [[-0.8, 0], [0.8, 0], [0, 1.2]]) S.push(P(Cyl(0.12, 0.18, 6.5, 4), CV.dark, { x: 5.2 + dx, y: 17.9, z: 3.6 + dz, rz: -dx * 0.08, rx: -dz * 0.1 }));
+  S.push(P(Box(4.6, 0.18, 0.18), CV.dark, { x: 5.2, y: 19.4, z: 3.6 }), P(Box(3.2, 0.18, 0.18), CV.dark, { x: 5.2, y: 20.6, z: 3.6 }));
+  for (const [x, h] of [[3.4, 3], [7, 2.4], [5.2, 4]]) S.push(P(Cyl(0.05, 0.08, h, 3), CV.dark, { x, y: (x === 5.2 ? 21.2 : 19.5) + h / 2, z: 3.6 }));
+  const paint = new THREE.Mesh(M(S), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  g.add(paint);
+  // The bridge windows: the weak spot. Glass glowing pale blue, framed by dark mullions.
+  const bridge = add(g, Box(4.3, 1.3, 6), basic('#9ae8ff'), { x: 5.2, y: 12.4, z: 5.2 });
+  for (let z = 2.7; z <= 7.7; z += 1) add(bridge, Box(4.4, 1.35, 0.12), lam(CV.dark), { z: z - 5.2 });
+  weak(g, bridge, 3, 2);
+  // Radars: a big rotating array up the mast and a small dish on the aft yard.
+  const radar = new THREE.Group(), dish = new THREE.Group();
+  radar.position.set(5.2, 22, 3.6);
+  add(radar, Box(4.4, 1.3, 0.3), lam('#d8dde3'));
+  add(radar, Box(0.3, 0.8, 0.8), lam(CV.dark), { y: -0.8 });
+  dish.position.set(5.2, 20.9, 1.9);
+  add(dish, Cone(0.9, 0.5, 8), lam('#d8dde3'), { rx: -PI / 2 + 0.4 });
+  g.add(radar, dish);
+  // Lights: deck-edge lights (always on) and blinking mast and wingtip strobes.
+  for (let z = -30; z <= 30; z += 5) for (const s of [-1, 1]) L.push(P(Box(0.3, 0.15, 0.3), s < 0 ? '#ff5a4a' : '#5aff8a', { x: s * 7.05, y: 4.95, z }));
+  for (let k = 0; k < 6; k++) { // along the angled deck's outer (port) edge
+    const a = -0.16, along = -18 + k * 7.2, out = -4.1;
+    L.push(P(Box(0.25, 0.15, 0.25), '#fff3b0', { x: -3.5 + along * Math.sin(a) + out * Math.cos(a), y: 4.97, z: -6 + along * Math.cos(a) - out * Math.sin(a) }));
+  }
+  g.add(new THREE.Mesh(M(L), new THREE.MeshBasicMaterial({ vertexColors: true })));
+  const lights = [
+    add(g, Sph(0.35, 6, 4), basic('#ff3a2a'), { x: 5.2, y: 25.4, z: 3.6 }),
+    add(g, Sph(0.3, 6, 4), basic('#ffffff'), { x: 5.2, y: 17.8, z: -0.6 }),
+    add(g, Sph(0.3, 6, 4), basic('#ff3a2a'), { x: -6.8, y: 5.4, z: -32.5 }),
+  ];
+  add(g, Cyl(0.06, 0.06, 1.6, 3), lam(CV.dark), { x: 5.2, y: 24.6, z: 3.6 });
+  // The ensign: a little flag that streams back off the mast.
+  const flag = new THREE.Group();
+  flag.position.set(5.2, 23.6, 3.5);
+  add(flag, Box(0.05, 1, 1.6), lam(CV.accent), { z: -0.8 });
+  add(flag, Box(0.06, 0.3, 1.6), basic(CV.white), { z: -0.8 });
+  g.add(flag);
+  // Funnel smoke: four puffs that rise, swell and fade in turn (see Enemies.animate).
+  const smoke = [];
+  for (let k = 0; k < 4; k++) smoke.push(add(g, Dod(1), new THREE.MeshLambertMaterial({ color: '#8a8f96', transparent: true, opacity: 0.5, depthWrite: false, flatShading: true }), { x: 5.4, y: 18, z: -0.6 }));
+  // The wake: foam fanning out behind the stern and curling off the bow, at the waterline.
+  const foam = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, depthWrite: false });
+  add(g, Box(11, 0.05, 14), foam, { y: 0.35, z: -40 });
+  add(g, Box(7, 0.05, 22), foam, { y: 0.32, z: -57, s: [1, 1, 1] });
+  for (const s of [-1, 1]) add(g, Box(1.4, 0.05, 14), foam, { x: s * 6.6, y: 0.35, z: 24, ry: s * 0.22 });
+  // Deck guns on sponsons along both edges, clear of the island: a hazard-striped ring, an armoured turret and twin
+  // barrels with red muzzles that swivel to aim at you.
+  const guns = [];
+  for (const [x, z] of GUNS) {
+    const gun = new THREE.Group();
+    gun.position.set(x, 5.6, z);
+    add(gun, Cyl(1.5, 1.8, 0.9, 8), lam(CV.dark));
+    add(gun, Cyl(1.62, 1.62, 0.25, 8), lam(CV.yellow), { y: 0.2 });
+    const aim = new THREE.Group();
+    aim.position.y = 0.9;
+    add(aim, Box(2.1, 1.1, 2.1), lam(CV.hull2));
+    add(aim, Box(2.1, 0.6, 0.9), lam(CV.hull), { y: 0.2, z: 1.2, rx: 0.5 });
+    add(aim, Box(1.4, 0.3, 1.4), lam(CV.gallery), { y: 0.65, z: -0.2 });
+    for (const s of [-0.45, 0.45]) {
+      add(aim, Cyl(0.2, 0.26, 3.6, 6), lam('#2a2a30'), { x: s, z: 2.6, rx: PI / 2 });
+      add(aim, Cyl(0.28, 0.28, 0.45, 6), lam(CV.accent), { x: s, z: 4.4, rx: PI / 2 });
+    }
+    gun.add(aim);
+    g.add(gun);
+    // The wreck left when it's shot off (hidden till then): a scorched ring and a stub of bent barrel, smoking.
+    const wreck = new THREE.Group();
+    wreck.position.copy(gun.position);
+    add(wreck, Cyl(1.5, 1.8, 0.7, 8), lam('#1d1f24'));
+    add(wreck, Box(1.6, 0.6, 1.4), lam('#3a2f2a'), { y: 0.5, rz: 0.3 });
+    add(wreck, Cyl(0.2, 0.24, 1.8, 5), lam('#2a2a30'), { x: 0.4, y: 0.9, z: 0.6, rx: 1.1, rz: -0.4 });
+    wreck.visible = false;
+    g.add(wreck);
+    breakable(g, gun, 2.4, 'gun', GUN_HP, { keepHp: true, wreck }); // a few shots, not the boss ×6
+    guns.push({ gun, aim, wreck });
+  }
+  Object.assign(g.userData, { guns, radars: [radar, dish], lights, flag, smoke, foam });
   return g;
 }
 

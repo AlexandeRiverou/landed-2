@@ -7,7 +7,7 @@ import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
-import { waterLine } from './world.js';
+import { waterLine, heightAt } from './world.js';
 import { MAX_LIVES, TUCK } from './player.js';
 import { mkSiege } from './planetboss.js';
 
@@ -651,11 +651,44 @@ function shuffle(list) {
 function bossSpot(G, def) {
   if (!def.ground) return pointAhead(G, 420, 560, 0.4, 70, 110);
   if (G.zones.current.noGround) return null;
+  if (def.sea) return seaSpot(G);
   const flat = (x, z) => G.enemies.isGentleGround(x, z) && [[15, 0], [-15, 0], [0, 15], [0, -15]].every(([dx, dz]) => G.enemies.isGentleGround(x + dx, z + dz));
   for (let k = 0; k < 80; k++) {
     const s = pointAhead(G, 380, 750, 1.1);
     const g = G.terrain.surfaceHeight(s.x, s.z);
     if (g > waterLine() + 2 && flat(s.x, s.z)) return s.setY(g);
+  }
+  return null;
+}
+
+// Where the carrier appears: open water ahead, deep enough SEA_CLEAR m all round (it's 230 m long). Null when there's none.
+const SEA_CLEAR = 150;
+function seaSpot(G) {
+  const deep = (x, z) => G.terrain.surfaceHeight(x, z) < waterLine() - 4;
+  for (let k = 0; k < 80; k++) {
+    const s = pointAhead(G, 450, 800, 1.1);
+    if (!deep(s.x, s.z)) continue;
+    let ok = true;
+    for (let a = 0; a < 8 && ok; a++) ok = deep(s.x + Math.cos(a * Math.PI / 4) * SEA_CLEAR, s.z + Math.sin(a * Math.PI / 4) * SEA_CLEAR);
+    if (ok) return s.setY(waterLine());
+  }
+  return null;
+}
+
+// Open sea anywhere round you (the developer menu's carrier): rings out to `maxR` m, the nearest deep, clear spot first.
+// It reads the world's height function, not the built chunks: right after a zone change those still hold the old land.
+export function findOpenSea(G, maxR = 6000) {
+  const deep = (x, z) => heightAt(x, z) < waterLine() - 4;
+  const p = G.player.pos;
+  for (let r = 500; r <= maxR; r += 250) {
+    const n = Math.ceil(r / 60);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      if (!deep(x, z)) continue;
+      let ok = true;
+      for (let b = 0; b < 8 && ok; b++) ok = deep(x + Math.cos(b * Math.PI / 4) * SEA_CLEAR, z + Math.sin(b * Math.PI / 4) * SEA_CLEAR);
+      if (ok) return new THREE.Vector3(x, waterLine(), z);
+    }
   }
   return null;
 }
@@ -674,7 +707,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
     for (const e of list) { maxHp += e.maxHp; if (!e.dead) hp += Math.max(0, e.hp); }
     const all = (chase) => alive().length > 0 && alive().every((e) => e.chase === chase);
     // Lost you: the bar dims. Coming back: nothing. Waiting at the standoff: it's your move.
-    return { name, hp, maxHp, enraged: alive().some((e) => e.enraged), away: all('loose'), note: all('loose') ? 'lost you' : all('wait') ? 'your move' : '' };
+    return { name, hp, maxHp, long: !!def.long, enraged: alive().some((e) => e.enraged), away: all('loose'), note: all('loose') ? 'lost you' : all('wait') ? 'your move' : '' };
   };
   G.ui.bossBar(bar());
   G.ui.notify(`⚠ BOSS INCOMING: ${name}!${M ? ` ${M.text}` : ''}${duo ? ' There are TWO of them.' : ''}`, 'bad', 5);
@@ -699,11 +732,11 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
       if (b.hp !== this.lastHp) { if (this.lastHp !== undefined) this.progressed = true; this.lastHp = b.hp; }
       return alive().length ? null : 'done';
     },
-    grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } },
+    grow(f) { const k = Math.min(f, 1.4); for (const e of alive()) if (!e.def.sea) { e.radius *= k; e.mesh.scale.multiplyScalar(k); } }, // a carrier is big enough
     // A boss on a break isn't pulled at all, an engaged one never closer than its standoff (the dug-in fort: as ever).
     approach(G, f) {
       for (const e of alive()) {
-        if (e.chase) continue;
+        if (e.chase || e.def.sea) continue; // a ship can't be dragged over land
         const d = e.pos.distanceTo(G.player.pos);
         e.pos.lerp(G.player.pos, e.def.ground ? f * 0.6 : Math.min(f * 0.6, Math.max(0, 1 - bossStandoff(e.def) / Math.max(d, 1))));
       }
@@ -755,7 +788,7 @@ export class Objectives {
   makeBoss(kind = null, opts = null) {
     const G = this.G;
     let spot = null;
-    if (kind) spot = bossSpot(G, BOSSES[kind]);
+    if (kind) spot = opts?.spot || bossSpot(G, BOSSES[kind]); // the developer menu may bring its own
     else {
       if (!this.bossDeck.length) this.bossDeck = shuffle(Object.keys(BOSSES));
       for (let i = 0; i < this.bossDeck.length && !spot; i++) {

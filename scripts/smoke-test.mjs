@@ -628,6 +628,51 @@ try {
 
     // Every boss: spawns, fights for a while (attacks, summons, dashes), then falls and completes the objective.
     out.bosses = {};
+    // Flood calm land under 200 m of sea, the plane well above it (the carrier's turns). Callers restore amp and seaLevel.
+    const seaUp = () => {
+      const p = G.player;
+      Object.assign(G.world, { amp: 0.15, seaLevel: 200 });
+      G.terrain.rebuildAll();
+      p.pos.y = p.prevPos.y = 330;
+      step(30);
+    };
+    // HMS Overkill: a long bar; a bullet on the hull 90 m from its middle hits it (the hull boxes, not a sphere); a plane
+    // flown into the hull is lifted out over the deck; a deck gun shot off costs it 4% of its hull.
+    const carrierChecks = (e, afloat) => {
+      const p = G.player, V = p.pos.constructor, s = e.mesh.scale.x, r = { spawned: true, afloat, maxHp: e.maxHp };
+      r.longBar = document.getElementById('boss-bar').classList.contains('long');
+      e.mesh.updateMatrixWorld();
+      const stern = e.mesh.localToWorld(new V(-2, 3, -26));
+      r.sternDist = Math.round(stern.distanceTo(e.pos));
+      while (p.bullets.length) p.removeBullet(0);
+      const hp0 = e.hp;
+      p.shootCd = 0; p.fire();
+      r.shots = p.bullets.length;
+      for (const b of p.bullets) { b.pos.copy(stern); b.vel.set(0, 0, 0); }
+      step(1);
+      r.hullHit = e.hp < hp0;
+      const deckY = e.pos.y + 5.6 * s;
+      p.pos.copy(e.mesh.localToWorld(new V(-2, 3, -10))); p.prevPos.copy(p.pos);
+      step(1);
+      r.bumpedAbove = +(p.pos.y - deckY).toFixed(1);
+      p.pos.y = p.prevPos.y = deckY + 150;
+      const gun = e.mesh.userData.parts.find((x) => x.name === 'gun'), hp1 = e.hp;
+      G.enemies.breakPart(e, gun);
+      r.gunCost = +((hp1 - e.hp) / e.maxHp).toFixed(3);
+      r.gunHidden = !gun.obj.visible;
+      // Another gun takes a few plain hits (no boss ×6) and leaves a wreck; the catapults launch two fighters that shoot
+      // out ahead of the bow and climb.
+      const gun2 = e.mesh.userData.parts.filter((x) => x.name === 'gun' && !x.broken)[0], at = gun2.obj.getWorldPosition(new V());
+      let hits = 0;
+      while (!gun2.broken && hits < 50) { G.enemies.damagePart(e, gun2, 1, at); hits++; }
+      Object.assign(r, { gunHits: hits, wreck: !!gun2.wreck?.visible });
+      G.enemies.list.filter((x) => x.type === 'fighter').forEach((x) => G.enemies.removeEnemy(x));
+      r.launched = G.enemies.launchFighters(e);
+      const jets = G.enemies.list.filter((x) => x.type === 'fighter'), y0 = jets.map((x) => x.pos.y);
+      step(15);
+      r.climbed = jets.length > 0 && jets.every((x, k) => x.pos.y > y0[k] + 2 && !x.dead);
+      return r;
+    };
     const startBoss = (kind, opts) => {
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
@@ -640,19 +685,27 @@ try {
       G.powerups.timer = 1e9;
       // The fort needs flat land: calm the mountains for its turn so the test never depends on the terrain roll.
       // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
-      const ground = window.BOSSES_FOR_TEST[kind].ground, { amp, seaLevel } = G.world;
-      if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
+      // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
+      const { ground, sea } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
+      if (sea) seaUp();
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed;
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
-      for (let i = 0; i < 30 * 10; i++) { G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(e.pos, 2, 1 / 30); step(1); }
+      let afloat = true;
+      for (let i = 0; i < 30 * 10; i++) {
+        G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(e.pos, 2, 1 / 30); step(1);
+        if (sea && Math.abs(e.pos.y - G.world.seaLevel) > 0.01) afloat = false;
+      }
       const attacks = e.attacks;
+      if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
       if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    if (!out.carrier) out.carrier = { spawned: false };
     // Lead bosses (the octopus & co.) hold a slot in front of you while you just fly on. Over calm land, so a
     // mountain range can't hold one back; called off rather than beaten, so no extra win reshapes the world.
     out.leadBosses = {};
@@ -707,6 +760,8 @@ try {
       try {
         for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
           tidy();
+          const land = def.sea && { amp: G.world.amp, seaLevel: G.world.seaLevel };
+          if (def.sea) seaUp(); // the carrier needs open sea
           G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
           const [e] = startBoss(kind, { mod: null, duo: false });
           const prev = e.pos.clone(), f = new V(), side = new V(), track = [];
@@ -762,6 +817,7 @@ try {
           S.attacks = e.attacks; // context when a signature is missing
           M.kinds[kind] = S;
           end();
+          if (land) { Object.assign(G.world, land); G.terrain.rebuildAll(); step(30); }
         }
       } finally {
         G.enemies.warn = warn;
@@ -1266,7 +1322,11 @@ try {
       const y0 = p.pos.y;
       P.lowT = 0; p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) + 5;
       const s2 = G.score; P.daredevil(TINY.pay + 0.05); tiny.low = G.score - s2;
-      P.lowT = 0; p.pos.y += 300;
+      // High up: 300 m over the ground, or halfway to the roof in a cave, tunnel or the reef (a boss test's extra win can
+      // move the run on a zone, and 300 m up in the caverns is inside the rock, which counts as low).
+      const roof = G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y);
+      P.lowT = 0; p.pos.y = Number.isFinite(roof) ? (p.pos.y + roof) / 2 : p.pos.y + 300;
+      Object.assign(tiny, { zone: G.zones.current.name, room: Number.isFinite(roof) ? Math.round(roof - p.pos.y) : null });
       const s3 = G.score; P.daredevil(TINY.pay + 0.05); tiny.high = G.score - s3;
       p.pos.y = y0;
       P.active.clear(); P.update(0);
@@ -2036,6 +2096,15 @@ try {
   await page.evaluate(() => window.G.devmenu.open()); // the chord path is covered above; reopen directly to keep this quick
   await page.click('#devmenu [data-boss="gooseQueen"]');
   report.devmenu.boss = await menu();
+  // HMS Overkill from the Dune Sea: never King Drone instead (it finds open sea, or flies off to the Tropical Archipelago).
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.click('#devmenu [data-boss="carrier"]');
+  report.devmenu.carrier = await page.evaluate(() => {
+    const G = window.G, e = G.enemies.list.find((x) => x.boss);
+    return { boss: G.objectives.current?.boss || null, zone: G.zones.current.name, afloat: !!e && Math.abs(e.pos.y - G.world.seaLevel) < 0.01, dist: e ? Math.round(e.pos.distanceTo(G.player.pos)) : null };
+  });
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.click('#devmenu [data-zone="3"]');
   await page.evaluate(() => window.G.devmenu.open());
   await page.click('#devmenu [data-objective="stars"]');
   report.devmenu.objective = await menu();
@@ -4001,7 +4070,8 @@ try {
     [report.ghostLanded === false, 'landing: Ghost Mode skims the ground instead of landing'],
     [report.pads.landed && /🌾 0\.0 \//.test(report.pads.dusting), 'landing: taxiing on the ground is not crop dusting'],
     [report.pads.groundKept && report.pads.whileRolling === 1 && report.pads.max === 1 && report.pads.after === 0, 'runways that end flatten no ground for good: only under a plane rolling on it, gone once it leaves'],
-    [Object.keys(report.bosses).length >= 15, 'at least 15 bosses'],
+    [Object.keys(report.bosses).length >= 16, 'at least 16 bosses'],
+    [(({ carrier: c }) => c.spawned && c.afloat && c.longBar && c.maxHp >= 300 && c.sternDist >= 80 && c.shots > 0 && c.hullHit && c.bumpedAbove >= 4 && c.gunCost === 0.04 && c.gunHidden && c.gunHits >= 3 && c.gunHits <= 8 && c.wreck && c.launched === 2 && c.climbed)(report), `HMS Overkill: spawns on open sea and stays afloat, a long health bar (300+ hp), its hull boxes take hits 80 m+ from its middle, a plane flown into the hull is lifted out over the deck, a deck gun shot off costs it 4% and takes only a few hits (3 to 8), leaving a wreck, and its catapults launch two climbing fighters (${JSON.stringify(report.carrier)})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
@@ -4011,7 +4081,7 @@ try {
         jellyEmpress: (s) => s.maxSpeed > 35 && s.blobs > 0, mineMother: (s) => s.ring >= 6 && s.angles >= 6,
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
-        fortGrump: (s) => /udu/.test(s.shields), octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
+        fortGrump: (s) => /udu/.test(s.shields), carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
@@ -4150,6 +4220,7 @@ try {
     [!report.devmenu.earlyOpen && report.devmenu.opened.open && report.devmenu.opened.paused && !report.devmenu.opened.space, 'dev menu: holding 1 + 0 for 3 s (not 2) opens it, pauses, and swallows gameplay keys'],
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
+    [report.devmenu.carrier.boss === 'carrier' && report.devmenu.carrier.afloat, `dev menu: HMS Overkill from a desert zone still comes, on open sea, never King Drone instead (${JSON.stringify(report.devmenu.carrier)})`],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
     [!S.sixClicks && S.title.found && S.title.rolled && /Secret found: Title Tinkerer \(1\/10\)/.test(S.title.toast) && /Secrets: 1\/10/.test(S.title.count), 'secrets: 7 clicks on the title (not 6) find one, with a toast and the title card counter'],
     [S.whilePaused === 0 && S.whileLocked === 0, 'secrets: typed words and the Konami code are ignored while paused or in the dev menu'],

@@ -14,6 +14,9 @@ const TAU = Math.PI * 2;
 
 // A special manoeuvre (teleport, dive, joust, hop, lane snap, jet) may only start engaged, in front-ish, not on a rematch opener.
 export const special = (e) => !e.chase && !e.behind && !e.fresh;
+// The carrier's steaming: water must be `depth` m deep `probe` m past its bow; it turns at `turn` rad/s. flakDmg: a
+// flak burst's damage within its 16 m sphere.
+export const STEAM = { probe: 120, depth: 4, turn: 0.3, flakDmg: 7 };
 
 // ---------- small helpers ----------
 
@@ -119,6 +122,8 @@ const GEO = {
   sphere: new THREE.SphereGeometry(1, 16, 12),
 };
 const POOL_MAX = 24;
+// A flak shell in flight (see Hazards.warn `from`): a dark slug with a hot orange nose glow.
+const SHELL_GEO = new THREE.SphereGeometry(2.2, 8, 6), SHELL_MAT = new THREE.MeshBasicMaterial({ color: '#ffb03a' });
 // Translucent warning shapes: opacity eases 0.2 → 0.6 with a slow 2 Hz pulse (never a flash), then `onFire` runs.
 // Visual-only clouds (`cloud`) fade out instead. Meshes are pooled per shape; materials stay with their mesh.
 export class Hazards {
@@ -131,7 +136,9 @@ export class Hazards {
   }
 
   // dir: a column stands along this unit vector (default straight up), e.g. a planet's surface normal.
-  warn(pos, r, color, t, onFire, { shape = 'disc', owner = null, h = 1, dir = null } = {}) {
+  // from: a shell flies there from this point over the warning time, on an arc, trailing smoke (the carrier's flak), and
+  // bursts as the hazard fires.
+  warn(pos, r, color, t, onFire, { shape = 'disc', owner = null, h = 1, dir = null, from = null } = {}) {
     const mesh = this.mesh(shape);
     mesh.material.color.set(color);
     mesh.material.opacity = 0.2;
@@ -139,6 +146,12 @@ export class Hazards {
     if (dir) mesh.quaternion.setFromUnitVectors(Y, dir); else mesh.quaternion.identity(); // pooled: undo a last tilt
     mesh.scale.set(r, shape === 'column' ? h : r, r);
     const hz = { mesh, shape, pos: mesh.position, r, t: 0, T: t, onFire, owner, born: this.G.time };
+    if (from) {
+      hz.from = from.clone();
+      hz.shell = (this.shells ||= []).pop() || new THREE.Mesh(SHELL_GEO, SHELL_MAT);
+      hz.shell.position.copy(from);
+      this.G.scene.add(hz.shell);
+    }
     this.list.push(hz);
     return hz;
   }
@@ -157,6 +170,11 @@ export class Hazards {
       const k = Math.min(1, hz.t / hz.T);
       if (hz.fade) hz.mesh.material.opacity = 0.55 * (1 - k);
       else hz.mesh.material.opacity = (0.2 + 0.4 * k * k * (3 - 2 * k)) * (0.88 + 0.12 * Math.sin(hz.t * TAU * 2));
+      if (hz.shell) { // up and over: an arc as high as a third of the way
+        const sh = hz.shell.position.lerpVectors(hz.from, hz.pos, k);
+        sh.y += Math.sin(k * Math.PI) * hz.from.distanceTo(hz.pos) * 0.33;
+        if (Math.random() < dt * 30) this.G.fx.emit(sh, 1, { colors: ['#9aa0a6', '#c8ccd2'], speed: 3, life: 0.9, size: 5 });
+      }
       if (k < 1) continue;
       this.release(i);
       hz.onFire?.(hz);
@@ -167,6 +185,7 @@ export class Hazards {
     const hz = this.list[i];
     this.list.splice(i, 1);
     this.G.scene.remove(hz.mesh);
+    if (hz.shell) { this.G.scene.remove(hz.shell); this.shells.push(hz.shell); hz.shell = null; }
     const pool = this.pool[hz.shape];
     if (pool.length < POOL_MAX) pool.push(hz.mesh);
     else hz.mesh.material.dispose();
@@ -692,6 +711,47 @@ export const MOVES = {
         }, { shape: 'ring', owner: e });
       }
       G.audio.tone(120, 0.5, { type: 'sine', vol: 0.05, slide: 500, delay: 0.1 }); // the whistle on the way up
+    },
+  },
+
+  // HMS Overkill: steams slowly along open water, broadside on to you at first. When the water ahead runs out (it
+  // probes STEAM.probe m past its bow) it turns toward whichever side is open, and stops if neither is.
+  steam: {
+    step(en, e, c) {
+      const G = en.G, s = e.mesh.scale.x, m = e.mv ||= { yaw: null, turn: 0 };
+      if (m.yaw === null) { const f = flatFwd(c.p, _a); m.yaw = Math.atan2(-f.z, f.x); } // heading across your nose
+      const open = (yaw) => {
+        const d = 36 * s + STEAM.probe, x = e.pos.x + Math.sin(yaw) * d, z = e.pos.z + Math.cos(yaw) * d;
+        return G.terrain.surfaceHeight(x, z) < waterLine() - STEAM.depth;
+      };
+      let go = 1;
+      if (open(m.yaw)) m.turn = 0;
+      else {
+        if (!m.turn) m.turn = open(m.yaw + 0.7) ? 1 : open(m.yaw - 0.7) ? -1 : 1;
+        go = open(m.yaw + m.turn * 0.7) ? 0.4 : 0; // squeeze round a headland, or stop and turn on the spot
+      }
+      m.yaw += m.turn * STEAM.turn * c.dt;
+      e.vel.set(Math.sin(m.yaw), 0, Math.cos(m.yaw)).multiplyScalar(en.cruise(e) * go);
+      e.mesh.rotation.y = m.yaw;
+      return true;
+    },
+    // Flak: grey puffs mark spots along your path for 1.3 s, then burst (16 m, 12 hull).
+    // Flak: each deck gun still standing (or the island, with none left) lobs a shell that bursts where a grey sphere
+    // marks it, along your path.
+    flak(en, e, n) {
+      const G = en.G, p = G.player, guns = e.mesh.userData.guns.filter((g) => g.gun.visible);
+      for (let k = 0; k < n; k++) {
+        const at = p.pos.clone().addScaledVector(p.forward, p.speed * 1.3 + k * 35).add(_c.set(rand(-18, 18), rand(-10, 10), rand(-18, 18)));
+        const from = guns.length ? guns[k % guns.length].aim.getWorldPosition(new THREE.Vector3()) : e.pos.clone().setY(e.pos.y + 14 * e.mesh.scale.x);
+        en.warn(at, 16, '#b8bcc4', 1.3, (hz) => {
+          G.fx.explosion(hz.pos);
+          G.fx.emit(hz.pos, 30, { colors: ['#6a6e74', '#9aa0a6'], speed: 14, life: 2.2, size: 12 }); // a flak puff hangs there
+          G.audio.noise(0.3, { vol: 0.15, freq: 900 });
+          if (!p.dead && p.pos.distanceTo(hz.pos) < 16) p.damage(STEAM.flakDmg);
+        }, { shape: 'sphere', owner: e, from });
+      }
+      G.audio.noise(0.15, { vol: 0.1, freq: 300 }); // the guns' thump
+      G.audio.tone(900, 0.4, { type: 'sine', vol: 0.04, slide: -500 });
     },
   },
 

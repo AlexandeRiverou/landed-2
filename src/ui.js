@@ -120,6 +120,7 @@ export class UI {
     if (!b) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
     bar.classList.toggle('away', !!b.away); // dimmed while it has lost you
+    bar.classList.toggle('long', !!b.long); // a long bar for a long fight (the carrier)
     // Called every frame: only touch the DOM when the title changes. The note ("(lost you)", "(your move)") stays on one line.
     const title = `👑 ${b.name}${b.enraged ? ' (ENRAGED)' : ''}`, note = b.note ? `(${b.note})` : '';
     if (title !== this.bossTitle || note !== this.bossNote) {

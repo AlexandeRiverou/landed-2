@@ -2,7 +2,7 @@
 // in each top corner). Jump to any zone, boss or objective, grab power-ups, and cheat. The game pauses while it's open.
 import { ZONES } from './zones.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
-import { OBJECTIVE_TYPES } from './objectives.js';
+import { OBJECTIVE_TYPES, findOpenSea } from './objectives.js';
 import { POWERUPS } from './powerups.js';
 import { xpForLevel } from './progression.js';
 import { SECRETS } from './secrets.js';
@@ -239,11 +239,26 @@ export class DevMenu {
     const G = this.G, def = BOSSES[kind];
     this.clearObjective();
     const duo = this.duo.checked && !def.ground; // the fort never comes as twins
-    const obj = G.objectives.makeBoss(kind, { mod: this.mod.value || null, duo });
+    const obj = G.objectives.makeBoss(kind, { mod: this.mod.value || null, duo, spot: def.sea ? this.toOpenSea() : null });
     G.objectives.start(obj, 'boss');
-    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs flat land), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
+    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs ${def.sea ? 'open sea' : 'flat land'}), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
     else if (this.duo.checked && !duo) G.ui.notify(`${def.short} doesn't do twins. Just the one.`, 'info', 3, 2);
     this.close();
+  }
+
+  // The carrier needs open sea: find some round you (or, with none in this zone, fly to the Tropical Archipelago and
+  // look there), and put you 600 m off it, facing it. Returns where it goes, or null (then King Drone stands in).
+  toOpenSea() {
+    const G = this.G, p = G.player;
+    let spot = G.zones.current.noGround ? null : findOpenSea(G);
+    if (!spot) {
+      const i = ZONES.findIndex((z) => z.name === 'Tropical Archipelago');
+      if (i >= 0 && i !== G.zones.index) { G.zones.enter(i); G.zones.sinceZone = 0; spot = findOpenSea(G); }
+    }
+    if (!spot) return null;
+    const dx = spot.x - p.pos.x, dz = spot.z - p.pos.z, d = Math.hypot(dx, dz), back = Math.max(0, d - 600);
+    p.spawn(p.pos.x + (dx / d) * back, p.pos.z + (dz / d) * back, Math.atan2(-dx / d, -dz / d));
+    return spot;
   }
 
   startSiege() {

@@ -240,6 +240,10 @@ html, body {
 #boss-bar.away .track { opacity: 0.45; }
 #boss-bar.away #boss-name { color: #9a5560; }
 #boss-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff4d5e, #ff9a3a); transition: width 0.15s; }
+/* The carrier's long fight gets a long bar, with a notch every 10%. */
+#boss-bar.long { width: min(720px, 80vw); }
+#boss-bar.long .track { height: 18px; position: relative; }
+#boss-bar.long .track::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(0, 0, 0, 0.35) calc(10% - 2px) 10%); pointer-events: none; }
 
 #marker { position: absolute; transform: translate(-50%, -50%); display: none; text-align: center; }
 #marker .diamond {
@@ -421,6 +425,7 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #rank { display: none; }
   /* Boss bar and success card: a full-width strip under the two top panels, above the messages. */
   #boss-bar, #banner { top: 172px; bottom: auto; left: 8px; right: 8px; width: auto; transform: none; padding: 4px 8px; }
+  #boss-bar.long { width: auto; }
   #banner { z-index: 1; }
   #banner:not(.show) { transform: translateX(120%); }
   #boss-name { font-size: 12px; }
