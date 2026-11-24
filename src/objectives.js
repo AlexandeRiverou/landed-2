@@ -770,6 +770,33 @@ const TYPES = [
 ];
 export const OBJECTIVE_TYPES = TYPES.map((t) => t[0]);
 
+// Objectives that play alike share a family, so a "different" pick can't be the same thing again in new paint.
+// Types not listed are their own family.
+const FAMILY = {};
+for (const [fam, types] of Object.entries({
+  hoops: ['hoop', 'tiny', 'timed', 'moving', 'shrink', 'searchlight'],
+  rings: ['chain', 'spiral', 'stairs', 'dive', 'trial', 'race', 'bomb'],
+  collect: ['stars', 'balloons', 'trail', 'constellation', 'meteors'],
+  stunts: ['loop', 'inverted', 'roll'],
+  fights: ['hunt', 'pest', 'survive'],
+})) for (const t of types) FAMILY[t] = fam;
+export const familyOf = (type) => FAMILY[type] || type;
+const RECENT = 6;        // the last 6 objective types are never picked again
+const FAMILY_WEIGHT = 0.3; // a family seen 2 or 3 objectives ago is picked less often
+
+// Next objective from the zone's eligible types: never a recent type, never the last one's family, and a family
+// from just before that down-weighted. Each rule relaxes in turn if it would leave nothing to pick.
+export function pickType(eligible, recent) {
+  const played = recent.filter((t) => t !== 'boss');
+  const lastFam = played.length ? familyOf(played[0]) : null;
+  const nearFams = new Set(played.slice(1, 3).map(familyOf));
+  const fresh = eligible.filter((t) => !played.includes(t[0]));
+  const pool = [fresh.filter((t) => familyOf(t[0]) !== lastFam), fresh, eligible.filter((t) => t[0] !== played[0]), eligible]
+    .find((p) => p.length);
+  if (!pool) return null;
+  return weightedPick(pool, (t) => t[1] * (nearFams.has(familyOf(t[0])) ? FAMILY_WEIGHT : 1));
+}
+
 export class Objectives {
   constructor(G) {
     this.G = G;
@@ -814,8 +841,8 @@ export class Objectives {
       this.pendingBoss = false;
       return this.start(this.makeBoss(), 'boss');
     }
-    const pool = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => !this.recent.includes(t[0]) && G.zones.allowsObjective(t[0]));
-    const [type, , make] = weightedPick(pool, (t) => t[1]);
+    const eligible = this.completed === 0 ? TYPES.filter((t) => t[0] === 'hoop') : TYPES.filter((t) => G.zones.allowsObjective(t[0]));
+    const [type, , make] = pickType(eligible, this.recent) || TYPES[0];
     this.start(make(G), type);
   }
 
@@ -864,7 +891,7 @@ export class Objectives {
 
   start(obj, type) {
     const G = this.G;
-    this.recent = [type, ...this.recent].slice(0, 4);
+    if (type !== 'boss') this.recent = [type, ...this.recent].slice(0, RECENT); // a boss doesn't push a type out
     this.current = obj;
     obj.par ??= parFor(obj, type); // an objective may bring its own (the world boss's fight is longer)
     G.persuasion.reset(obj);
