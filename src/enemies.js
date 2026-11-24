@@ -270,7 +270,7 @@ export const BOSSES = {
   // Sea boss (sea: true): spawns on open water ahead, steams along it and never leaves it. Solid hull boxes (`boxes`, model
   // units) take the hits and bump planes, a long health bar (`long`), and no twins or breakaways (ground: true).
   carrier: {
-    make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 14.9, crownZ: 6.5, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 25,
+    make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 13.8, crownZ: 7.1, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 25,
     face: 'none', ground: true, sea: true, boxes: CARRIER_HULL, markerUp: 70, long: true,
     name: 'HMS Overkill, the Unsinkable Aircraft Carrier', short: 'HMS Overkill', noun: 'HMS Overkill',
     move: 'steam',
@@ -363,6 +363,9 @@ const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {shor
 const COMING_BACK = ['{short} is back for round two!', 'Break\'s over! {short} is coming back.', '{short} wants a rematch!'];
 const WAITING = ['{short} is waiting for you. Your move.', '{short} is hovering menacingly. From a polite distance.', '{short} saved you a seat. Round two starts when you say so.'];
 const TOAST_GAP = 10; // s between breakaway toasts, so twins don't double up
+
+// Weak-point marker colours (see Enemies.animateMark).
+const MARK_WHITE = new THREE.Color('#ffffff'), MARK_HALO = new THREE.Color('#ff7a1a');
 
 export class Enemies {
   constructor(G) {
@@ -1184,6 +1187,7 @@ export class Enemies {
     const G = this.G;
     e.hp -= dmg * part.mult;
     if (part.mult > 1 || part.counted) { // counted: a planet gadget, whose every hit drains the bar whatever its mult
+      if (part.mark) part.hitT = 0.3; // the marker flashes white
       G.fx.sparkle(pos, '#ffd23a');
       G.fx.emit(pos, 12, { colors: ['#ffffff', '#ffd23a'], speed: 45, life: 0.4, size: 5 });
       G.audio.tone(1500, 0.07, { type: 'triangle', vol: 0.05 });
@@ -1561,9 +1565,23 @@ export class Enemies {
     e.mesh.quaternion.copy(p.quat).multiply(FLIP); // models face +Z, the plane flies toward -Z
   }
 
+  // A weak point's target marker (see weak() in models.js): the halo breathes, the gyro ring tumbles, the reticle faces
+  // you and turns; a hit (hitT) flashes it all white, swells the halo and snaps the chevrons in.
+  animateMark(part, t, dt) {
+    const m = part.mark, k = Math.sin(t * 5), hit = part.hitT > 0 ? part.hitT / 0.3 : 0;
+    part.hitT = Math.max(0, part.hitT - dt);
+    m.halo.material.opacity = 0.26 + 0.12 * k + 0.4 * hit;
+    m.halo.scale.setScalar(part.r * (1.3 + 0.1 * k + 0.35 * hit));
+    m.halo.material.color.copy(hit ? MARK_WHITE : MARK_HALO);
+    m.gyro.rotation.x = t * 1.7; m.gyro.rotation.y = t * 1.1;
+    m.reticle.lookAt(this.G.player.pos);
+    m.spin.rotation.z = t * 0.8;
+    m.spin.scale.setScalar(m.size * (1 + 0.06 * Math.sin(t * 3) - 0.25 * hit));
+  }
+
   animate(e, dt) {
     const u = e.mesh.userData;
-    if (u.parts) for (const part of u.parts) if (part.glow) { const k = Math.sin(e.t * 6); part.glow.material.opacity = 0.45 + 0.25 * k; part.glow.scale.setScalar(1 + 0.12 * k); }
+    if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
     if (u.wings) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
@@ -1571,7 +1589,15 @@ export class Enemies {
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
     if (u.barrel) u.barrel.lookAt(this.G.player.pos);
     if (u.guns) for (const g of u.guns) g.aim.lookAt(this.G.player.pos);
-    if (u.radar) u.radar.rotation.y += dt * 2;
+    if (u.radars) u.radars.forEach((r, k) => { r.rotation.y += dt * (k ? -3 : 2); });
+    if (u.flag) u.flag.rotation.y = Math.sin(e.t * 7) * 0.25;
+    if (u.foam) u.foam.opacity = 0.45 + 0.12 * Math.sin(e.t * 2.5);
+    if (u.smoke) u.smoke.forEach((m, k) => { // funnel smoke: each puff rises 9 units, swelling and fading, then starts again
+      const f = (e.t * 0.35 + k / u.smoke.length) % 1;
+      m.position.set(5.4 - f * 2, 18 + f * 9, -0.6 - f * 4);
+      m.scale.setScalar(0.8 + f * 2.2);
+      m.material.opacity = 0.55 * (1 - f);
+    });
     if (u.legs) u.legs.forEach((l, k) => { l.rotation.x = Math.sin(e.t * 8 + k * 1.3) * 0.3; });
     if (u.claws) {
       e.snap = Math.max(0, (e.snap || 0) - dt);

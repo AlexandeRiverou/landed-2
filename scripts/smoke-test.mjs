@@ -1311,7 +1311,11 @@ try {
       const y0 = p.pos.y;
       P.lowT = 0; p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) + 5;
       const s2 = G.score; P.daredevil(TINY.pay + 0.05); tiny.low = G.score - s2;
-      P.lowT = 0; p.pos.y += 300;
+      // High up: 300 m over the ground, or halfway to the roof in a cave, tunnel or the reef (a boss test's extra win can
+      // move the run on a zone, and 300 m up in the caverns is inside the rock, which counts as low).
+      const roof = G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y);
+      P.lowT = 0; p.pos.y = Number.isFinite(roof) ? (p.pos.y + roof) / 2 : p.pos.y + 300;
+      Object.assign(tiny, { zone: G.zones.current.name, room: Number.isFinite(roof) ? Math.round(roof - p.pos.y) : null });
       const s3 = G.score; P.daredevil(TINY.pay + 0.05); tiny.high = G.score - s3;
       p.pos.y = y0;
       P.active.clear(); P.update(0);

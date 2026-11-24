@@ -292,7 +292,12 @@ doesn't by itself, but flying on from where it put you does.
 - HMS Overkill the aircraft carrier (a sea boss; only where there's open water): a 230 m ship that steams along the
   sea with six deck guns (broadsides), flak bursts at marked grey spheres and a rattling island gun. It has 300 hp and
   a long health bar: shoot the guns off (4% each) and hit the glowing bridge. Its hull is solid: fly into it and
-  you're bumped up over the deck. Minions and a deck landing come later.
+  you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
+  an angled landing deck, catapults and parked jets, an island with a funnel that smokes, radars, blinking lights and
+  a flag, and a foaming wake. Minions and a deck landing come later.
+- Weak spots (on bosses and enemies alike) wear a target marker: an orange halo that breathes, a tumbling gyro ring
+  and a gold reticle with four red chevrons that always faces you. A hit flashes the halo white and snaps the reticle
+  in.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
   Every tentacle shot off means fewer orbs.
 - Captain Clawdia the Sky Crab (a lead boss): snaps sideways between lanes in front of you. Bubble streams, pincer
