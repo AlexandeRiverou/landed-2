@@ -173,7 +173,9 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
   barrel roll through it, or shoot one kite to snap the string. Only one pair at a time.
 - **Clingy Moth:** it latches onto your wing and drains your boost and hull. Any stunt shakes it off.
 
-**Land enemies** (TYPES `lands` in `src/enemies.js`) only turn up in their own land:
+**Land enemies** (TYPES `lands` in `src/enemies.js`) only turn up in their own land, and every land has at least
+one (Grumbleglobe has its Grumblings). Each uses one of three shared moves (TYPES `act`): **swoop** (like Ember Bats),
+**ambush** (like Magma Spitters) or **charge** (like Comet Chargers), with its own model, colours and numbers:
 
 - **Ember Bats** (Volcano Land): basalt bats with glowing lava veins, in threes. They circle ahead of you trailing
   sparks; one at a time stops, shivers and chirps, then swoops into you (12 hull).
@@ -182,7 +184,17 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
   sinks again. Shoot it while it's up; its glowing mouth is the weak point.
 - **Comet Charger** (Low Orbit, Meteor Belt, Gas Giant, The Moon): a rock with a cyan thruster and one red eye. It
   holds a spot off to one side ahead of you; when its thruster and eye swell (1.1 s, a rising hum) it locks on to
-  where you'll be and charges at 150 m/s (24 hull). Turn or climb when it lights up.
+  where you'll be and charges at 150 m/s (24 hull). Turn or climb when it lights up. Also in Planet Pebble and Ringworld.
+- **Swoopers** (in threes or fours; one at a time puffs up, then dives into you): **Flying Squirrels** (Meadowlands,
+  Autumn Woods, Giant's Garden, Ringworld; 12 hull), **Hail Sprites** (Frozen Peaks, Hollow Peaks, Stratosphere;
+  10 hull), **Crystal Bats** (Crystal Caverns, Alien World; 2 hits each, 12 hull), **Glitch Bugs** (Metropolis, Neon
+  Grid, Blockland; 12 hull).
+- **Ambushers** (hide under the ground, a glowing ring gives them away, pop up and spit a 3-shot fan; safe from
+  bullets while under): **Spore Popper** (Mushroom Forest, Alien World), **Sand Noodle** (Canyon Country, Dune Sea,
+  Salt Mirror, Mars), **Gumdrop Popper** (Candy Kingdom).
+- **Chargers** (glow and hum, then ram where you're going): **Icicle Lancer** (Frozen Peaks, Hollow Peaks; 26 hull),
+  **Swordfish** (Tropical Archipelago, Sunken Reef; 24 hull), **Dragonling** (Princess Kingdom, Cloud Kingdom, Sky
+  Islands; 24 hull, two at most).
 
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
 colours, props, sky, weather and music mood. There are 30, in order:

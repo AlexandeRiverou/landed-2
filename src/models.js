@@ -903,6 +903,7 @@ export function makeMagmaSpitter(hat) {
   g.userData.body = body;
   g.userData.ring = ring;
   g.userData.cracks = crack; // brightens before it spits
+  heat(g, '#ff5a14', '#ffd947');
   if (hat) partyHat(body, 8);
   return g;
 }
@@ -924,6 +925,233 @@ export function makeCometCharger(hat) {
   g.userData.flame = flame;
   g.userData.eye = eye;
   if (hat) partyHat(g, 4.6);
+  return g;
+}
+
+// ---- More land enemies (TYPES `lands` in enemies.js). Each one wears one of three moves (TYPES `act`):
+// swoop: a small flapping swarm critter (userData.wings optional); ambush: hides under the ground and pops up to fire
+// (userData.body, ring, cracks, cool, hot); charge: winds up and rams (userData.jet, flame, eye).
+
+// An ambusher's glowing bits warm from `cool` to `hot` before it fires (enemies.js magmaSpitter()).
+function heat(g, cool, hot) {
+  g.userData.cool = new THREE.Color(cool);
+  g.userData.hot = new THREE.Color(hot);
+}
+
+// A pair of flapping wings, each a group (rotated about z by animate()) holding `parts(w, sd)`.
+function flappers(g, parts) {
+  g.userData.wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    parts(w, sd);
+    g.add(w);
+    return w;
+  });
+}
+
+// A pair of eyes (x = ±ex) with pupils, at height y, front z. The first eye is the weak point when `weakR` is set.
+function eyes(g, ex, y, z, r, white = '#ffffff', pupil = '#111111', weakR = 0) {
+  const out = [-ex, ex].map((x) => {
+    const eye = add(g, Sph(r, 8, 6), basic(white), { x, y, z });
+    add(g, Sph(r * 0.5, 6, 4), basic(pupil), { x, y, z: z + r * 0.7 });
+    return eye;
+  });
+  if (weakR) for (const e of out) weak(g, e, weakR);
+  return out;
+}
+
+// Flying Squirrel (Meadowlands, Autumn Woods, Giant's Garden, Ringworld): a fluffy glider with a big tail, in fours.
+export function makeFlyingSquirrel(hat) {
+  const g = new THREE.Group(), fur = lam('#9a5b2e'), belly = lam('#e8c49a'), skin = lam('#7a4422', { side: THREE.DoubleSide });
+  add(g, Sph(1.4, 8, 6), fur, { s: [1, 0.8, 1.4] });
+  add(g, Sph(1, 7, 5), belly, { y: -0.4, z: 0.3, s: [1, 0.6, 1.2] });
+  add(g, Sph(1, 7, 5), fur, { y: 0.5, z: 1.7 }); // head
+  for (const x of [-0.55, 0.55]) add(g, Cone(0.35, 0.8, 4), fur, { x, y: 1.4, z: 1.6 });
+  eyes(g, 0.4, 0.8, 2.5, 0.3);
+  add(g, Box(0.35, 0.3, 0.3), lam('#3a2216'), { y: 0.35, z: 2.7 }); // nose
+  add(g, Cyl(0.7, 0.3, 3.2, 6), fur, { y: 1, z: -2.4, rx: -1.1 }); // the bushy tail
+  add(g, Sph(0.9, 6, 5), belly, { y: 2.2, z: -3.3 });
+  flappers(g, (w, sd) => {
+    add(w, Box(2.8, 0.12, 2.4), skin, { x: sd * 2, y: -0.1 }); // the gliding flap
+    add(w, Sph(0.3, 5, 4), fur, { x: sd * 3.4, z: 1.1 });
+    add(w, Sph(0.3, 5, 4), fur, { x: sd * 3.4, z: -1.1 });
+  });
+  if (hat) partyHat(g, 2);
+  return g;
+}
+
+// Crystal Bat (Crystal Caverns, Alien World): an amethyst bat with shard wings that glints as it flies.
+export function makeCrystalBat(hat) {
+  const g = new THREE.Group(), gem = lam('#7a4ad8', { emissive: '#2a0a5a' }), shard = lam('#c49aff', { emissive: '#4a1a8a', side: THREE.DoubleSide });
+  add(g, Oct(1.6), gem, { s: [1, 0.8, 1.4] });
+  add(g, Oct(1), gem, { y: 0.6, z: 1.6 });
+  for (const x of [-0.5, 0.5]) add(g, Cone(0.35, 1.4, 4), shard, { x, y: 1.6, z: 1.5, rz: -x * 0.5 });
+  eyes(g, 0.4, 0.8, 2.3, 0.28, '#e0fff8', '#0a0a1a');
+  flappers(g, (w, sd) => {
+    for (let k = 0; k < 3; k++) add(w, Cone(0.7, 2.6, 4), shard, { x: sd * (1.4 + k * 1.2), y: -0.2 * k, rz: -sd * (PI / 2), ry: 0.3 * k });
+  });
+  if (hat) partyHat(g, 2);
+  return g;
+}
+
+// Hail Sprite (Frozen Peaks, Hollow Peaks, Stratosphere): a grumpy hailstone with frost wings.
+export function makeHailSprite(hat) {
+  const g = new THREE.Group(), ice = lam('#dff4ff', { emissive: '#3a6a8a' }), frost = lam('#9ad8ff', { transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+  add(g, Ico(1.6, 0), ice);
+  for (const [x, y, z] of [[1.2, 0.8, -0.4], [-1.1, -0.6, -0.3], [0.2, 1.3, -0.9]]) add(g, Cone(0.35, 1.2, 4), ice, { x, y, z, rx: y, rz: -x });
+  eyes(g, 0.55, 0.35, 1.3, 0.3, '#ffffff', '#1a3a5a');
+  add(g, Box(1.6, 0.25, 0.25), lam('#1a3a5a'), { y: 0.85, z: 1.4, rz: 0.15 }); // a frosty frown
+  flappers(g, (w, sd) => add(w, new THREE.CircleGeometry(1.5, 5), frost, { x: sd * 2.2, rx: -PI / 2 }));
+  if (hat) partyHat(g, 1.9);
+  return g;
+}
+
+// Glitch Bug (Metropolis, Neon Grid, Blockland): a buzzing neon cube whose side cubes stutter.
+export function makeGlitchBug(hat) {
+  const g = new THREE.Group(), core = lam('#1a1030'), neon = basic('#ff3ad0'), cyan = basic('#3af4ff');
+  add(g, Box(2.4, 2.4, 2.4), core);
+  for (const [x, y] of [[1.25, 1.25], [-1.25, 1.25], [1.25, -1.25], [-1.25, -1.25]]) add(g, Box(0.2, 0.2, 2.6), neon, { x, y }); // edges
+  const eye = add(g, Box(1.6, 0.6, 0.3), cyan, { y: 0.2, z: 1.3 }); // one wide visor
+  weak(g, eye, 1.2);
+  flappers(g, (w, sd) => {
+    add(w, Box(1, 1, 1), cyan, { x: sd * 2.2 });
+    add(w, Box(0.5, 0.5, 0.5), neon, { x: sd * 3.2, y: 0.5 });
+  });
+  if (hat) partyHat(g, 2.6);
+  return g;
+}
+
+// Spore Popper (Mushroom Forest, Alien World): a big glowing toadstool that hides underground, then pops up and puffs
+// spore balls. Its spots warm up before it puffs.
+export function makeSporePopper(hat) {
+  const g = new THREE.Group(), body = new THREE.Group();
+  const stem = lam('#efe2c8'), cap = lam('#8a2ad8'), spot = basic('#5affb0');
+  add(body, Cyl(2.2, 2.8, 5, 8), stem, { y: 2.5 });
+  add(body, new THREE.SphereGeometry(5, 12, 7, 0, PI * 2, 0, PI / 2), cap, { y: 4.6, s: [1, 0.7, 1] });
+  for (const [x, z] of [[2.5, 2.4], [-2.6, 2], [0.2, -3.2], [3.2, -1], [-2.8, -1.8], [0, 1]]) add(body, Sph(0.7, 6, 4), spot, { x, y: 6.4 + (Math.abs(x) < 1 ? 1.2 : 0), z });
+  const mouth = add(body, Sph(1.2, 8, 6), basic('#3a0a2a'), { y: 2.6, z: 2.3, s: [1, 0.7, 0.5] });
+  weak(g, mouth, 1.8);
+  eyes(body, 0.9, 4, 2.4, 0.5);
+  g.add(body);
+  const ring = add(g, Tor(4.5, 0.5, 5, 12), basic('#5affb0', { transparent: true, opacity: 0.7 }), { y: 0.3, rx: PI / 2 });
+  g.userData.body = body;
+  g.userData.ring = ring;
+  g.userData.cracks = spot;
+  heat(g, '#5affb0', '#f4ffd0');
+  if (hat) partyHat(body, 8.6);
+  return g;
+}
+
+// Sand Noodle (Canyon Country, Dune Sea, Salt Mirror, Mars): a segmented worm that bursts out of the ground, opens a
+// ring of teeth (its gullet glows) and spits rocks.
+export function makeSandNoodle(hat) {
+  const g = new THREE.Group(), body = new THREE.Group();
+  const hide = lam('#c49a5a'), band = lam('#8a6a3a'), tooth = lam('#fff4dc'), gullet = basic('#ff8a2a');
+  for (let k = 0; k < 4; k++) {
+    add(body, Cyl(3.2 - k * 0.2, 3.4 - k * 0.2, 1.8, 10), hide, { y: k * 1.9 });
+    add(body, Cyl(3.5 - k * 0.2, 3.5 - k * 0.2, 0.4, 10), band, { y: k * 1.9 + 0.9 });
+  }
+  add(body, Cyl(2.6, 3, 1, 10), hide, { y: 7.8 });
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * PI * 2;
+    add(body, Cone(0.45, 1.4, 4), tooth, { x: Math.cos(a) * 2.1, y: 8.6, z: Math.sin(a) * 2.1, rx: Math.sin(a) * 0.5, rz: -Math.cos(a) * 0.5 });
+  }
+  const mouth = add(body, Cyl(1.7, 1.7, 0.5, 10), gullet, { y: 8.6 });
+  weak(g, mouth, 2.2);
+  eyes(body, 1.6, 6.4, 2.7, 0.55, '#fff2c8', '#1a0a00');
+  for (const x of [-1.6, 1.6]) add(body, Sph(0.35, 6, 4), gullet, { x, y: 5.6, z: 2.9 }); // glowing cheeks, warm with the gullet
+  g.add(body);
+  const ring = add(g, Tor(4.5, 0.6, 5, 12), basic('#e8c47a', { transparent: true, opacity: 0.7 }), { y: 0.3, rx: PI / 2 });
+  g.userData.body = body;
+  g.userData.ring = ring;
+  g.userData.cracks = gullet;
+  heat(g, '#ff8a2a', '#fff0a0');
+  if (hat) partyHat(body, 10);
+  return g;
+}
+
+// Gumdrop Popper (Candy Kingdom): a sugared gumdrop that hides in the candy ground, then pops up and lobs jelly beans.
+export function makeGumdropPopper(hat) {
+  const g = new THREE.Group(), body = new THREE.Group();
+  const gum = lam('#ff4a8a', { emissive: '#5a0a2a' }), sugar = basic('#ffffff'), glow = basic('#ffd23a');
+  add(body, new THREE.SphereGeometry(5, 12, 8, 0, PI * 2, 0, PI / 2), gum, { y: 0.5, s: [1, 1.3, 1] });
+  add(body, Cyl(5, 5, 1, 12), gum, { y: 0 });
+  for (const [x, y, z] of [[2, 4, 3], [-2.5, 3, 3.2], [3.5, 2, -2], [-1, 5.6, -1], [-3.4, 2.4, -2.5], [1, 6, 1.2]]) add(body, Box(0.5, 0.5, 0.5), sugar, { x, y, z, ry: x, rx: y });
+  const mouth = add(body, Sph(1.3, 8, 6), glow, { y: 2.4, z: 4.3, s: [1, 0.6, 0.5] });
+  weak(g, mouth, 1.8);
+  eyes(body, 1.5, 4.4, 3.6, 0.6);
+  g.add(body);
+  const ring = add(g, Tor(4.5, 0.5, 5, 12), basic('#ff8ad0', { transparent: true, opacity: 0.7 }), { y: 0.3, rx: PI / 2 });
+  g.userData.body = body;
+  g.userData.ring = ring;
+  g.userData.cracks = glow;
+  heat(g, '#ffd23a', '#ffffff');
+  if (hat) partyHat(body, 7.6);
+  return g;
+}
+
+// Icicle Lancer (Frozen Peaks, Hollow Peaks): a long icicle with one blue eye and a frosty jet ring. It winds up,
+// then lances at you.
+export function makeIcicleLancer(hat) {
+  const g = new THREE.Group(), ice = lam('#cfefff', { emissive: '#2a4a6a' }), ice2 = lam('#9ad0f0');
+  add(g, Cone(2.4, 11, 6), ice, { z: 2.5, rx: PI / 2 });
+  for (const a of [0, 2.1, 4.2]) add(g, Cone(0.8, 4, 4), ice2, { x: Math.cos(a) * 2, y: Math.sin(a) * 2, z: -1.6, rx: -PI / 2 });
+  const eye = add(g, Sph(1, 10, 8), basic('#3ab8ff'), { y: 1.3, z: 1.2 });
+  add(g, Sph(0.45, 6, 4), basic('#0a1a2a'), { y: 1.3, z: 2.1 });
+  weak(g, eye, 1.1);
+  const jet = add(g, Tor(2, 0.45, 6, 14), basic('#e0fbff', { transparent: true, opacity: 0.85 }), { z: -3 });
+  const flame = add(g, Cone(1.7, 4.5, 8), basic('#bff4ff', { transparent: true, opacity: 0.5 }), { z: -5.4, rx: -PI / 2 });
+  g.userData.jet = jet;
+  g.userData.flame = flame;
+  g.userData.eye = eye;
+  if (hat) partyHat(g, 2.6);
+  return g;
+}
+
+// Swordfish (Tropical Archipelago, Sunken Reef): a sleek fish with a long sword. Its gills glow before it lunges.
+export function makeSwordfish(hat) {
+  const g = new THREE.Group(), skin = lam('#2a5a9a'), belly = lam('#cfe0f0'), fin = lam('#1a3a6a', { side: THREE.DoubleSide });
+  add(g, Sph(2.4, 10, 7), skin, { s: [0.8, 0.9, 2.2] });
+  add(g, Sph(2, 8, 6), belly, { y: -0.7, z: 0.6, s: [0.7, 0.5, 1.8] });
+  add(g, Cone(0.35, 7, 5), lam('#d8d0b8'), { z: 8, rx: PI / 2 }); // the sword
+  add(g, Cone(1.4, 3, 3), fin, { y: 2.6, z: -0.5, rx: -0.3 }); // dorsal fin
+  add(g, Cone(1.6, 2.6, 3), fin, { y: 1.4, z: -6.2, rx: -2.2 }); // tail, upper lobe
+  add(g, Cone(1.6, 2.6, 3), fin, { y: -1.4, z: -6.2, rx: 2.2 }); // lower lobe
+  const eye = add(g, Sph(0.7, 8, 6), basic('#ffe14a'), { x: 1.4, y: 0.6, z: 3 });
+  add(g, Sph(0.7, 8, 6), basic('#ffe14a'), { x: -1.4, y: 0.6, z: 3 });
+  weak(g, eye, 0.9);
+  const jet = add(g, Tor(1.8, 0.4, 6, 14), basic('#7af0ff', { transparent: true, opacity: 0.85 }), { z: 1.6 }); // glowing gills
+  const flame = add(g, Cone(1.5, 4, 8), basic('#bff8ff', { transparent: true, opacity: 0.45 }), { z: -8, rx: -PI / 2 }); // its wake
+  g.userData.jet = jet;
+  g.userData.flame = flame;
+  g.userData.eye = eye;
+  if (hat) partyHat(g, 2.4);
+  return g;
+}
+
+// Dragonling (Princess Kingdom, Cloud Kingdom, Sky Islands): a small pink dragon. The fire in its mouth swells, then it
+// rockets at you on its own tail flame. Flaps all the while.
+export function makeDragonling(hat) {
+  const g = new THREE.Group(), scale = lam('#e85aa0'), belly = lam('#ffd0e0'), wingMat = lam('#b83a7a', { side: THREE.DoubleSide });
+  add(g, Sph(2.2, 10, 7), scale, { s: [1, 0.9, 1.5] });
+  add(g, Sph(1.6, 8, 6), belly, { y: -0.7, z: 0.8, s: [0.9, 0.6, 1.2] });
+  add(g, Sph(1.5, 8, 6), scale, { y: 1.4, z: 3 }); // head
+  add(g, Box(1.4, 0.9, 1.6), scale, { y: 1, z: 4.4 }); // snout
+  for (const x of [-0.6, 0.6]) add(g, Cone(0.3, 1.4, 4), lam('#fff4dc'), { x, y: 2.8, z: 2.6, rx: -0.5 }); // horns
+  const eye = add(g, Sph(0.5, 8, 6), basic('#ffe14a'), { x: 0.75, y: 1.9, z: 4.1 });
+  add(g, Sph(0.5, 8, 6), basic('#ffe14a'), { x: -0.75, y: 1.9, z: 4.1 });
+  weak(g, eye, 0.8);
+  const mouth = add(g, Sph(0.7, 8, 6), basic('#ffb03a'), { y: 0.8, z: 5.2, s: [1, 0.6, 0.6] }); // the fire inside, swells as it winds up
+  add(g, Cone(0.9, 4, 6), scale, { z: -4, rx: -PI / 2 }); // tail
+  flappers(g, (w, sd) => {
+    add(w, new THREE.CircleGeometry(2.6, 3), wingMat, { x: sd * 3, y: 0.8, rx: -PI / 2, rz: sd > 0 ? 0 : PI });
+    add(w, Box(4.4, 0.25, 0.25), scale, { x: sd * 2.4, y: 0.9, z: 0.8 });
+  });
+  const jet = add(g, Tor(1.2, 0.4, 6, 12), basic('#ffb03a', { transparent: true, opacity: 0.85 }), { z: -6.2 });
+  const flame = add(g, Cone(1.2, 3.6, 8), basic('#ffd23a', { transparent: true, opacity: 0.55 }), { z: -7.8, rx: -PI / 2 });
+  g.userData.jet = jet;
+  g.userData.flame = flame;
+  g.userData.eye = mouth;
+  if (hat) partyHat(g, 3.4);
   return g;
 }
 
