@@ -174,6 +174,21 @@ try {
           res.applied++;
         } catch (e) { delete G.scene.add; res.errors.push(`${t.id}: ${e.message}`); }
       }
+      // The light pillar stands on the ground and reaches an objective floating far above it (cloud and island lands put
+      // the ground hundreds of metres down): its full-strength part (below the top 30% fade) passes the objective.
+      {
+        const beamT = TACTICS.find((t) => t.id === 'beam'), at = p.pos.clone();
+        const ground = Math.max(G.terrain.surfaceHeight(at.x, at.z), G.world.seaLevel);
+        at.y = ground + 1500;
+        const mark = [], add0 = G.scene.add;
+        G.scene.add = function (...o) { mark.push(...o); return add0.apply(this, o); };
+        const r = beamT.apply(G, { target: () => at }, P);
+        delete G.scene.add;
+        r.update(0.1);
+        const m = mark[0];
+        res.pillar = { onGround: Math.abs(m.position.y - ground) < 0.5, solidTop: Math.round(m.position.y + m.scale.y * 0.7), target: Math.round(at.y), faded: !!m.material.alphaMap };
+        r.dispose();
+      }
       res.leftovers = added.filter((o) => o.parent).map((o) => o.type);
       res.clean = card.childElementCount === cardKids && G.camPeek == null && G.ui.edgeArrow === 0 && p.wind.lengthSq() === 0;
       P.reset(null);
@@ -2768,6 +2783,15 @@ try {
       for (let k = 0; k < 30 * 5 && F2.phase !== 'count'; k++) step(1);
       step(1); // the opacity follows on the next frame: right under you the column is only a faint ghost
       htl.replant = { ghost: +obj.line.material.opacity.toFixed(2), phase: F2.phase, moved: +flat(obj.line.position, old).toFixed(1), under: +flat(obj.line.position, p.pos).toFixed(1), standing: Math.abs(obj.line.position.y - obj.line.scale.y / 2 - groundAt(G, obj.line.position.x, obj.line.position.z)) < 0.01 };
+      // Climb high above the ground (the old 300 m beacon stopped well below): the beacon stretches so its full-strength
+      // part (below the top fade) still passes you. Under 1100 m, so the Edge Of Space secret and the soft ceiling stay out of it.
+      const y0 = p.pos.y, g0 = groundAt(G, p.pos.x, p.pos.z);
+      p.pos.y = p.prevPos.y = Math.min(g0 + 600, 950);
+      htl.replant.climb = Math.round(p.pos.y - g0);
+      step(1);
+      htl.replant.passes = Math.round(obj.line.position.y - obj.line.scale.y / 2 + obj.line.scale.y * 0.7 - p.pos.y);
+      p.pos.y = p.prevPos.y = y0; // back down, so the checks below fly where they did
+      step(1);
       // The types each wave may send (sampled): wave 1 only drones, mines and gulls; new ones in waves 2 and 3.
       htl.mix = [1, 2, 3, 4, 5].map((n) => { F2.wave = n; const s = new Set(); for (let k = 0; k < 3000; k++) s.add(E.pickType(WAVES[n - 1].only)); return [...s]; });
       G.objectives.suspend();
@@ -4254,6 +4278,7 @@ try {
     [report.persuasionPaced === 1, 'persuasion waits 15 s between tactics, however big the neglect'],
     [report.tactics.errors.length === 0 && report.tactics.applied + report.tactics.skipped.length === report.tactics.total && report.tactics.skipped.length <= 3 && report.tactics.total >= 35, 'every persuasion tactic applies and disposes without errors'],
     [report.tactics.leftovers.length === 0 && report.tactics.clean, 'persuasion reset() removes every tactic\'s meshes, HUD lines, camera peek and wind'],
+    [report.tactics.pillar.onGround && report.tactics.pillar.faded && report.tactics.pillar.solidTop >= report.tactics.pillar.target + 100, `the persuasion light pillar stands on the ground and reaches an objective 1500 m above it, fading out at the top (${JSON.stringify(report.tactics.pillar)})`],
     [report.tactics.peeked && report.tactics.hudLine, 'the cinematic look turns the camera and hot & cold / offers show on the objective card'],
     [report.completedAfterTrophy === 1, 'participation trophy completed the objective'],
     [(({ firstHoop: f }) => f.length === 20 && f.every((h) => h.deg <= 20.1 && h.dist >= 299 && h.dist <= 451))(report.guide), `guidance: a run's first hoop is within 20° of straight ahead and 300-450 m away (${JSON.stringify(report.guide.firstHoop.map((h) => h.deg))})`],
@@ -4475,7 +4500,7 @@ try {
     [(({ restart: r }) => r.dead && r.wave === r.before.wave && r.before.clock > 3 && r.clock === 0 && r.phase === 'count' && r.regulars === 0 && r.line && r.calls.startsWith('3,2,1,GO!') && !/PREPARE/.test(r.calls))(RUSH.htl), `Hold The Line: getting shot down restarts the current wave from its countdown, straight to 3, 2, 1 ("Wave 2 again, from the top."), clock back to 0 (${JSON.stringify(RUSH.htl.restart)})`],
     [(({ second: s }) => s.easier === 1 && s.need < s.need0 - 1 && s.toast)(RUSH.htl), `Hold The Line: the second death makes it easier by itself, with a shorter wave clock (${JSON.stringify(RUSH.htl.second)})`],
     [(({ away: a }) => a.clock === a.clock0 && /· PAUSED · BACK TO THE LINE$/.test(a.hud) && a.target < 1 && a.turn === 1 && a.back > 0.5 && a.dim < 0.5 && a.lit >= 0.85)(RUSH.htl), `Hold The Line: past LINE_R from the beacon the wave clock waits, a TURN BACK callout shows once, the HUD says PAUSED · BACK TO THE LINE, the beacon lights up and the arrow points home (${JSON.stringify(RUSH.htl.away)})`],
-    [(({ planted: w, replant: r }) => [1, 2, 3, 4, 5].every((n) => w[n] <= 10) && r.phase === 'count' && r.moved >= 350 && r.under <= 10 && r.standing && r.ghost <= 0.15)(RUSH.htl), `Hold The Line: every countdown plants the beacon under the plane, standing on the ground, faded so it doesn't fill the screen (${JSON.stringify({ planted: RUSH.htl.planted, replant: RUSH.htl.replant })})`],
+    [(({ planted: w, replant: r }) => [1, 2, 3, 4, 5].every((n) => w[n] <= 10) && r.phase === 'count' && r.moved >= 350 && r.under <= 10 && r.standing && r.ghost <= 0.15 && r.climb > 300 && r.passes >= 100)(RUSH.htl), `Hold The Line: every countdown plants the beacon under the plane, standing on the ground, faded so it doesn't fill the screen, and tall enough to pass the plane flying high above it (${JSON.stringify({ planted: RUSH.htl.planted, replant: RUSH.htl.replant })})`],
     [(({ straight: s }) => s.outAt !== null && s.outAt < 12 && s.turnsBeforeMove === 2 && s.turnGap > 8 && s.turnGap < 8.2 && s.wave === 1 && s.phase === 'result')(RUSH.htl), `Hold The Line: flying dead straight, wave 1's clock waits past LINE_R with a TURN BACK callout, shown again 8 s later while still away, and the wave still finishes without turning back (${JSON.stringify(RUSH.htl.straight)})`],
     [(({ straight: { moved: m } }) => m && m.after >= 11.9 && m.after <= 12.1 && m.sub === 'Fine. The line comes to you.' && m.under <= 10 && !/PAUSED/.test(m.hud) && m.clock1 > 0.9)(RUSH.htl), `Hold The Line: after 12 s outside the line in a wave, the beacon moves under the plane, THE LINE MOVED shows, and the wave clock runs again (${JSON.stringify(RUSH.htl.straight.moved)})`],
     [(({ queue: q }) => q.capped === 'q3,q4,q5,q6' && q.first === 'qF,q4,q5,q6' && q.shown === 'drone here' && q.left === 'after' && q.alive)(RUSH.htl), `Hold The Line: at most 4 intros wait (the oldest goes), and one whose enemy is gone by its turn is skipped (${JSON.stringify(RUSH.htl.queue)})`],
