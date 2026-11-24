@@ -4,7 +4,7 @@
 // Grumbleglobe's pores only) Grumblings.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, CARRIER_HULL, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, CARRIER_HULL, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -31,6 +31,8 @@ const TYPES = {
   grumbling: { hp: 1, radius: 4, dmg: 8, speed: 52, make: makeGrumbling, score: 5, minScore: Infinity, weight: 0, kamikaze: true, quiet: true, squeak: true, name: 'Grumbling' },
   sniperOwl: { hp: 2, radius: 5, dmg: 18, speed: 40, make: makeOwl, score: 140, minScore: 400, weight: 0.8, kamikaze: false, max: 2, name: 'Sniper Owl', intro: 'A Sniper Owl is watching you. Red line means it\'s aiming. Wiggle!' },
   kites: { hp: 2, radius: 5, dmg: 22, speed: 26, make: makeKite, score: 110, minScore: 200, weight: 1, kamikaze: false, pair: true, max: 1, name: 'Kite Twins', intro: 'Kite Twins, holding a very long string. They keep up, and when it flashes red they snap it at you. Go over, under, or roll.' },
+  // fighter: only HMS Overkill launches these (see launchFighters): off the catapult, then it hunts you like Gary.
+  fighter: { hp: 2, radius: 6, dmg: 10, speed: 58, make: makeDeckFighter, score: 30, minScore: Infinity, weight: 0, kamikaze: false, quiet: true, name: 'Deck Fighter' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
 };
 const SWARMS = { gull: 4, bee: 6 };
@@ -270,7 +272,7 @@ export const BOSSES = {
   // Sea boss (sea: true): spawns on open water ahead, steams along it and never leaves it. Solid hull boxes (`boxes`, model
   // units) take the hits and bump planes, a long health bar (`long`), and no twins or breakaways (ground: true).
   carrier: {
-    make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 13.8, crownZ: 7.1, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 25,
+    make: makeCarrier, scale: 3.5, crownX: 5.2, crownY: 13.8, crownZ: 7.1, crownS: 1, radius: 68, hp: 300, speed: 12, orbit: 0, dmg: 15,
     face: 'none', ground: true, sea: true, boxes: CARRIER_HULL, markerUp: 70, long: true,
     name: 'HMS Overkill, the Unsinkable Aircraft Carrier', short: 'HMS Overkill', noun: 'HMS Overkill',
     move: 'steam',
@@ -364,8 +366,10 @@ const COMING_BACK = ['{short} is back for round two!', 'Break\'s over! {short} i
 const WAITING = ['{short} is waiting for you. Your move.', '{short} is hovering menacingly. From a polite distance.', '{short} saved you a seat. Round two starts when you say so.'];
 const TOAST_GAP = 10; // s between breakaway toasts, so twins don't double up
 
-// Weak-point marker colours (see Enemies.animateMark).
-const MARK_WHITE = new THREE.Color('#ffffff'), MARK_HALO = new THREE.Color('#ff7a1a');
+// HMS Overkill's air wing: at most `max` Deck Fighters up at once; `launch` s off the catapult before they hunt you.
+export const FIGHTERS = { max: 4, launch: 1.2, lines: ['HMS Overkill is launching fighters!', 'Fighters off the deck! The captain is showing off.', 'Two more jets off the catapults.'] };
+// Weak-point halo: its hit flash (see Enemies.animateMark).
+const MARK_WHITE = new THREE.Color('#ffffff'), MARK_FLASH = 0.2; // the hit flash, s
 
 export class Enemies {
   constructor(G) {
@@ -399,7 +403,7 @@ export class Enemies {
     crown.position.set(def.crownX || 0, def.crownY, def.crownZ || 0);
     body.add(crown);
     (body.userData.parts ||= []).push({ obj: crown, r: 2.4 * def.crownS, mult: 2, hp: 10, name: 'crown' });
-    for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown') part.hp *= 6;
+    for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown' && !part.keepHp) part.hp *= 6;
     mesh.add(body);
     const size = (opts.size || 1) * (mod?.size || 1);
     mesh.scale.setScalar(def.scale * size);
@@ -424,6 +428,27 @@ export class Enemies {
   summon(type, n, cap, at) {
     let made = 0;
     for (let k = 0; k < n && this.count(type) < cap; k++, made++) this.spawn(type, at.clone().add(new THREE.Vector3(rand(-25, 25), rand(-10, 10), rand(-25, 25))));
+    return made;
+  }
+
+  // HMS Overkill launches Deck Fighters off its two bow catapults (FIGHTERS.max in the air at once): each shoots out
+  // along the deck and climbs for FIGHTERS.launch s before it turns on you. Returns how many went.
+  launchFighters(e) {
+    const V = THREE.Vector3, fwd = new V(0, 0, 1).applyQuaternion(e.mesh.quaternion).setY(0).normalize();
+    let made = 0;
+    for (const x of [-2.5, 3]) {
+      if (this.count('fighter') >= FIGHTERS.max) break;
+      e.mesh.updateMatrixWorld();
+      const f = this.spawn('fighter', e.mesh.localToWorld(new V(x, 7, 30)));
+      f.launchDir = fwd.clone().add(new V(0, 0.35, 0)).normalize();
+      f.launchT = FIGHTERS.launch;
+      f.vel.copy(f.launchDir).multiplyScalar(TYPES.fighter.speed);
+      made++;
+    }
+    if (made) {
+      this.G.audio.noise(0.6, { vol: 0.12, freq: 1600 }); // the catapult's whoosh
+      this.G.ui.notify(pick(FIGHTERS.lines), 'warn', 2.5, 0);
+    }
     return made;
   }
 
@@ -753,20 +778,21 @@ export class Enemies {
         break;
       case 'carrier': {
         cd = 2.6;
-        const guns = e.mesh.userData.guns.filter((g) => g.gun.visible); // shot-off guns are hidden
-        if (n % 3 === 1 && guns.length) {
+        const guns = e.mesh.userData.guns.filter((g) => g.gun.visible); // shot-off guns are hidden (a wreck shows instead)
+        if (n % 4 === 3 && this.launchFighters(e)) break; // fighters off the catapults
+        if (n % 4 === 1 && guns.length) {
           // Broadside: every deck gun still standing fires a pair at where you're heading.
           const tgt = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 70) * 0.6);
           for (const g of guns) {
             const from = g.aim.getWorldPosition(new THREE.Vector3());
-            for (let k = 0; k < 2; k++) this.fireOrb(from, _w.copy(tgt).sub(from).add(_s.set(rand(-14, 14), rand(-8, 8), rand(-14, 14))), 70, 9, '#ffb03a', 1.1);
+            for (let k = 0; k < 2; k++) this.fireOrb(from, _w.copy(tgt).sub(from).add(_s.set(rand(-14, 14), rand(-8, 8), rand(-14, 14))), 70, 6, '#ffb03a', 1.1);
           }
           G.audio.tone(130, 0.35, { type: 'square', vol: 0.07, slide: -60 });
-        } else if (n % 3 === 2) BOSS_MOVES.steam.flak(this, e, e.enraged ? 5 : 4); // flak bursts along your path
+        } else if (n % 4 === 2) BOSS_MOVES.steam.flak(this, e, e.enraged ? 5 : 4); // flak shells bursting along your path
         else {
           // Close-in guns on the island: a long rattle (longer once the deck guns are gone).
           e.burst = guns.length ? 8 : 12;
-          e.burstShot = [110, 5, '#ffe14a', 0.7];
+          e.burstShot = [110, 3, '#ffe14a', 0.7];
         }
         break;
       }
@@ -1187,7 +1213,7 @@ export class Enemies {
     const G = this.G;
     e.hp -= dmg * part.mult;
     if (part.mult > 1 || part.counted) { // counted: a planet gadget, whose every hit drains the bar whatever its mult
-      if (part.mark) part.hitT = 0.3; // the marker flashes white
+      if (part.mark) part.hitT = MARK_FLASH; // the halo flashes white
       G.fx.sparkle(pos, '#ffd23a');
       G.fx.emit(pos, 12, { colors: ['#ffffff', '#ffd23a'], speed: 45, life: 0.4, size: 5 });
       G.audio.tone(1500, 0.07, { type: 'triangle', vol: 0.05 });
@@ -1205,6 +1231,7 @@ export class Enemies {
     const G = this.G;
     part.broken = true;
     part.obj.visible = false;
+    if (part.wreck) part.wreck.visible = true; // a carrier gun leaves a smoking wreck
     part.obj.getWorldPosition(_pp);
     G.fx.explosion(_pp);
     G.audio.pop();
@@ -1314,6 +1341,22 @@ export class Enemies {
           const lead = p.pos.clone().addScaledVector(p.forward, p.speed * (dist / 60) * this.leadK());
           this.fireOrb(e.pos.clone().add(new THREE.Vector3(0, 5, 0)), lead.sub(e.pos), 60, 12, '#ff4d4d', 1.2);
           G.audio.tone(140, 0.25, { type: 'square', vol: 0.06, slide: -60 });
+        }
+        break;
+      case 'fighter':
+        // Off the catapult: straight out along the deck and climbing for a moment, then it turns on you.
+        if (e.launchT > 0) { e.launchT -= dt; steer(_w.copy(e.launchDir).multiplyScalar(d.speed), 3); break; }
+        if (e.state !== 'extend') {
+          steer(_w.copy(toP).normalize().multiplyScalar(d.speed), 1.4);
+          e.cd -= dt;
+          if (e.cd <= 0 && dist < 240 && e.vel.dot(toP) > 0.8 * e.vel.length() * dist) {
+            e.cd = 2.2;
+            for (let k = 0; k < 2; k++) setTimeout(() => !e.dead && this.fireOrb(e.pos, _w.copy(p.pos).sub(e.pos), 100, 4, '#ffb03a', 0.6), k * 150);
+          }
+          if (dist < 45 || e.stateT > 7) { e.state = 'extend'; e.stateT = 0; }
+        } else {
+          steer(_w.copy(toP).normalize().multiplyScalar(-d.speed).setY(10), 1.2);
+          if (e.stateT > 3.5) { e.state = 'idle'; e.stateT = 0; }
         }
         break;
       case 'rival':
@@ -1565,18 +1608,13 @@ export class Enemies {
     e.mesh.quaternion.copy(p.quat).multiply(FLIP); // models face +Z, the plane flies toward -Z
   }
 
-  // A weak point's target marker (see weak() in models.js): the halo breathes, the gyro ring tumbles, the reticle faces
-  // you and turns; a hit (hitT) flashes it all white, swells the halo and snaps the chevrons in.
+  // A weak point's halo (see weak() in models.js): a slow, faint breath; a hit flashes it white and swells it briefly.
   animateMark(part, t, dt) {
-    const m = part.mark, k = Math.sin(t * 5), hit = part.hitT > 0 ? part.hitT / 0.3 : 0;
+    const m = part.mark, hit = part.hitT > 0 ? part.hitT / MARK_FLASH : 0;
     part.hitT = Math.max(0, part.hitT - dt);
-    m.halo.material.opacity = 0.26 + 0.12 * k + 0.4 * hit;
-    m.halo.scale.setScalar(part.r * (1.3 + 0.1 * k + 0.35 * hit));
-    m.halo.material.color.copy(hit ? MARK_WHITE : MARK_HALO);
-    m.gyro.rotation.x = t * 1.7; m.gyro.rotation.y = t * 1.1;
-    m.reticle.lookAt(this.G.player.pos);
-    m.spin.rotation.z = t * 0.8;
-    m.spin.scale.setScalar(m.size * (1 + 0.06 * Math.sin(t * 3) - 0.25 * hit));
+    m.halo.material.opacity = 0.12 + 0.05 * Math.sin(t * 1.6) + 0.45 * hit;
+    m.halo.scale.setScalar(part.r * (1.15 + 0.2 * hit));
+    m.halo.material.color.copy(m.tint).lerp(MARK_WHITE, hit);
   }
 
   animate(e, dt) {
@@ -1588,7 +1626,10 @@ export class Enemies {
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
     if (u.barrel) u.barrel.lookAt(this.G.player.pos);
-    if (u.guns) for (const g of u.guns) g.aim.lookAt(this.G.player.pos);
+    if (u.guns) for (const g of u.guns) {
+      if (g.gun.visible) g.aim.lookAt(this.G.player.pos);
+      else if (g.wreck && Math.random() < dt * 8) this.G.fx.emit(g.wreck.getWorldPosition(_pp), 1, { colors: ['#2a2a2a', '#555555', '#777777'], speed: 5, life: 2, size: 10, up: 16 }); // a wreck smokes
+    }
     if (u.radars) u.radars.forEach((r, k) => { r.rotation.y += dt * (k ? -3 : 2); });
     if (u.flag) u.flag.rotation.y = Math.sin(e.t * 7) * 0.25;
     if (u.foam) u.foam.opacity = 0.45 + 0.12 * Math.sin(e.t * 2.5);

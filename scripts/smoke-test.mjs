@@ -660,6 +660,17 @@ try {
       G.enemies.breakPart(e, gun);
       r.gunCost = +((hp1 - e.hp) / e.maxHp).toFixed(3);
       r.gunHidden = !gun.obj.visible;
+      // Another gun takes a few plain hits (no boss ×6) and leaves a wreck; the catapults launch two fighters that shoot
+      // out ahead of the bow and climb.
+      const gun2 = e.mesh.userData.parts.filter((x) => x.name === 'gun' && !x.broken)[0], at = gun2.obj.getWorldPosition(new V());
+      let hits = 0;
+      while (!gun2.broken && hits < 50) { G.enemies.damagePart(e, gun2, 1, at); hits++; }
+      Object.assign(r, { gunHits: hits, wreck: !!gun2.wreck?.visible });
+      G.enemies.list.filter((x) => x.type === 'fighter').forEach((x) => G.enemies.removeEnemy(x));
+      r.launched = G.enemies.launchFighters(e);
+      const jets = G.enemies.list.filter((x) => x.type === 'fighter'), y0 = jets.map((x) => x.pos.y);
+      step(15);
+      r.climbed = jets.length > 0 && jets.every((x, k) => x.pos.y > y0[k] + 2 && !x.dead);
       return r;
     };
     const startBoss = (kind, opts) => {
@@ -2085,6 +2096,15 @@ try {
   await page.evaluate(() => window.G.devmenu.open()); // the chord path is covered above; reopen directly to keep this quick
   await page.click('#devmenu [data-boss="gooseQueen"]');
   report.devmenu.boss = await menu();
+  // HMS Overkill from the Dune Sea: never King Drone instead (it finds open sea, or flies off to the Tropical Archipelago).
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.click('#devmenu [data-boss="carrier"]');
+  report.devmenu.carrier = await page.evaluate(() => {
+    const G = window.G, e = G.enemies.list.find((x) => x.boss);
+    return { boss: G.objectives.current?.boss || null, zone: G.zones.current.name, afloat: !!e && Math.abs(e.pos.y - G.world.seaLevel) < 0.01, dist: e ? Math.round(e.pos.distanceTo(G.player.pos)) : null };
+  });
+  await page.evaluate(() => window.G.devmenu.open());
+  await page.click('#devmenu [data-zone="3"]');
   await page.evaluate(() => window.G.devmenu.open());
   await page.click('#devmenu [data-objective="stars"]');
   report.devmenu.objective = await menu();
@@ -4051,7 +4071,7 @@ try {
     [report.pads.landed && /🌾 0\.0 \//.test(report.pads.dusting), 'landing: taxiing on the ground is not crop dusting'],
     [report.pads.groundKept && report.pads.whileRolling === 1 && report.pads.max === 1 && report.pads.after === 0, 'runways that end flatten no ground for good: only under a plane rolling on it, gone once it leaves'],
     [Object.keys(report.bosses).length >= 16, 'at least 16 bosses'],
-    [(({ carrier: c }) => c.spawned && c.afloat && c.longBar && c.maxHp >= 300 && c.sternDist >= 80 && c.shots > 0 && c.hullHit && c.bumpedAbove >= 4 && c.gunCost === 0.04 && c.gunHidden)(report), `HMS Overkill: spawns on open sea and stays afloat, a long health bar (300+ hp), its hull boxes take hits 80 m+ from its middle, a plane flown into the hull is lifted out over the deck, a deck gun shot off costs it 4% (${JSON.stringify(report.carrier)})`],
+    [(({ carrier: c }) => c.spawned && c.afloat && c.longBar && c.maxHp >= 300 && c.sternDist >= 80 && c.shots > 0 && c.hullHit && c.bumpedAbove >= 4 && c.gunCost === 0.04 && c.gunHidden && c.gunHits >= 3 && c.gunHits <= 8 && c.wreck && c.launched === 2 && c.climbed)(report), `HMS Overkill: spawns on open sea and stays afloat, a long health bar (300+ hp), its hull boxes take hits 80 m+ from its middle, a plane flown into the hull is lifted out over the deck, a deck gun shot off costs it 4% and takes only a few hits (3 to 8), leaving a wreck, and its catapults launch two climbing fighters (${JSON.stringify(report.carrier)})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
@@ -4200,6 +4220,7 @@ try {
     [!report.devmenu.earlyOpen && report.devmenu.opened.open && report.devmenu.opened.paused && !report.devmenu.opened.space, 'dev menu: holding 1 + 0 for 3 s (not 2) opens it, pauses, and swallows gameplay keys'],
     [!report.devmenu.zone.open && !report.devmenu.zone.paused && report.devmenu.zone.zone === 3, 'dev menu: a zone button enters that zone'],
     [report.devmenu.boss.boss === 'gooseQueen' && report.devmenu.objective.type === 'stars', 'dev menu: boss and objective buttons start them'],
+    [report.devmenu.carrier.boss === 'carrier' && report.devmenu.carrier.afloat, `dev menu: HMS Overkill from a desert zone still comes, on open sea, never King Drone instead (${JSON.stringify(report.devmenu.carrier)})`],
     [!report.devmenu.escaped.open && !report.devmenu.escaped.paused, 'dev menu: Esc closes it and play resumes'],
     [!S.sixClicks && S.title.found && S.title.rolled && /Secret found: Title Tinkerer \(1\/10\)/.test(S.title.toast) && /Secrets: 1\/10/.test(S.title.count), 'secrets: 7 clicks on the title (not 6) find one, with a toast and the title card counter'],
     [S.whilePaused === 0 && S.whileLocked === 0, 'secrets: typed words and the Konami code are ignored while paused or in the dev menu'],

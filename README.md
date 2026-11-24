@@ -290,14 +290,15 @@ doesn't by itself, but flying on from where it put you does.
 - Fort Grumpington (a ground boss; never in space): pops up to fire mortars at marked rings, then ducks. Shoot it
   while it's up, and aim for the barrel.
 - HMS Overkill the aircraft carrier (a sea boss; only where there's open water): a 230 m ship that steams along the
-  sea with six deck guns (broadsides), flak bursts at marked grey spheres and a rattling island gun. It has 300 hp and
-  a long health bar: shoot the guns off (4% each) and hit the glowing bridge. Its hull is solid: fly into it and
-  you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
+  sea with six deck guns (broadsides), flak shells lobbed from the guns that burst into smoke at marked grey spheres,
+  a rattling island gun, and Deck Fighters launched two at a time off its bow catapults (four up at most), which hunt
+  you like Gary. Its hits are light (6 a shell, 7 a flak burst, 3 the island gun, 15 a bump). It has 300 hp and a
+  long health bar: each deck gun breaks after 6 hits (4% of the hull), leaving a smoking wreck, and the bridge is the
+  weak spot. Its hull is solid: fly into it and you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
   an angled landing deck, catapults and parked jets, an island with a funnel that smokes, radars, blinking lights and
-  a flag, and a foaming wake. Minions and a deck landing come later.
-- Weak spots (on bosses and enemies alike) wear a target marker: an orange halo that breathes, a tumbling gyro ring
-  and a gold reticle with four red chevrons that always faces you. A hit flashes the halo white and snaps the reticle
-  in.
+  a flag, and a foaming wake. A deck landing comes later.
+- Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
+  you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
   Every tentacle shot off means fewer orbs.
 - Captain Clawdia the Sky Crab (a lead boss): snaps sideways between lanes in front of you. Bubble streams, pincer
@@ -532,7 +533,9 @@ card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
 - **Bosses:** start any of the 16, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
-  and HMS Overkill open sea; where there is none, King Drone comes instead and you get a notice. Neither comes as twins. The
+  (where there is none, King Drone comes instead and you get a notice). HMS Overkill always comes: the menu finds open
+  sea round you (up to 6 km out) and puts you 600 m off it, or, in a zone with none, flies you to the Tropical
+  Archipelago first. Neither comes as twins. The
   **Grumbleglobe** button jumps to its zone and starts the planet fight (it ignores the modifier and Twins).
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.

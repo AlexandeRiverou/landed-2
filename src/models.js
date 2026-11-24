@@ -564,25 +564,14 @@ function add(group, geo, mat, t = {}) {
 
 // Weak points multiply damage; breakable parts have their own hp and an effect when destroyed (see
 // Enemies.breakPart). Both are listed in g.userData.parts for hit testing.
-// A weak point wears a target marker (Enemies.animateMark drives it): a soft orange halo that breathes, a gyro ring
-// that tumbles round it, and a reticle (a gold ring with four red chevrons pointing in, one vertex-coloured mesh) that
-// always faces you and turns slowly. A hit flashes the halo white and snaps the reticle in (part.hitT). Three meshes,
-// with geometries of their own (disposeTree frees them with the enemy).
-const markMat = (c, opacity, extra = {}) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity, depthWrite: false, ...extra });
+// A weak point wears a faint warm halo in its own colour, a little bigger than it, that breathes slowly: easy to find
+// when you look for it, never shouting. A hit flashes it white for a moment (part.hitT; Enemies.animateMark).
 function weak(g, obj, r, mult = 3, extra = {}) {
-  const halo = new THREE.Mesh(Sph(1, 12, 8), markMat('#ff7a1a', 0.32)); // normal blending: shows even over white
-  halo.scale.setScalar(r * 1.3);
-  const gyro = new THREE.Mesh(Tor(1, 0.045, 4, 24), markMat('#ffb03a', 0.85));
-  gyro.scale.setScalar(r * 1.45);
-  const ticks = [0, 1, 2, 3].map((k) => { // the cone's tip (+Y) turned to point in at the core
-    const a = (k / 4) * PI * 2;
-    return P(Cone(0.16, 0.42, 3), '#ff3a2a', { x: Math.cos(a) * 1.42, y: Math.sin(a) * 1.42, rz: a + PI / 2 });
-  });
-  const reticle = new THREE.Group(), spin = new THREE.Mesh(M([P(Tor(1, 0.06, 4, 28), '#ffe14a'), ...ticks]), markMat('#ffffff', 0.95, { vertexColors: true }));
-  reticle.add(spin);
-  spin.scale.setScalar(r * 1.7);
-  obj.add(halo, gyro, reticle);
-  (g.userData.parts ||= []).push({ obj, r, mult, hp: Infinity, glow: halo, mark: { halo, gyro, reticle, spin, size: r * 1.7 }, hitT: 0, ...extra });
+  const tint = new THREE.Color(obj.material?.color ?? '#ffb060').lerp(new THREE.Color('#ffc070'), 0.6);
+  const halo = new THREE.Mesh(Sph(1, 12, 8), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.14, depthWrite: false }));
+  halo.scale.setScalar(r * 1.15);
+  obj.add(halo);
+  (g.userData.parts ||= []).push({ obj, r, mult, hp: Infinity, glow: halo, mark: { halo, tint }, hitT: 0, ...extra });
 }
 function breakable(g, obj, r, name, hp, extra = {}) {
   (g.userData.parts ||= []).push({ obj, r, mult: 1, hp, name, ...extra });
@@ -949,6 +938,8 @@ export function makePuffer() {
 // mast, radars and blinking lights, parked jets, a foaming wake, and six deck guns that swivel to aim and can be shot
 // off. The static detail is merged into two meshes (lit paint, glowing lights), so the extra detail costs no draw calls.
 // CARRIER_HULL lists its solid boxes in model units [x0, x1, y0, y1, z0, z1]: bullets hit them and planes bump off them.
+// GUN_HP: bullets it takes to shoot a deck gun off (bosses' other parts get ×6; these don't).
+export const GUN_HP = 6;
 export const CARRIER_HULL = [[-7, 7, -2, 5.6, -33, 30], [-4, 4, -2, 5.6, 30, 36], [-10.8, -7, 3.6, 5.6, -10, 16], [3, 7.4, 5.6, 15, -3, 9]];
 const CV = {
   hull: '#7c8794', hull2: '#929eab', gallery: '#5d6773', seam: '#6d7884', boot: '#1d1f24', red: '#b8402a',
@@ -992,6 +983,14 @@ function carrierJet(accent) {
     P(Box(0.5, 0.3, 1.1), CV.glass, { y: 0.95, z: 0.9 }),
     P(Box(0.15, 0.45, 0.15), CV.dark, { y: 0.15, z: 1.4 }),
   ];
+}
+// A Deck Fighter, launched off HMS Overkill's catapults: the parked jets' twin, 2.2× bigger, with a hot exhaust.
+export function makeDeckFighter() {
+  const g = new THREE.Group(), body = new THREE.Mesh(M(carrierJet(CV.accent)), lam('#ffffff', { vertexColors: true }));
+  body.scale.setScalar(2.2);
+  g.add(body);
+  add(g, Box(1.1, 0.8, 0.5), basic('#ffb03a'), { y: 1.2, z: -4.3 });
+  return g;
 }
 export function makeCarrier() {
   const g = new THREE.Group(), S = [], L = []; // S: painted (lit) parts; L: lights (unlit, they glow)
@@ -1117,8 +1116,16 @@ export function makeCarrier() {
     }
     gun.add(aim);
     g.add(gun);
-    breakable(g, gun, 2.4, 'gun', 3);
-    guns.push({ gun, aim });
+    // The wreck left when it's shot off (hidden till then): a scorched ring and a stub of bent barrel, smoking.
+    const wreck = new THREE.Group();
+    wreck.position.copy(gun.position);
+    add(wreck, Cyl(1.5, 1.8, 0.7, 8), lam('#1d1f24'));
+    add(wreck, Box(1.6, 0.6, 1.4), lam('#3a2f2a'), { y: 0.5, rz: 0.3 });
+    add(wreck, Cyl(0.2, 0.24, 1.8, 5), lam('#2a2a30'), { x: 0.4, y: 0.9, z: 0.6, rx: 1.1, rz: -0.4 });
+    wreck.visible = false;
+    g.add(wreck);
+    breakable(g, gun, 2.4, 'gun', GUN_HP, { keepHp: true, wreck }); // a few shots, not the boss ×6
+    guns.push({ gun, aim, wreck });
   }
   Object.assign(g.userData, { guns, radars: [radar, dish], lights, flag, smoke, foam });
   return g;

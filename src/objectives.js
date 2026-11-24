@@ -7,7 +7,7 @@ import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
-import { waterLine } from './world.js';
+import { waterLine, heightAt } from './world.js';
 import { MAX_LIVES, TUCK } from './player.js';
 import { mkSiege } from './planetboss.js';
 
@@ -675,6 +675,24 @@ function seaSpot(G) {
   return null;
 }
 
+// Open sea anywhere round you (the developer menu's carrier): rings out to `maxR` m, the nearest deep, clear spot first.
+// It reads the world's height function, not the built chunks: right after a zone change those still hold the old land.
+export function findOpenSea(G, maxR = 6000) {
+  const deep = (x, z) => heightAt(x, z) < waterLine() - 4;
+  const p = G.player.pos;
+  for (let r = 500; r <= maxR; r += 250) {
+    const n = Math.ceil(r / 60);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      if (!deep(x, z)) continue;
+      let ok = true;
+      for (let b = 0; b < 8 && ok; b++) ok = deep(x + Math.cos(b * Math.PI / 4) * SEA_CLEAR, z + Math.sin(b * Math.PI / 4) * SEA_CLEAR);
+      if (ok) return new THREE.Vector3(x, waterLine(), z);
+    }
+  }
+  return null;
+}
+
 function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
   const def = BOSSES[kind], M = BOSS_MODS[mod] || null;
   const side = new THREE.Vector3(-G.player.forward.z, 0, G.player.forward.x).normalize();
@@ -770,7 +788,7 @@ export class Objectives {
   makeBoss(kind = null, opts = null) {
     const G = this.G;
     let spot = null;
-    if (kind) spot = bossSpot(G, BOSSES[kind]);
+    if (kind) spot = opts?.spot || bossSpot(G, BOSSES[kind]); // the developer menu may bring its own
     else {
       if (!this.bossDeck.length) this.bossDeck = shuffle(Object.keys(BOSSES));
       for (let i = 0; i < this.bossDeck.length && !spot; i++) {
