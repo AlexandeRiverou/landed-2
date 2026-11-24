@@ -285,6 +285,19 @@ try {
     }
     step(150);
 
+    // No repeats (B1): 400 picks in a row never bring back one of the last 6 types, nor the last one's family.
+    {
+      const { pickType, familyOf } = window.OBJ_FOR_TEST, eligible = types.map((t) => [t, 1]);
+      let recent = [], repeats = 0;
+      for (let i = 0; i < 400; i++) {
+        const [t] = pickType(eligible, recent);
+        if (recent.includes(t) || (recent.length && familyOf(recent[0]) === familyOf(t))) repeats++;
+        recent = [t, ...recent].slice(0, 6);
+      }
+      out.objectiveRepeats = repeats;
+      out.objectiveFallback = pickType([['hoop', 1]], ['hoop'])?.[0]; // nothing else allowed: still picks
+    }
+
     // Shoot it vs fly into it: the gallery's bullseye targets face the player, count bullets only (ramming gets a
     // quip, once); the popper's balloons glow, and count the plane only (bullets go through).
     {
@@ -4185,6 +4198,7 @@ try {
     [report.chunks > 20, 'terrain is loaded'],
     [report.bossDroppedPowerup, 'boss drops a power-up'],
     [report.objectiveTypes >= 38, 'all objective types are on the menu (38+)'],
+    [report.objectiveRepeats === 0 && report.objectiveFallback === 'hoop', 'objectives never repeat a recent type or the last family back to back, and still pick when only one is left'],
     [report.quests.roll && report.quests.halfRollIgnored, 'barrel roll quest: real rolls count, an Immelmann\'s half roll does not'],
     [report.quests.rollAnyDt, 'barrel roll quest: each roll counts once at any frame rate (dt 0.0349, 1/60, 0.0371)'],
     [report.quests.delivery && report.quests.deliveryStages, 'pizza delivery: pick up, the pizza cools, deliver to the drop-off'],

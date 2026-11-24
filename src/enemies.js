@@ -1684,7 +1684,7 @@ export class Enemies {
       G.audio.tone(330, 0.9, { type: 'triangle', vol: 0.07, slide: 660 });
       if (!this.kiteWarned) { this.kiteWarned = true; G.ui.notify('The kites are winding up! Over, under, or roll!', 'bad', 2, 0); }
     } else if (pair.phase === 'wind' && pair.phaseT >= KITE_WIND) {
-      pair.phase = 'snap'; pair.phaseT = 0;
+      pair.phase = 'snap'; pair.phaseT = 0; pair.rolled = false;
       // Where you'll be about halfway through the snap, at your height (sideways only under a roof).
       pair.strike.copy(p.pos).addScaledVector(p.forward, (p.speed * KITE_SNAP * 0.55) / PACE);
       if (roof) pair.strike.y = pair.centre.y;
@@ -1709,7 +1709,9 @@ export class Enemies {
     pair.centre.add(_w.sub(pair.centre).clampLength(0, top * dt));
     pair.axis.lerp(side, 1 - Math.exp(-dt * (pair.phase === 'snap' ? 4 : 1))).normalize(); // the string lies across your path
     pair.hitCd = Math.max(0, pair.hitCd - dt);
-    if (pair.back || p.dead || p.dodging || p.invuln > 0 || pair.hitCd > 0 || segDist(p.pos, a.pos, b.pos) > STRING_HIT * p.sizeScale) return;
+    // A roll through the snap dodges all of it: the roll (0.7 s) ends before the snap (0.8 s) does.
+    if (pair.phase === 'snap' && p.dodging) pair.rolled = true;
+    if (pair.back || p.dead || p.dodging || (pair.phase === 'snap' && pair.rolled) || p.invuln > 0 || pair.hitCd > 0 || segDist(p.pos, a.pos, b.pos) > STRING_HIT * p.sizeScale) return;
     pair.hitCd = STRING_CD * PACE;
     p.damage(a.def.dmg);
     p.quat.multiply(_q.setFromAxisAngle(_s.set(0, 0, 1), (Math.random() < 0.5 ? -1 : 1) * 0.7)).normalize(); // a wobble
