@@ -3994,6 +3994,91 @@ try {
   });
   report.lives = L;
 
+  // Land enemies (Nov 2026): Ember Bats and Magma Spitters spawn only in Volcano Land, Comet Chargers only in the space
+  // lands. A spitter under the lava can't be hurt, comes up, spits a fan of fireballs and sinks again; a charger winds
+  // up, then charges; a bat flares, then swoops into you.
+  report.landEnemies = await page.evaluate(async () => {
+    const G = window.G, p = G.player, E = G.enemies, out = {};
+    const { ZONES } = await import('./src/zones.js');
+    const { MAGMA, COMET } = await import('./src/enemies.js');
+    const zi = (n) => ZONES.findIndex((z) => z.name === n);
+    const god = p.god, timer = E.spawnTimer, calm = E.calmTimer, score = G.score, damage = p.damage;
+    E.spawnTimer = 1e9; E.calmTimer = 0;
+    G.powerups.active.clear(); // Time Freeze or a Shield would change what's measured
+    const clear = () => { E.list.slice().forEach((x) => E.removeEnemy(x)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); };
+    const LAND = ['emberBat', 'magmaSpitter', 'cometCharger'];
+    const picked = () => { const seen = new Set(); for (let k = 0; k < 600; k++) seen.add(E.pickType()); return LAND.filter((t) => seen.has(t)); };
+    G.score = 5000;
+    const into = (name) => { G.zones.enter(zi(name)); G.objectives.cooldown = 1e9; clear(); };
+    into('Meadowlands'); out.meadow = picked();
+    into('Volcano Land'); out.volcano = picked();
+    into('Meteor Belt'); out.belt = picked();
+    into('The Moon'); out.moon = picked();
+    let hits = [];
+    p.god = true; // no crashing into a volcano mid-check; hits are counted here instead
+    p.damage = function (n) { hits.push(n); };
+    const step = (n, f) => { for (let k = 0; k < n; k++) { f?.(); G.step(1 / 30); } };
+    const ahead = (d, up = 0) => p.pos.clone().addScaledVector(p.forward, d).setY(p.pos.y + up);
+    // Magma Spitter, 150 m ahead: under, then up with a 3-fireball fan, then under again.
+    into('Volcano Land');
+    p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 120;
+    const s = E.spawn('magmaSpitter', ahead(150));
+    const S = { states: [], shotsMax: 0, hpUnder: null };
+    step(1);
+    s.state = 'under'; s.stateT = 0; s.hold = 0.5;
+    // Pinned 150 m ahead of the plane so it's always in range.
+    const pin = () => { s.pos.copy(ahead(150)); };
+    step(1, pin);
+    S.shieldUnder = s.shield;
+    const hp0 = s.hp;
+    for (let k = 0; k < 30 * 8; k++) {
+      pin();
+      G.step(1 / 30);
+      if (S.states.at(-1) !== s.state) S.states.push(s.state);
+      S.shotsMax = Math.max(S.shotsMax, E.shots.length);
+      if (s.state === 'up') S.shieldUp = s.shield;
+      if (S.states.length >= 5) break;
+    }
+    S.hp = [hp0, s.hp];
+    out.spitter = S;
+    clear();
+    // Ember Bats: a bat right ahead flares, then swoops; contact costs hull and pops it.
+    hits = [];
+    const bats = [0, 1, 2].map((k) => E.spawn('emberBat', ahead(60 + k * 5, 5)));
+    const B = { states: new Set(), popped: 0 };
+    bats[0].cd = 0;
+    step(30 * 6, () => { for (const b of bats) B.states.add(b.state); });
+    B.popped = bats.filter((b) => b.dead).length;
+    B.hits = hits.slice();
+    out.bats = { states: [...B.states], popped: B.popped, hits: B.hits };
+    clear();
+    // Comet Charger in Low Orbit: winds up, then charges at COMET.speed.
+    into('Low Orbit');
+    hits = [];
+    const c = E.spawn('cometCharger', ahead(160, 10));
+    c.cd = 0;
+    const C = { states: [], topSpeed: 0, windT: 0 };
+    for (let k = 0; k < 30 * 6; k++) {
+      G.step(1 / 30);
+      if (C.states.at(-1) !== c.state) C.states.push(c.state);
+      if (c.state === 'wind') C.windT += 1 / 30;
+      if (c.state === 'dash') C.topSpeed = Math.max(C.topSpeed, c.vel.length());
+      if (c.state === 'coast') break;
+    }
+    C.windT = +C.windT.toFixed(2);
+    C.topSpeed = Math.round(C.topSpeed);
+    C.hits = hits.slice();
+    out.charger = C;
+    out.consts = { wind: COMET.wind, speed: COMET.speed, shots: MAGMA.shots };
+    clear();
+    p.damage = damage;
+    p.god = god;
+    E.spawnTimer = timer; E.calmTimer = calm;
+    G.score = score;
+    G.zones.enter(0);
+    return out;
+  });
+
   // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
   // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
   // after the jump, so this doesn't depend on whether the reload wins the race.
@@ -4338,6 +4423,10 @@ try {
     [(({ eyeKill: k }) => k && k.hpBefore > 20 && k.broke && k.dying && k.dead && k.allGone)(GLOBE), `Grumbleglobe: breaking the eye ends the fight, whatever is left of the bar (${JSON.stringify(GLOBE.eyeKill)})`],
     [(({ fresh: f }) => f && f.other && f.intact && f.moonHp === 14 && f.eyeHp === 25.2 && f.hp === 100 && f.w >= 0.149 && f.w <= 0.151 && f.burst && f.easier.cap[0] === 8 && f.easier.cap[1] === 6 && f.easier.eyeHp === 17.64 && f.shieldPores.pores === 0 && f.shieldPores.moons === 0 && f.shieldPores.shieldDown && f.shieldPores.phase === 2)(GLOBE), `Grumbleglobe: a fresh run continued from its zone gets a fresh planet; lap 2 gadgets have 1.4× hp, its moons orbit 1.25× faster with two-shot bursts, 8 Grumblings at once (6 after "easier"); with every pore plugged first the last moon still drops the shield into phase 2 (${JSON.stringify(GLOBE.fresh)})`],
     [(({ disposed: q }) => q && q.before > 0 && q.after === 0 && !q.inList)(GLOBE), `Grumbleglobe: calling the fight off takes its Grumblings with it (${JSON.stringify(GLOBE.disposed)})`],
+    [(({ landEnemies: q }) => q.meadow.length === 0 && q.volcano.includes('emberBat') && q.volcano.includes('magmaSpitter') && !q.volcano.includes('cometCharger') && q.belt.length === 1 && q.belt[0] === 'cometCharger' && q.moon.includes('cometCharger'))(report), `land enemies: Ember Bats and Magma Spitters only in Volcano Land, Comet Chargers only in space lands (${JSON.stringify(report.landEnemies && { meadow: report.landEnemies.meadow, volcano: report.landEnemies.volcano, belt: report.landEnemies.belt, moon: report.landEnemies.moon })})`],
+    [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.shotsMax >= k.shots)(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
+    [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
+    [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
     [desk.pauseShown && desk.pauseCalls === 'fs,quit,quit', 'desktop: with the bridge, the pause card has Quit too'],

@@ -172,6 +172,17 @@ ahead of you and carry a small red marker, so you see them coming. Five of them 
   barrel roll through it, or shoot one kite to snap the string. Only one pair at a time.
 - **Clingy Moth:** it latches onto your wing and drains your boost and hull. Any stunt shakes it off.
 
+**Land enemies** (TYPES `lands` in `src/enemies.js`) only turn up in their own land:
+
+- **Ember Bats** (Volcano Land): basalt bats with glowing lava veins, in threes. They circle ahead of you trailing
+  sparks; one at a time stops, shivers and chirps, then swoops into you (12 hull).
+- **Magma Spitter** (Volcano Land): a lava mound that hides under the lava (bullets do nothing; a bubbling ring
+  gives it away), heaves up within 420 m, its cracks glow, then it spits a fan of 3 fireballs where you'll be and
+  sinks again. Shoot it while it's up; its glowing mouth is the weak point.
+- **Comet Charger** (Low Orbit, Meteor Belt, Gas Giant, The Moon): a rock with a cyan thruster and one red eye. It
+  holds a spot off to one side ahead of you; when its thruster and eye swell (1.1 s, a rising hum) it locks on to
+  where you'll be and charges at 150 m/s (24 hull). Turn or climb when it lights up.
+
 **The journey** (`src/zones.js`): every 3 completed objectives you fly on into a new zone with its own landscape,
 colours, props, sky, weather and music mood. There are 30, in order:
 

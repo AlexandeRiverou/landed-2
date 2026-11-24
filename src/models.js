@@ -848,6 +848,85 @@ export function makeMoth(hat) {
   return g;
 }
 
+// Land enemies (enemies.js TYPES `lands`): they only turn up in their own land.
+
+// Ember Bat (Volcano Land): a basalt bat with glowing lava veins, ember-edged wings and hot yellow eyes.
+export function makeEmberBat(hat) {
+  const g = new THREE.Group(), rock = lam('#2b2226'), vein = basic('#ff6a1a'), edge = basic('#ffb03a');
+  const wingMat = lam('#3a2a2e', { side: THREE.DoubleSide, emissive: '#5a1408' });
+  add(g, Sph(1.4, 8, 6), rock, { s: [1, 0.9, 1.5] });
+  add(g, Sph(1, 7, 5), rock, { y: 0.6, z: 1.6 }); // head
+  for (const x of [-0.55, 0.55]) {
+    add(g, Cone(0.45, 1.3, 4), rock, { x, y: 1.7, z: 1.5, rz: -x * 0.6 }); // ears
+    add(g, Sph(0.32, 5, 4), basic('#ffe14a'), { x: x * 0.8, y: 0.8, z: 2.5 });
+  }
+  add(g, Box(0.25, 0.25, 2.2), vein, { y: 0.9, z: -0.2 }); // a lava vein down its back
+  for (const x of [-0.7, 0.7]) add(g, Box(0.15, 0.15, 1.4), vein, { x, y: 0.5, z: -0.6, ry: x * 0.4 });
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    // three scalloped membrane panels from the shoulder out, ember edges along the bottom
+    for (let k = 0; k < 3; k++) {
+      add(w, new THREE.CircleGeometry(1.6, 3), wingMat, { x: sd * (1.2 + k * 1.5), y: -0.2 * k, rx: -PI / 2, rz: sd > 0 ? 0 : PI });
+      add(w, Box(1.4, 0.12, 0.18), edge, { x: sd * (1.4 + k * 1.5), y: -0.15 * k, z: -0.9 });
+    }
+    add(w, Box(4.6, 0.18, 0.18), rock, { x: sd * 2.6, y: 0.05, z: 0.6 }); // the wing bone
+    g.add(w);
+    return w;
+  });
+  g.userData.wings = wings;
+  g.userData.embers = true; // trails sparks (enemies.js)
+  if (hat) partyHat(g, 2);
+  return g;
+}
+
+// Magma Spitter (Volcano Land): a lumpy basalt mound that hides in lava (or a rock vent), then heaves up, glows and
+// spits fireballs. The mound itself is userData.body (enemies.js raises and sinks it); its mouth is the weak point.
+export function makeMagmaSpitter(hat) {
+  const g = new THREE.Group(), body = new THREE.Group();
+  const rock = lam('#3a2c2a'), rock2 = lam('#2a2022'), crack = basic('#ff5a14'), glow = basic('#ffd23a');
+  add(body, Dod(5.5), rock, { y: 2, s: [1.2, 0.9, 1.2] });
+  add(body, Dod(3.6), rock2, { x: 3.2, y: 0.5, z: -1.5 });
+  add(body, Dod(3.2), rock2, { x: -3.4, y: 0.2, z: -1 });
+  for (const [x, y, z, ry, rz] of [[2.4, 3.2, 4.2, 0.3, 0.8], [-2.6, 2.6, 4.1, -0.4, -0.6], [0.4, 5.4, 2.8, 0.1, 0.2], [4.4, 1.6, 2.4, 0.9, 1.1], [-4.6, 1.2, 1.6, -0.8, -1.2]]) {
+    add(body, Box(0.35, 2.6, 0.3), crack, { x, y, z, ry, rz }); // glowing cracks
+  }
+  add(body, Cyl(2, 2.8, 1.6, 8), rock2, { y: 6.2 }); // the crater lip
+  const mouth = add(body, Cyl(1.6, 1.6, 0.4, 8), glow, { y: 6.9 });
+  weak(g, mouth, 2.2);
+  for (const x of [-1.6, 1.6]) {
+    add(body, Sph(0.7, 6, 4), glow, { x, y: 3.6, z: 5.6 });
+    add(body, Box(1.8, 0.45, 0.45), basic('#140a0a'), { x, y: 4.6, z: 5.4, rz: x > 0 ? 0.45 : -0.45 }); // cross brows
+  }
+  g.add(body);
+  // While it's under, a ring of bubbling lava gives it away.
+  const ring = add(g, Tor(4.5, 0.5, 5, 12), basic('#ff8a1f', { transparent: true, opacity: 0.7 }), { y: 0.3, rx: PI / 2 });
+  g.userData.body = body;
+  g.userData.ring = ring;
+  g.userData.cracks = crack; // brightens before it spits
+  if (hat) partyHat(body, 8);
+  return g;
+}
+
+// Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
+// (thruster and eye brighten), then charges in a straight line.
+export function makeCometCharger(hat) {
+  const g = new THREE.Group(), rock = lam('#7a7480'), rock2 = lam('#5a5462');
+  add(g, Ico(4.5, 0), rock, { s: [1, 0.85, 1.15] });
+  for (const [x, y, z, r] of [[2.6, 2, 1.5, 1.1], [-2.8, 1.2, -1, 1.3], [0.8, -2.6, 0.5, 1], [-1.2, 2.6, -2.2, 0.9]]) add(g, Ico(r, 0), rock2, { x, y, z });
+  const eye = add(g, Sph(1.3, 10, 8), basic('#ff3b30'), { y: 0.6, z: 4.6 });
+  add(g, Sph(0.55, 6, 4), basic('#1d1d22'), { y: 0.6, z: 5.7 });
+  add(g, Box(3, 0.6, 0.6), basic('#1d1d22'), { y: 2.2, z: 4.9, rz: 0.15 }); // one long scowl
+  weak(g, eye, 1.4);
+  const jet = add(g, Tor(2.4, 0.55, 6, 14), basic('#5ae8ff', { transparent: true, opacity: 0.85 }), { z: -4.6 });
+  const flame = add(g, Cone(2, 5, 8), basic('#9af4ff', { transparent: true, opacity: 0.5 }), { z: -7, rx: -PI / 2 });
+  for (const a of [0, 2.1, 4.2]) add(g, Box(0.5, 0.5, 2.4), lam('#3a3640'), { x: Math.cos(a) * 3, y: Math.sin(a) * 3, z: -3.6 }); // thruster struts
+  g.userData.jet = jet;
+  g.userData.flame = flame;
+  g.userData.eye = eye;
+  if (hat) partyHat(g, 4.6);
+  return g;
+}
+
 // Lead bosses fly ahead of you, facing back (+Z points at the player).
 export function makeOctopus() {
   const g = new THREE.Group();
