@@ -98,6 +98,20 @@ try {
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
+  // Crater and runway-pad rebuilds stop once DIRTY_MS of wall-clock time is spent in a pass (terrain.js update), and the
+  // ground height checks read comes from the rebuilt chunks. So a slow or busy CI machine rebuilt fewer chunks per step
+  // and the same simulated flight met different ground ("runways that end flatten no ground for good" and anything
+  // that shot the ground first). In the test, the clock stands still during terrain.update, so each pass rebuilds its
+  // full DIRTY_MAX chunks whatever the machine's speed; the cap on chunks per pass is the game's own.
+  await page.evaluate(() => {
+    const T = window.G.terrain, update = T.update.bind(T);
+    T.update = (...args) => {
+      // Whatever performance.now is right now (Playwright's fake clock replaces it later on), put back afterwards.
+      const had = Object.getOwnPropertyDescriptor(performance, 'now'), t = performance.now();
+      try { Object.defineProperty(performance, 'now', { value: () => t, configurable: true, writable: true }); } catch { return update(...args); }
+      try { return update(...args); } finally { if (had) Object.defineProperty(performance, 'now', had); else delete performance.now; }
+    };
+  });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
     const t = window.G.powerups.timer;
