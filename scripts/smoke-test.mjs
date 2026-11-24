@@ -51,13 +51,30 @@ const seedRandom = async (page) => {
     };
     Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
     Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+    // A second stream for code whose rolls are paced by a real clock (the music picks its next notes by the audio
+    // clock): wrapped with __smokeAside, it rolls from this one, so how fast the machine ran can't shift the main stream.
+    let b = (s ^ 0x9e3779b9) >>> 0;
+    const aside = () => {
+      b = (b + 0x6d2b79f5) | 0;
+      let t = Math.imul(b ^ (b >>> 15), 1 | b);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const asideCall = (f, self, args) => { const main = Math.random; Math.random = aside; try { return f.apply(self, args); } finally { Math.random = main; } };
+    Object.defineProperty(window, '__smokeAside', {
+      value: (obj, name) => { const f = obj[name]; obj[name] = function (...args) { return asideCall(f, this, args); }; },
+    });
+    // Timers fire on real time too (a boss's follow-up orbs, firework bursts, the opening tips): they roll aside.
+    const setT = window.setTimeout.bind(window);
+    window.setTimeout = (cb, ms, ...rest) => (typeof cb === 'function' ? setT((...x) => asideCall(cb, window, x), ms, ...rest) : setT(cb, ms, ...rest));
     // Held frames: while F.hold is set, the game's requestAnimationFrame callbacks wait (no real-time step or render),
     // so only the test's own G.step calls move the world. F.onStart (a seed) holds them from the Fly click on, and
     // reseeds just before the game's own click handler rolls the first flight.
     const F = { hold: false, onStart: null };
     Object.defineProperty(window, '__smokeFrames', { value: F });
     const raf = window.requestAnimationFrame.bind(window);
-    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else cb(t); });
+    // Real-time frames step the game by however much time passed, so whatever they roll comes from the side stream.
+    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else asideCall(cb, window, [t]); });
     document.addEventListener('click', (e) => {
       if (F.onStart === null || !e.target?.closest?.('#start')) return;
       a = F.onStart >>> 0;
@@ -102,7 +119,9 @@ try {
   // ground height checks read comes from the rebuilt chunks. So a slow or busy CI machine rebuilt fewer chunks per step
   // and the same simulated flight met different ground ("runways that end flatten no ground for good" and anything
   // that shot the ground first). In the test, the clock stands still during terrain.update, so each pass rebuilds its
-  // full DIRTY_MAX chunks whatever the machine's speed; the cap on chunks per pass is the game's own.
+  // full DIRTY_MAX chunks whatever the machine's speed; the cap on chunks per pass is the game's own. Likewise the
+  // music, which rolls Math.random whenever the audio clock (real time) says the next note is due, rolls from a side
+  // stream, so it can't shift the rolls the simulation sees.
   await page.evaluate(() => {
     const T = window.G.terrain, update = T.update.bind(T);
     T.update = (...args) => {
@@ -111,6 +130,7 @@ try {
       try { Object.defineProperty(performance, 'now', { value: () => t, configurable: true, writable: true }); } catch { return update(...args); }
       try { return update(...args); } finally { if (had) Object.defineProperty(performance, 'now', had); else delete performance.now; }
     };
+    window.__smokeAside(window.G.audio, 'update'); // the music rolls its notes when the audio clock says it's time
   });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
