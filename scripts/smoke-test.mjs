@@ -4182,7 +4182,11 @@ try {
     into('Volcano Land');
     p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 120;
     const s = E.spawn('magmaSpitter', ahead(150));
-    const S = { states: [], shotsMax: 0, hpUnder: null };
+    const S = { states: [], shotsMax: 0, fired: 0, hpUnder: null };
+    // Count the fireballs as they're launched: one that spawns inside a slope 150 m ahead bursts on the ground in the
+    // same step, so the live shot list alone can miss a fan that was fired.
+    const fireOrb = E.fireOrb;
+    E.fireOrb = function (...a) { S.fired++; return fireOrb.apply(this, a); };
     step(1);
     s.state = 'under'; s.stateT = 0; s.hold = 0.5;
     // Pinned 150 m ahead of the plane so it's always in range.
@@ -4195,9 +4199,11 @@ try {
       G.step(1 / 30);
       if (S.states.at(-1) !== s.state) S.states.push(s.state);
       S.shotsMax = Math.max(S.shotsMax, E.shots.length);
+      if (S.fired && S.firedIn == null) S.firedIn = s.state; // the fan goes out while it's up
       if (s.state === 'up') S.shieldUp = s.shield;
       if (S.states.length >= 5) break;
     }
+    E.fireOrb = fireOrb;
     S.hp = [hp0, s.hp];
     out.spitter = S;
     clear();
@@ -4663,7 +4669,7 @@ try {
     [(({ fresh: f }) => f && f.other && f.intact && f.moonHp === 14 && f.eyeHp === 25.2 && f.hp === 100 && f.w >= 0.149 && f.w <= 0.151 && f.burst && f.easier.cap[0] === 8 && f.easier.cap[1] === 6 && f.easier.eyeHp === 17.64 && f.shieldPores.pores === 0 && f.shieldPores.moons === 0 && f.shieldPores.shieldDown && f.shieldPores.phase === 2)(GLOBE), `Grumbleglobe: a fresh run continued from its zone gets a fresh planet; lap 2 gadgets have 1.4× hp, its moons orbit 1.25× faster with two-shot bursts, 8 Grumblings at once (6 after "easier"); with every pore plugged first the last moon still drops the shield into phase 2 (${JSON.stringify(GLOBE.fresh)})`],
     [(({ disposed: q }) => q && q.before > 0 && q.after === 0 && !q.inList)(GLOBE), `Grumbleglobe: calling the fight off takes its Grumblings with it (${JSON.stringify(GLOBE.disposed)})`],
     [(({ landEnemies: q }) => q.meadow.length === 0 && q.volcano.includes('emberBat') && q.volcano.includes('magmaSpitter') && !q.volcano.includes('cometCharger') && q.belt.length === 1 && q.belt[0] === 'cometCharger' && q.moon.includes('cometCharger'))(report), `land enemies: Ember Bats and Magma Spitters only in Volcano Land, Comet Chargers only in space lands (${JSON.stringify(report.landEnemies && { meadow: report.landEnemies.meadow, volcano: report.landEnemies.volcano, belt: report.landEnemies.belt, moon: report.landEnemies.moon })})`],
-    [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.shotsMax >= k.shots)(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
+    [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.fired >= k.shots && s.firedIn === 'up')(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
     [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
