@@ -49,8 +49,9 @@ The **Build & Release** workflow (`.github/workflows/build-release.yml`) runs th
   Then the **desktop** job packages the same `dist/` with Electron on Windows, Linux and macOS, boot-tests each
   package, and attaches `landed-<version>-{windows-x64,linux-x64,macos-universal}.zip` too. Nothing is published.
 - **On every merge into `main`:** the same, then a new **GitHub Release** is published with
-  `landed-vX.Y.Z.zip` (the web build) and the three desktop zips attached. The release waits for all three desktop
-  builds, so a desktop failure blocks it (GitHub Pages still deploys). Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
+  `landed-vX.Y.Z.zip` (the web build) and the desktop zips attached. The release waits for the Windows and Linux
+  builds, so a failure on either blocks it (GitHub Pages still deploys). macOS is optional: if its build fails, the
+  release still publishes, without the macOS zip. Each merge bumps the patch number (`v1.0.0` → `v1.0.1` → …). For a minor or
   major release, raise `"version"` in `package.json` (e.g. to `1.1.0`) in your PR, and the merge releases exactly that
   (logic in `scripts/next-version.mjs`). Re-running the workflow on an already released commit doesn't publish twice.
 - **Pushing a `v*` tag by hand** releases that tag.
