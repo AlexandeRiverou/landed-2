@@ -1,10 +1,11 @@
 // Enemies: chasing drones, spiky balloon mines, dive-bombing seagulls, orb-spitting UFOs,
 // grumpy storm clouds, bee swarms, ad blimps, sky jellyfish, ground cannons, Rival Pilot Gary,
 // umbrella goons, grudge rocks, sniper owls, kite twins, clingy moths, (quest-only) evil pigeons and (from
-// Grumbleglobe's pores only) Grumblings.
+// Grumbleglobe's pores only) Grumblings. Land enemies turn up only in their own land (TYPES `lands`): Ember Bats and
+// Magma Spitters in Volcano Land, Comet Chargers out in space.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, CARRIER_HULL, CARRIER_DECK, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, CARRIER_HULL, CARRIER_DECK, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -34,8 +35,12 @@ const TYPES = {
   // fighter: only HMS Overkill launches these (see launchFighters): off the catapult, then it hunts you like Gary.
   fighter: { hp: 2, radius: 6, dmg: 10, speed: 58, make: makeDeckFighter, score: 30, minScore: Infinity, weight: 0, kamikaze: false, quiet: true, name: 'Deck Fighter' },
   moth: { hp: 1, radius: 4, dmg: 0, speed: 40, make: makeMoth, score: 70, minScore: 160, weight: 1, kamikaze: false, latch: true, name: 'Clingy Moth', intro: 'A Clingy Moth! It loves you. Too much. Do a stunt (barrel roll, loop) to break up with it.' },
+  // Land enemies: `lands` (zone names) is where they may spawn, and the land is their only gate (minScore 0).
+  emberBat: { hp: 1, radius: 4, dmg: 12, speed: 50, make: makeEmberBat, score: 35, minScore: 0, weight: 1.8, kamikaze: true, lands: ['Volcano Land'], name: 'Ember Bats', intro: 'Ember Bats! They circle ahead, then swoop. A bat that stops and flares is about to dive at you.' },
+  magmaSpitter: { hp: 4, radius: 7, dmg: 15, speed: 0, make: makeMagmaSpitter, score: 110, minScore: 0, weight: 1.6, kamikaze: false, vent: true, max: 3, markerUp: 10, lands: ['Volcano Land'], name: 'Magma Spitter', intro: 'Magma Spitters hide in the lava. A bubbling ring means one is coming up to spit fire. Shoot it while it\'s up: under the lava it\'s safe.' },
+  cometCharger: { hp: 4, radius: 6, dmg: 24, speed: 46, make: makeCometCharger, score: 130, minScore: 0, weight: 2, kamikaze: false, max: 3, lands: ['Low Orbit', 'Meteor Belt', 'Gas Giant', 'The Moon'], name: 'Comet Charger', intro: 'A Comet Charger! When its thruster glows it\'s about to ram where you\'re going. Turn or climb when it lights up.' },
 };
-const SWARMS = { gull: 4, bee: 6 };
+const SWARMS = { gull: 4, bee: 6, emberBat: 3 };
 // Hold The Line ("The Rush"): mkSurvive (challenges.js) sets `frenzy` and runs five waves; these tables drive them.
 // frenzy: { wave: 1..5, phase ('count' before a wave, 'wave', 'result' after one, 'down' while you're shot down),
 // easier, burst, first, spent, score }. Nothing spawns outside the 'wave' phase.
@@ -76,7 +81,7 @@ const INTRO_GAP = 4, INTRO_MAX = 4;
 // Never more regular (non-quest) enemies than this at once, whatever spawns them. Small fry count a third each
 // toward a wave's cap.
 export const CEILING = 18;
-const SMALL = { gull: 1 / 3, bee: 1 / 3, pebble: 1 / 3 };
+const SMALL = { gull: 1 / 3, bee: 1 / 3, pebble: 1 / 3, emberBat: 1 / 3 };
 // Frenzy spawn distances (m): ahead, from a flank, from above (that many m over you).
 // Ahead they come in closer to your line (±RUSH_SPREAD m to the side, ±RUSH_RISE m up or down), so you meet them.
 const RUSH_AHEAD = [180, 320], RUSH_SPREAD = 25, RUSH_RISE = 8, RUSH_FLANK = [240, 320], FLANK_YAW = (70 * Math.PI) / 180, RUSH_ABOVE = 70;
@@ -114,6 +119,17 @@ const KITE_AHEAD = 110, KITE_CLOSE = 55, KITE_SWEEP = 40, KITE_KEEP = 1.15, KITE
 const KITE_LUNGE = 120, KITE_BACK = 80, KITE_FLOOR = 8, KITE_RED = '#ff3b30';
 // Clingy Moth while latched: boost tank drained per s, hull per s.
 const MOTH_BOOST = 0.15, MOTH_HP = 2;
+// Ember Bats: circle `ring` m round a point `ahead` m in front of you; every `every` s one stops and flares for `flare`
+// s (a chirp), then swoops at `swoop` × its speed for up to `swoopT` s.
+export const BAT = { ahead: 90, ring: 45, every: [2.5, 4.5], flare: 0.4, swoop: 1.7, swoopT: 2.2, range: 240 };
+// Magma Spitters: under the lava (bullets do nothing, a bubbling ring shows where) for `under` s, `rise` s up, `up` s
+// out (cracks brighten for `wind` s, then a fan of `shots` fireballs, `spread` rad apart, at `speed`), `sink` s down.
+// They only come up for a plane within `range` m. `depth`: how far under the mound sits (model units).
+export const MAGMA = { under: [2, 3.5], rise: 0.6, up: 2.8, wind: 0.7, sink: 0.5, depth: 11, shots: 3, spread: 0.2, speed: 58, dmg: 12, range: 420 };
+// Comet Chargers: hold `hold` m off to one side ahead of you; every `every` s within `range` m, `wind` s of wind-up
+// (thruster and eye glow, a rising hum, a fixed aim at where you'll be), then a straight charge at `speed` for `dash`
+// s, then `coast` s drifting.
+export const COMET = { hold: 170, side: 80, every: [3.5, 5.5], wind: 1.1, speed: 150, dash: 1.5, coast: 1.4, range: 380 };
 // Everything enemy-side (movement, shots, attack timers) runs at this pace so the game feels unhurried.
 export const PACE = 0.85;
 // Spiky Balloon proximity fuse: inside arm m it stops, blinks red and beeps for fuse s (enemy time), then pops.
@@ -978,7 +994,7 @@ export class Enemies {
       if (e.wave !== this.frenzy.wave) { this.remove(i); continue; }
       _s.copy(f).applyAxisAngle(Y, (Math.random() < 0.5 ? -1 : 1) * FLANK_YAW).multiplyScalar(RUSH_RETURN).add(p.pos);
       const g = Math.max(G.terrain.surfaceHeight(_s.x, _s.z), waterLine());
-      _s.y = e.def.ground ? g : Math.min(Math.max(p.pos.y, g + 45), G.terrain.ceilingHeight(_s.x, _s.z) - 25);
+      _s.y = e.def.ground || e.def.vent ? g : Math.min(Math.max(p.pos.y, g + 45), G.terrain.ceilingHeight(_s.x, _s.z) - 25);
       _t.subVectors(_s, e.pos);
       for (const k of e.pair ? e.pair.kites : [e]) { k.pos.add(_t); k.vel.set(0, 0, 0); }
       if (e.pair) e.pair.centre.add(_t);
@@ -990,7 +1006,7 @@ export class Enemies {
   // unlocked yet.
   pickType(only = null) {
     const G = this.G, gate = this.frenzy ? 0.4 : 1;
-    const ok = ([k, d], g) => d.weight > 0 && G.score >= d.minScore * (this.frenzy && RUSH_FREE.includes(k) ? 0 : g) && G.zones.allowsEnemy(d) && (!only || only.includes(k)) && !(d.max && this.count(k) >= d.max);
+    const ok = ([k, d], g) => d.weight > 0 && G.score >= d.minScore * (this.frenzy && RUSH_FREE.includes(k) ? 0 : g) && G.zones.allowsEnemy(d) && (!d.lands || d.lands.includes(G.zones.current.name)) && (!only || only.includes(k)) && !(d.max && this.count(k) >= d.max);
     let avail = Object.entries(TYPES).filter((t) => ok(t, gate));
     if (!avail.length && only) avail = Object.entries(TYPES).filter((t) => ok(t, 0));
     if (!avail.length) return null;
@@ -1062,7 +1078,8 @@ export class Enemies {
       if (G.terrain.surfaceHeight(pos.x, pos.z) < waterLine()) return; // cannons can't swim (on a seabed they don't have to)
       if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
-    } else if (from === 'above') pos.y = Math.max(p.pos.y + RUSH_ABOVE, g + 45);
+    } else if (def.vent) pos.y = g; // a Magma Spitter lives in the lava, or in a rock vent
+    else if (from === 'above') pos.y = Math.max(p.pos.y + RUSH_ABOVE, g + 45);
     else pos.y = Math.min(Math.max(p.pos.y + (this.frenzy ? rand(-RUSH_RISE, RUSH_RISE) : rand(-15, 35)), g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
     if (def.pair) this.spawn(type, pos);
     else if (n > 1) for (let k = 0; k < Math.min(n, room); k++) this.spawn(type, pos.clone().add(new THREE.Vector3(rand(-25, 25), rand(-8, 8), rand(-25, 25))));
@@ -1116,6 +1133,7 @@ export class Enemies {
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
       else if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
+      else if (e.def.vent) e.pos.y = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) - 0.5; // in the lava (or rock)
       else {
         const g = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), waterLine()) + (e.boss ? e.radius : 12); // tunnels: enemies can follow you in
         if (e.state === 'falling' && e.pos.y <= g) { G.fx.explosion(e.pos); this.kill(i, true); continue; }
@@ -1165,6 +1183,7 @@ export class Enemies {
         const part = this.hitPart(e, bp);
         if (!part && (e.def.boxes ? !this.inHull(e, bp, 2) : bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2)) continue;
         if (this.guarded(e, p.bullets[b], bp)) { p.removeBullet(b); continue; }
+        if (e.shield === 0 && !e.boss) { p.removeBullet(b); G.fx.sparkle(bp, '#9aa0a6'); continue; } // a Magma Spitter under the lava
         const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1) * (e.shield ?? 1) * (e.dazed > 0 ? 1.5 : 1); // dazed bosses take ×1.5
         p.removeBullet(b);
         if (part) this.damagePart(e, part, dmg, bp);
@@ -1460,6 +1479,9 @@ export class Enemies {
         steer(_w.clampLength(0, fast ? KITE_LUNGE * 1.5 : Math.max(d.speed, (KITE_KEEP * p.speed) / PACE) * 3), fast ? 8 : 3);
         break;
       }
+      case 'emberBat': this.emberBat(e, toP, dist, dt, steer); break;
+      case 'magmaSpitter': this.magmaSpitter(e, dist, dt); break;
+      case 'cometCharger': this.cometCharger(e, toP, dist, dt, steer); break;
       case 'moth':
         e.contactCd = Infinity; // it never bumps you: it latches on
         if (e.latched) { this.cling(e, dt); break; }
@@ -1483,6 +1505,116 @@ export class Enemies {
         }
         break;
     }
+  }
+
+  // Ember Bat (see BAT): circles ahead of you trailing sparks; now and then it stops, flares (eyes and a chirp) and
+  // swoops at you, trailing more.
+  emberBat(e, toP, dist, dt, steer) {
+    const G = this.G, p = G.player, d = e.def;
+    if (Math.random() < dt * (e.state === 'swoop' ? 30 : 8)) G.fx.emit(e.pos, 1, { colors: ['#ff6a1a', '#ffb03a', '#ffe14a'], speed: 4, life: 0.6, size: e.state === 'swoop' ? 6 : 4 });
+    if (e.state === 'flare') {
+      e.vel.multiplyScalar(Math.exp(-dt * 6));
+      e.mesh.scale.setScalar(e.baseScale * (1 + 0.25 * Math.sin(e.stateT * 40))); // a shiver: here it comes
+      if (e.stateT >= BAT.flare) { e.state = 'swoop'; e.stateT = 0; e.mesh.scale.setScalar(e.baseScale); }
+    } else if (e.state === 'swoop') {
+      steer(_w.copy(toP).normalize().multiplyScalar(this.chase(d) * BAT.swoop), 3.5);
+      if (e.stateT > BAT.swoopT) { e.state = 'idle'; e.stateT = 0; e.cd = rand(...BAT.every); }
+    } else {
+      const a = e.t * 1.3 + e.seed;
+      _w.copy(p.pos).addScaledVector(flatForward(p, _s), BAT.ahead).add(_pp.set(Math.cos(a) * BAT.ring, 10 + Math.sin(e.t * 2.3 + e.seed) * 8, Math.sin(a) * BAT.ring)).sub(e.pos);
+      steer(_w.multiplyScalar(1.5).clampLength(0, this.chase(d) * 1.2), 2);
+      e.cd -= dt;
+      // One bat at a time flares (the swarm takes turns).
+      if (e.cd <= 0 && dist < BAT.range && !p.dead && !this.list.some((x) => x !== e && x.type === 'emberBat' && x.state === 'flare')) {
+        e.state = 'flare'; e.stateT = 0; e.baseScale = e.mesh.scale.x;
+        G.audio.tone(1500, 0.12, { type: 'square', vol: 0.04, slide: 900 });
+      }
+    }
+  }
+
+  // Magma Spitter (see MAGMA): sits put in the lava; its mound (userData.body) sinks out of reach, heaves up, glows,
+  // spits a fan of fireballs at where you'll be, and sinks again. Under the lava its shield is 0 (bullets sparkle off).
+  magmaSpitter(e, dist, dt) {
+    const G = this.G, p = G.player, u = e.mesh.userData, M = MAGMA;
+    e.vel.set(0, 0, 0);
+    e.hold ??= rand(...M.under);
+    if (e.state === 'idle') { e.state = 'under'; e.stateT = rand(0, 1); }
+    const next = (s) => { e.state = s; e.stateT = 0; };
+    let y = -M.depth;
+    if (e.state === 'under') {
+      if (e.stateT >= e.hold && dist < M.range && !p.dead) next('rise');
+    } else if (e.state === 'rise') {
+      y = -M.depth * (1 - Math.min(1, e.stateT / M.rise));
+      if (Math.random() < dt * 30) G.fx.emit(e.pos, 2, { colors: ['#ff5a14', '#ffb03a', '#2a2022'], speed: 14, life: 0.7, size: 7, up: 18 });
+      if (e.stateT >= M.rise) { next('up'); e.fired = false; }
+    } else if (e.state === 'up') {
+      y = Math.sin(e.stateT * 3) * 0.4;
+      const hot = Math.min(1, e.stateT / M.wind);
+      u.cracks.color.setRGB(1, 0.35 + 0.5 * hot, 0.08 + 0.2 * hot); // the cracks go from orange to yellow-white
+      if (!e.fired && e.stateT >= M.wind) {
+        e.fired = true;
+        if (dist < M.range && !p.dead) {
+          const from = _a.copy(e.pos).setY(e.pos.y + 7 * e.mesh.scale.x);
+          const lead = _b.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / M.speed) * this.leadK()).sub(from);
+          const half = (M.shots - 1) / 2;
+          for (let k = 0; k < M.shots; k++) this.fireOrb(from, _t.copy(lead).applyAxisAngle(Y, (k - half) * M.spread), M.speed, M.dmg, '#ff6a1a', 1.4);
+          G.fx.emit(from, 14, { colors: ['#ff5a14', '#ffd23a', '#3a2c2a'], speed: 25, life: 0.8, size: 8, up: 25 });
+          G.audio.tone(110, 0.35, { type: 'sawtooth', vol: 0.07, slide: -40 });
+        }
+      }
+      if (e.stateT >= M.up) next('sink');
+    } else if (e.state === 'sink') {
+      y = -M.depth * Math.min(1, e.stateT / M.sink);
+      if (e.stateT >= M.sink) { next('under'); e.hold = rand(...M.under); u.cracks.color.set('#ff5a14'); }
+    }
+    u.body.position.y = y;
+    e.shield = y > -M.depth * 0.5 ? 1 : 0; // under the lava, out of reach
+    u.ring.visible = e.state === 'under' || e.state === 'rise';
+    u.ring.material.opacity = 0.45 + 0.35 * Math.abs(Math.sin(e.t * (e.state === 'rise' ? 12 : 3)));
+    u.ring.scale.setScalar(1 + 0.08 * Math.sin(e.t * 5));
+    e.contactCd = Math.max(e.contactCd || 0, e.shield ? 0 : 0.2); // no bumping into one you can't see
+  }
+
+  // Comet Charger (see COMET): holds a spot off to one side ahead of you, then winds up (thruster and eye swell, a
+  // rising hum), locks on to where you'll be, and charges in a straight line, trailing a comet tail. A hit ends the
+  // charge (the bump pushes it back).
+  cometCharger(e, toP, dist, dt, steer) {
+    const G = this.G, p = G.player, d = e.def, u = e.mesh.userData, C = COMET;
+    const next = (s) => { e.state = s; e.stateT = 0; };
+    let glow = 0;
+    if (e.state === 'wind') {
+      e.vel.multiplyScalar(Math.exp(-dt * 4));
+      glow = Math.min(1, e.stateT / C.wind);
+      if (e.stateT >= C.wind) {
+        // Locked: at where you'll be when it gets there.
+        const lead = _w.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / C.speed) * this.leadK()).sub(e.pos).normalize();
+        (e.look ||= new THREE.Vector3()).copy(lead);
+        e.vel.copy(lead).multiplyScalar(C.speed);
+        next('dash');
+        G.audio.tone(90, 0.5, { type: 'sawtooth', vol: 0.07, slide: 200 });
+      } else (e.look ||= new THREE.Vector3()).copy(toP).normalize();
+    } else if (e.state === 'dash') {
+      glow = 1;
+      if (Math.random() < dt * 40) G.fx.emit(_a.copy(e.pos).addScaledVector(e.look, -6), 2, { colors: ['#9af4ff', '#5ae8ff', '#ffffff'], speed: 6, life: 0.8, size: 8 });
+      if (e.stateT >= C.dash || (e.contactCd || 0) > 1) next('coast'); // a bump (contactCd 1.5) ends it; still facing along its charge
+    } else if (e.state === 'coast') {
+      e.vel.multiplyScalar(Math.exp(-dt * 1.5));
+      if (e.stateT >= C.coast) { next('idle'); e.look = null; e.cd = rand(...C.every); }
+    } else {
+      e.look = null;
+      const f = flatForward(p, _s), sd = e.seed > Math.PI ? 1 : -1; // not _v: that's toP
+      _w.copy(p.pos).addScaledVector(f, C.hold).addScaledVector(_pp.set(-f.z, 0, f.x), sd * C.side).setY(p.pos.y + 15 + Math.sin(e.t) * 10).sub(e.pos);
+      steer(_w.clampLength(0, this.keepUp(d)), 1.2);
+      e.cd -= dt;
+      if (e.cd <= 0 && dist < C.range && !p.dead) {
+        next('wind');
+        G.audio.tone(200, C.wind, { type: 'sine', vol: 0.05, slide: 500 });
+      }
+    }
+    u.jet.scale.setScalar(1 + glow * 0.5);
+    u.jet.material.opacity = 0.5 + 0.5 * glow;
+    u.flame.scale.set(1 + glow * 0.4, 1 + glow * 1.6, 1 + glow * 0.4);
+    u.eye.scale.setScalar(1 + glow * 0.4 + (e.state === 'wind' ? 0.1 * Math.sin(e.stateT * 30) : 0));
   }
 
   // Umbrella Goon: a bullet coming in at the front of its umbrella bounces off (a grey plink, no damage).
@@ -1687,11 +1819,12 @@ export class Enemies {
     if (e.latched && this.calmTimer > 0 && !e.quest) this.unlatch(e, false); // calmed down, it lets go
     if (e.latched) { this.pin(e); return; }
     if (e.face) { e.mesh.lookAt(_w.copy(e.pos).add(e.face)); return; }
+    if (e.look) { e.mesh.lookAt(_w.copy(e.pos).add(e.look)); return; } // a Comet Charger, locked on
     if (e.type === 'cannon' || e.type === 'jelly') return;
     if (e.type === 'mine' || e.type === 'storm') e.mesh.rotation.y += dt * 0.4;
     if (e.type === 'ufo') e.mesh.rotation.y += dt * 1.5;
-    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock' || e.type === 'grumbling') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
-    else if (e.vel.lengthSq() > 1 && e.type !== 'mine' && e.type !== 'ufo') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
+    if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock' || e.type === 'grumbling' || e.type === 'magmaSpitter') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
+    else if (e.vel.lengthSq() > 1 && e.type !== 'mine' && e.type !== 'ufo' && e.type !== 'magmaSpitter') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
   }
 
   updateShots(dt) {
