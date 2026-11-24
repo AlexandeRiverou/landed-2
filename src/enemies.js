@@ -1078,7 +1078,8 @@ export class Enemies {
       if (G.terrain.surfaceHeight(pos.x, pos.z) < waterLine()) return; // cannons can't swim (on a seabed they don't have to)
       if (!this.isGentleGround(pos.x, pos.z)) return; // on a steep slope the barrel would sink into the hill
       pos.y = g;
-    } else if (def.vent) pos.y = g; // a Magma Spitter lives in the lava, or in a rock vent else if (from === 'above') pos.y = Math.max(p.pos.y + RUSH_ABOVE, g + 45);
+    } else if (def.vent) pos.y = g; // a Magma Spitter lives in the lava, or in a rock vent
+    else if (from === 'above') pos.y = Math.max(p.pos.y + RUSH_ABOVE, g + 45);
     else pos.y = Math.min(Math.max(p.pos.y + (this.frenzy ? rand(-RUSH_RISE, RUSH_RISE) : rand(-15, 35)), g + 45), G.terrain.ceilingHeight(pos.x, pos.z) - 25);
     if (def.pair) this.spawn(type, pos);
     else if (n > 1) for (let k = 0; k < Math.min(n, room); k++) this.spawn(type, pos.clone().add(new THREE.Vector3(rand(-25, 25), rand(-8, 8), rand(-25, 25))));
@@ -1182,6 +1183,7 @@ export class Enemies {
         const part = this.hitPart(e, bp);
         if (!part && (e.def.boxes ? !this.inHull(e, bp, 2) : bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2)) continue;
         if (this.guarded(e, p.bullets[b], bp)) { p.removeBullet(b); continue; }
+        if (e.shield === 0 && !e.boss) { p.removeBullet(b); G.fx.sparkle(bp, '#9aa0a6'); continue; } // a Magma Spitter under the lava
         const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1) * (e.shield ?? 1) * (e.dazed > 0 ? 1.5 : 1); // dazed bosses take ×1.5
         p.removeBullet(b);
         if (part) this.damagePart(e, part, dmg, bp);
@@ -1505,7 +1507,6 @@ export class Enemies {
     }
   }
 
-  // Umbrella Goon: a bullet coming in at the front of its umbrella bounces off (a grey plink, no damage).
   // Ember Bat (see BAT): circles ahead of you trailing sparks; now and then it stops, flares (eyes and a chirp) and
   // swoops at you, trailing more.
   emberBat(e, toP, dist, dt, steer) {
@@ -1513,19 +1514,19 @@ export class Enemies {
     if (Math.random() < dt * (e.state === 'swoop' ? 30 : 8)) G.fx.emit(e.pos, 1, { colors: ['#ff6a1a', '#ffb03a', '#ffe14a'], speed: 4, life: 0.6, size: e.state === 'swoop' ? 6 : 4 });
     if (e.state === 'flare') {
       e.vel.multiplyScalar(Math.exp(-dt * 6));
-      e.mesh.scale.setScalar(1 + 0.25 * Math.sin(e.stateT * 40)); // a shiver: here it comes
-      if (e.stateT >= BAT.flare) { e.state = 'swoop'; e.stateT = 0; e.mesh.scale.setScalar(1); }
+      e.mesh.scale.setScalar(e.baseScale * (1 + 0.25 * Math.sin(e.stateT * 40))); // a shiver: here it comes
+      if (e.stateT >= BAT.flare) { e.state = 'swoop'; e.stateT = 0; e.mesh.scale.setScalar(e.baseScale); }
     } else if (e.state === 'swoop') {
       steer(_w.copy(toP).normalize().multiplyScalar(this.chase(d) * BAT.swoop), 3.5);
       if (e.stateT > BAT.swoopT) { e.state = 'idle'; e.stateT = 0; e.cd = rand(...BAT.every); }
     } else {
       const a = e.t * 1.3 + e.seed;
-      _w.copy(p.pos).addScaledVector(flatForward(p, _v), BAT.ahead).add(_pp.set(Math.cos(a) * BAT.ring, 10 + Math.sin(e.t * 2.3 + e.seed) * 8, Math.sin(a) * BAT.ring)).sub(e.pos);
+      _w.copy(p.pos).addScaledVector(flatForward(p, _s), BAT.ahead).add(_pp.set(Math.cos(a) * BAT.ring, 10 + Math.sin(e.t * 2.3 + e.seed) * 8, Math.sin(a) * BAT.ring)).sub(e.pos);
       steer(_w.multiplyScalar(1.5).clampLength(0, this.chase(d) * 1.2), 2);
       e.cd -= dt;
       // One bat at a time flares (the swarm takes turns).
       if (e.cd <= 0 && dist < BAT.range && !p.dead && !this.list.some((x) => x !== e && x.type === 'emberBat' && x.state === 'flare')) {
-        e.state = 'flare'; e.stateT = 0;
+        e.state = 'flare'; e.stateT = 0; e.baseScale = e.mesh.scale.x;
         G.audio.tone(1500, 0.12, { type: 'square', vol: 0.04, slide: 900 });
       }
     }
@@ -1595,13 +1596,13 @@ export class Enemies {
     } else if (e.state === 'dash') {
       glow = 1;
       if (Math.random() < dt * 40) G.fx.emit(_a.copy(e.pos).addScaledVector(e.look, -6), 2, { colors: ['#9af4ff', '#5ae8ff', '#ffffff'], speed: 6, life: 0.8, size: 8 });
-      if (e.stateT >= C.dash || (e.contactCd || 0) > 1) next('coast'); // still facing along its charge
+      if (e.stateT >= C.dash || (e.contactCd || 0) > 1) next('coast'); // a bump (contactCd 1.5) ends it; still facing along its charge
     } else if (e.state === 'coast') {
       e.vel.multiplyScalar(Math.exp(-dt * 1.5));
       if (e.stateT >= C.coast) { next('idle'); e.look = null; e.cd = rand(...C.every); }
     } else {
       e.look = null;
-      const f = flatForward(p, _v), sd = e.seed > Math.PI ? 1 : -1;
+      const f = flatForward(p, _s), sd = e.seed > Math.PI ? 1 : -1; // not _v: that's toP
       _w.copy(p.pos).addScaledVector(f, C.hold).addScaledVector(_pp.set(-f.z, 0, f.x), sd * C.side).setY(p.pos.y + 15 + Math.sin(e.t) * 10).sub(e.pos);
       steer(_w.clampLength(0, this.keepUp(d)), 1.2);
       e.cd -= dt;
@@ -1616,6 +1617,7 @@ export class Enemies {
     u.eye.scale.setScalar(1 + glow * 0.4 + (e.state === 'wind' ? 0.1 * Math.sin(e.stateT * 30) : 0));
   }
 
+  // Umbrella Goon: a bullet coming in at the front of its umbrella bounces off (a grey plink, no damage).
   guarded(e, b, at) {
     if (!e.face || e.state === 'falling' || b.vel.dot(e.face) > -UMBRELLA_COS * b.vel.length()) return false;
     this.G.fx.sparkle(at, '#9aa0a6');

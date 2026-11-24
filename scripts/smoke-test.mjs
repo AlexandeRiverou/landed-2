@@ -4044,7 +4044,7 @@ try {
     clear();
     // Ember Bats: a bat right ahead flares, then swoops; contact costs hull and pops it.
     hits = [];
-    const bats = [0, 1, 2].map((k) => E.spawn('emberBat', ahead(60 + k * 5, 5)));
+    const bats = [0, 1, 2].map((k) => E.spawn('emberBat', k ? ahead(60 + k * 5, 5) : ahead(25))); // the first one close: it flares and swoops at once
     const B = { states: new Set(), popped: 0 };
     bats[0].cd = 0;
     step(30 * 6, () => { for (const b of bats) B.states.add(b.state); });
