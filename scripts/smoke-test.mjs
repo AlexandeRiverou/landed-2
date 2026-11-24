@@ -2236,19 +2236,19 @@ try {
     F.drop('coin', p.pos.clone().addScaledVector(p.right, 300)); F.update(0.016);
     out.farPings = pings.length;
     G.audio.ping = ping;
-    // Warmer, warmer: no beam or HUD hint from far away; the beam fades in mid range; close in the HUD says so once
+    // Warmer, warmer: no HUD hint from far away or mid range, and never a light column; close in the HUD says so once
     // and rings it (or points at it from the screen edge), and the twinkle is bigger than far out.
     const notes = [], notify = G.ui.notify;
     G.ui.notify = (t) => notes.push(t);
     const pip = document.getElementById('find-pip');
     const at = (m, dir = p.forward) => { F.clear(); F.drop('coin', p.pos.clone().addScaledVector(dir, m)); F.find.t = 0; F.update(0.016); };
     at(700);
-    out.warm = { far: { beam: F.beam.visible, pip: pip.style.display, glint: F.glint.scale.x, notes: notes.length } };
+    out.warm = { far: { beam: 'beam' in F, pip: pip.style.display, glint: F.glint.scale.x, notes: notes.length } };
     at(380);
-    out.warm.mid = { beam: F.beam.visible, beamA: F.beam.material.opacity, pip: pip.style.display, notes: notes.length };
+    out.warm.mid = { beam: 'beam' in F, pip: pip.style.display, notes: notes.length };
     at(120);
     F.update(0.016);
-    out.warm.near = { beam: F.beam.visible, beamA: F.beam.material.opacity, pip: pip.style.display, ring: !pip.classList.contains('edge'), glint: F.glint.scale.x, notes: notes.slice() };
+    out.warm.near = { beam: 'beam' in F, tall: G.scene.children.filter((o) => o.visible && o.geometry?.type === 'CylinderGeometry' && o.position.distanceTo(F.find.pos) < 1).length, pip: pip.style.display, ring: !pip.classList.contains('edge'), glint: F.glint.scale.x, notes: notes.slice() };
     at(120, p.right.clone().negate());
     out.warm.side = { edge: pip.classList.contains('edge'), note: notes[notes.length - 1] };
     F.clear();
@@ -4195,9 +4195,9 @@ try {
     [(({ finds: { spots: s } }) => ['low', 'peak', 'sky'].every((k) => s[k].kinds.length === 1 && s[k].kinds[0] === k && s[k].minD > 150 && s[k].maxD < 1000)
       && s.low.minUp >= 4.9 && s.low.maxUp <= 6.1 && s.peak.minUp >= 4.9 && s.peak.maxUp <= 7.1 && s.sky.minSide >= 69 && (s.sky.minUp >= 199 || s.sky.maxY <= 1080) && s.sky.maxY <= 1080)(report), `hidden finds: spots 150-1000 m away; low ones 6 m over the ground, behind-a-peak ones 7 m over it, sky ones 200-300 m up (never over 1080 m) and 70 m+ off your line (${JSON.stringify(report.finds.spots)})`],
     [(({ finds: { chime: c, farPings: far } }) => c.length === 1 && c[0][0] > 0.5 && c[0][1] > 0.9 && c[0][1] < 1.5 && far === 0)(report), `hidden finds: within 220 m a chime pings on the find's side, none from 300 m (${JSON.stringify({ chime: report.finds.chime, far: report.finds.farPings })})`],
-    [(({ finds: { warm: w } }) => !w.far.beam && w.far.pip === 'none' && w.far.notes === 0 && w.mid.beam && w.mid.beamA > 0.05 && w.mid.beamA < 0.45 && w.mid.pip === 'none' && w.mid.notes === 0
-      && w.near.beam && w.near.beamA >= 0.45 && w.near.pip === 'block' && w.near.ring && w.near.glint > w.far.glint * 1.4 && w.near.notes.length === 1 && w.near.notes[0].startsWith('✨ Something glints nearby, just ahead')
-      && w.side.edge && w.side.note.includes('off to your left') && w.cleared === 'none')(report), `hidden finds get warmer: nothing extra from 700 m, a faint light beam at 380 m, and at 120 m a full beam, a bigger twinkle, one "something glints nearby" line and a ring on it (a sparkle at the screen edge when it's off to the side) (${JSON.stringify(report.finds.warm)})`],
+    [(({ finds: { warm: w } }) => !w.far.beam && w.far.pip === 'none' && w.far.notes === 0 && !w.mid.beam && w.mid.pip === 'none' && w.mid.notes === 0
+      && !w.near.beam && w.near.tall === 0 && w.near.pip === 'block' && w.near.ring && w.near.glint > w.far.glint * 1.4 && w.near.notes.length === 1 && w.near.notes[0].startsWith('✨ Something glints nearby, just ahead')
+      && w.side.edge && w.side.note.includes('off to your left') && w.cleared === 'none')(report), `hidden finds get warmer: no column of light at any range, nothing extra from 700 m or 380 m, and at 120 m a bigger twinkle, one "something glints nearby" line and a ring on it (a sparkle at the screen edge when it's off to the side) (${JSON.stringify(report.finds.warm)})`],
     [(({ finds: { coin: c } }) => c.gone && c.score === 120 && c.boost === 1 && Math.abs(c.hull - 30) < 0.01 && c.run === 1 && c.total === 1 && c.stored === '1')(report), `hidden coin: +120, boost refilled, +20 hull, counted and remembered (${JSON.stringify(report.finds.coin)})`],
     [(({ finds: { note: n, title: t, last: l, allRead: a, reset: r, n: N } }) => N === 12 && n.score === 150 && n.shown && !n.paused && n.count === '📜 Lore 1/12' && n.title && n.stored && n.notLast && n.folded && t.startsWith('📜 Lore 1/12 · 🪙 1 hidden coin found') && l.early === 0 && l.then && a === 'coin' && r.none && r.timer === 30 && r.runCoins === 0 && r.lore === 12)(report), `lore notes: +150 and a card "Lore 1/12" (no pause, a click folds it), remembered, counted on the title card; the last page only comes last, then notes turn into coins; a new run keeps what you read (${JSON.stringify({ note: report.finds.note, title: report.finds.title, last: report.finds.last, allRead: report.finds.allRead, reset: report.finds.reset })})`],
     [report.firstObjective === 'hoop', 'first objective is a hoop'],

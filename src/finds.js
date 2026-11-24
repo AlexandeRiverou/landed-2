@@ -1,7 +1,7 @@
 // Hidden finds: rare coins and lore notes tucked where only curious pilots look. One waits somewhere off your path
 // at a time: skimming the ground in a dip, behind a peak (on its far side, so the mountain hides it), or high in the
 // sky. From far off only a faint twinkle gives it away (a mountain in the way hides the twinkle too). Closer in it gets
-// warmer and warmer: a soft pillar of light rises from it (tall enough to show over the peak it hides behind), then a
+// warmer and warmer, without giving the spot away from afar (no pillar or column of light): a
 // chime pings faster, higher and louder the nearer you get, panned to its side, the twinkle grows, motes of light drift
 // up from it, and the HUD notices ("something glints nearby") with a ring on it or a sparkle at the screen edge. Coins pay points, refill boost and patch the hull; lore
 // notes (paper planes) pay points and open a short card. Lore and the coin tally are remembered between visits.
@@ -23,7 +23,6 @@ export const FINDS = {
   sky: [200, 300], // m over you (or the ground, whichever is higher)
   top: 1080,       // never above this (the soft ceiling starts at 1150)
   chime: 220,      // m: within this the chime pings, every 1.2 s far out down to 0.3 s close in, and the twinkle grows
-  beam: 450,       // m: the light pillar fades in from here and is at full strength by `chime`
   hint: 260,       // m: within this the HUD says something glints nearby and marks where
   motes: 200,      // m: within this motes of light drift up from it (not with reduced motion)
   lore: 0.4,       // chance a find is a lore note while notes are left to find
@@ -48,7 +47,6 @@ export const LORE = [
   { id: 'last', title: 'The Last Page', text: 'You found every note. The world has no edge, but this pile of paper does. Thank you for looking around.', last: true },
 ];
 
-const BEAM = { r: 2.6, up: 150, down: 20 };        // the light pillar: radius, m above and below the find
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _c = new THREE.Vector3();
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
@@ -86,14 +84,8 @@ export class Finds {
     this.glint.material.color.set(kind === 'note' ? '#dff4ff' : '#fff0a0');
     this.glint.position.copy(pos);
     this.glint.visible = true;
-    this.beam.material.color.set(kind === 'note' ? '#a9dcff' : '#ffd84a');
-    this.beam.position.copy(pos);
-    this.beam.visible = false;
-    // Under a roof (caverns, tunnels) the pillar stops short of the rock instead of shining through it.
-    const roof = this.G.terrain.ceilingHeight(pos.x, pos.z, pos.y);
-    this.beam.scale.y = Number.isFinite(roof) ? THREE.MathUtils.clamp((roof - pos.y) / BEAM.up, 0.05, 1) : 1;
     this.pip.classList.toggle('note', kind === 'note');
-    this.G.scene.add(mesh, this.glint, this.beam);
+    this.G.scene.add(mesh, this.glint);
     this.find = { kind, spot, note, mesh, pos: mesh.position, base: pos.y, life: FINDS.life, t: Math.random() * 6, ping: 0, mote: 0, near: false };
     if (!this.hinted) {
       this.hinted = true;
@@ -104,7 +96,7 @@ export class Finds {
 
   clear() {
     if (!this.find) return;
-    this.G.scene.remove(this.find.mesh, this.glint, this.beam);
+    this.G.scene.remove(this.find.mesh, this.glint);
     this.pip.style.display = 'none';
     this.find = null;
   }
@@ -201,11 +193,6 @@ export class Finds {
     this.glint.material.opacity = Math.max(0.35 + 0.65 * flash, 0.4 + 0.5 * close);
     this.glint.material.rotation = still ? 0 : k.t * 0.6;
     this.glint.scale.setScalar(0.028 + 0.03 * flash + 0.045 * close);
-    // The pillar of light: nothing from far away, fading in from 450 m, full by 220 m; it breathes (holds still with
-    // reduced motion). Terrain still hides its foot, but it stands 150 m tall, so it shows over the peak it's behind.
-    const beamA = clamp01((FINDS.beam - d) / (FINDS.beam - FINDS.chime));
-    this.beam.visible = beamA > 0 && !p.dead;
-    this.beam.material.opacity = beamA * (still ? 0.6 : 0.5 + 0.15 * Math.sin(k.t * 2.4));
 
     if (!p.dead && d < FINDS.radius * G.progress.pickupMul * Math.max(1, p.sizeScale)) { this.collect(); return; }
     // Motes of light drifting up from it.
@@ -351,24 +338,6 @@ export class Finds {
       map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, sizeAttenuation: false, blending: THREE.AdditiveBlending,
     }));
     this.glint.scale.setScalar(0.03);
-
-    // The pillar of light: an open tube, brightest just over the find and fading out toward its top.
-    const bc = document.createElement('canvas');
-    bc.width = 4; bc.height = 64;
-    const bx = bc.getContext('2d'), bg = bx.createLinearGradient(0, 0, 0, 64);
-    const foot = BEAM.up / (BEAM.up + BEAM.down);   // where the find sits, from the top
-    bg.addColorStop(0, 'rgba(255,255,255,0)');
-    bg.addColorStop(foot * 0.75, 'rgba(255,255,255,0.45)');
-    bg.addColorStop(foot, 'rgba(255,255,255,1)');
-    bg.addColorStop(1, 'rgba(255,255,255,0)');
-    bx.fillStyle = bg;
-    bx.fillRect(0, 0, 4, 64);
-    const bgeo = new THREE.CylinderGeometry(BEAM.r, BEAM.r, BEAM.up + BEAM.down, 10, 1, true);
-    bgeo.translate(0, (BEAM.up - BEAM.down) / 2, 0);
-    this.beam = new THREE.Mesh(bgeo, new THREE.MeshBasicMaterial({
-      map: new THREE.CanvasTexture(bc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
-    }));
-    this.beam.renderOrder = 2;
   }
 
   buildPip() {
