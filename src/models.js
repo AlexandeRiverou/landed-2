@@ -512,39 +512,106 @@ export const PLANE_SKINS = [
   { name: 'Camouflage (it\'s just green)', body: '#5a7a3a', wing: '#7a8a4a', accent: '#3a4a2a' },
 ];
 
-export function makePlane() {
+// Planes you can fly (the hangar store, src/hangar.js, sells them for hidden coins). Every shape uses the same three
+// paint materials (body, wing, accent), so paint jobs (PLANE_SKINS, the skin mutation, rainbow mode) work on all of
+// them; each also has its own factory paint, `skin`. The prop group spins about its own axis (main.js, player.js).
+export const PLANE_KINDS = {
+  pup: { skin: PLANE_SKINS[0] },
+  dart: { skin: { name: 'Dart', body: '#3a8ad8', wing: '#e8f2ff', accent: '#ff8a1f' } },
+  bee: { skin: { name: 'Bumblebee', body: '#ffc21a', wing: '#2b2b3a', accent: '#2b2b3a' } },
+  hornet: { skin: { name: 'Twin Hornet', body: '#2a3a6a', wing: '#e8e0c8', accent: '#ff7a1a' } },
+};
+
+export function makePlane(kind = 'pup') {
   const group = new THREE.Group();
   const body = new THREE.MeshLambertMaterial({ color: '#e8473c', flatShading: true });
   const wing = new THREE.MeshLambertMaterial({ color: '#f5f2ea', flatShading: true });
   const accent = new THREE.MeshLambertMaterial({ color: '#2b2b3a', flatShading: true });
   const glass = new THREE.MeshPhongMaterial({ color: '#2a4a7a', shininess: 120, specular: '#ffffff' });
-  const mesh = (g, m, t = {}) => {
+  const mesh = (g, m, t = {}, parent = group) => {
     const o = new THREE.Mesh(g, m);
     o.position.set(t.x || 0, t.y || 0, t.z || 0);
     o.rotation.set(t.rx || 0, t.ry || 0, t.rz || 0);
     if (t.s) o.scale.set(...t.s);
-    group.add(o);
+    parent.add(o);
     return o;
   };
-  mesh(Cyl(1.15, 0.55, 9, 10), body, { rx: -PI / 2 });
-  mesh(Cone(1.15, 1.8, 10), body, { z: -5.4, rx: -PI / 2 });
-  mesh(Box(13.5, 0.35, 2.4), wing, { y: -0.2, z: -0.9 });
-  mesh(Box(1, 0.4, 2.45), accent, { x: 6.4, y: -0.2, z: -0.9 });
-  mesh(Box(1, 0.4, 2.45), accent, { x: -6.4, y: -0.2, z: -0.9 });
-  mesh(Box(4.6, 0.25, 1.3), wing, { y: 0.2, z: 4 });
-  mesh(Box(0.25, 2.2, 1.6), body, { y: 1.3, z: 4.1 });
-  mesh(Sph(0.85, 10, 8), glass, { y: 0.85, z: -1.4, s: [1, 0.8, 1.6] });
-  mesh(Box(0.3, 1.3, 0.3), accent, { x: 1.2, y: -1.1, z: -2 });
-  mesh(Box(0.3, 1.3, 0.3), accent, { x: -1.2, y: -1.1, z: -2 });
-  mesh(Cyl(0.5, 0.5, 0.4, 8), accent, { x: 1.2, y: -1.8, z: -2, rz: PI / 2 });
-  mesh(Cyl(0.5, 0.5, 0.4, 8), accent, { x: -1.2, y: -1.8, z: -2, rz: PI / 2 });
+  const wheels = (x, y, z) => {
+    for (const sx of [x, -x]) {
+      mesh(Box(0.3, 1.3, 0.3), accent, { x: sx, y, z });
+      mesh(Cyl(0.5, 0.5, 0.4, 8), accent, { x: sx, y: y - 0.7, z, rz: PI / 2 });
+    }
+  };
   const prop = new THREE.Group();
-  prop.position.z = -6.4;
-  prop.add(new THREE.Mesh(Box(0.3, 5.4, 0.15), accent));
-  prop.add(new THREE.Mesh(Box(5.4, 0.3, 0.15), accent));
+  const blades = (r) => {
+    prop.add(new THREE.Mesh(Box(0.3, r, 0.15), accent));
+    prop.add(new THREE.Mesh(Box(r, 0.3, 0.15), accent));
+  };
+  if (kind === 'dart') {
+    // Slim and pointy: a long needle nose, swept delta wings, a tall swept fin, no tailplane.
+    mesh(Cyl(0.95, 0.45, 10, 8), body, { z: 0.4, rx: -PI / 2 });
+    mesh(Cone(0.95, 3, 8), body, { z: -6.1, rx: -PI / 2 });
+    for (const sd of [1, -1]) {
+      const w = new THREE.Group();
+      w.position.set(sd * 0.8, -0.15, -1.5);
+      w.rotation.y = -sd * 0.62; // swept back
+      mesh(Box(6.4, 0.3, 2.2), wing, { x: sd * 3 }, w);
+      mesh(Box(0.9, 0.36, 2.25), accent, { x: sd * 6.1 }, w);
+      group.add(w);
+    }
+    mesh(Box(0.22, 2.4, 2.2), body, { y: 1.3, z: 4.2, rx: 0.45 }); // leaning back
+    mesh(Sph(0.7, 10, 8), glass, { y: 0.7, z: -1.8, s: [1, 0.75, 2] });
+    wheels(1, -0.9, -1.5);
+    prop.position.z = -7.7;
+    blades(4.4);
+  } else if (kind === 'bee') {
+    // A round, chunky biplane: two stacked wings joined by struts, a fat body with stripes, a little stinger tail.
+    mesh(Sph(1.6, 10, 8), body, { z: -0.6, s: [1, 1, 2.6] });
+    mesh(Cyl(1.62, 1.62, 0.6, 10), accent, { z: -1.2, rx: -PI / 2 });
+    mesh(Cyl(1.5, 1.5, 0.6, 10), accent, { z: 1, rx: -PI / 2 });
+    mesh(Cone(0.6, 2.4, 8), accent, { z: 4.6, rx: PI / 2 });
+    mesh(Box(12, 0.32, 2.2), wing, { y: -0.8, z: -1.2 });
+    mesh(Box(12, 0.32, 2.2), wing, { y: 1.9, z: -1.5 });
+    for (const sx of [4.4, -4.4]) mesh(Box(0.22, 2.6, 0.22), accent, { x: sx, y: 0.55, z: -1.3 });
+    mesh(Box(4, 0.25, 1.2), wing, { y: 0.3, z: 3.4 });
+    mesh(Box(0.25, 1.8, 1.3), body, { y: 1.3, z: 3.6 });
+    mesh(Sph(0.75, 10, 8), glass, { y: 1.35, z: 0.7, s: [1, 0.8, 1.3] }); // behind the upper wing
+    wheels(1.3, -1.6, -2);
+    prop.position.z = -4.8;
+    blades(5);
+  } else if (kind === 'hornet') {
+    // Twin booms: a short pod in the middle, two booms (with intake cones) running back to a shared tailplane.
+    mesh(Cyl(1.05, 0.8, 6, 10), body, { z: -1.4, rx: -PI / 2 });
+    mesh(Cone(1.05, 1.6, 10), body, { z: -5.2, rx: -PI / 2 });
+    mesh(Box(14.5, 0.35, 2.4), wing, { y: -0.1, z: -0.9 });
+    mesh(Box(1, 0.4, 2.45), accent, { x: 6.9, y: -0.1, z: -0.9 });
+    mesh(Box(1, 0.4, 2.45), accent, { x: -6.9, y: -0.1, z: -0.9 });
+    for (const sx of [3, -3]) {
+      mesh(Cyl(0.45, 0.35, 9, 8), body, { x: sx, z: 2.2, rx: -PI / 2 });
+      mesh(Cone(0.55, 1.4, 8), accent, { x: sx, z: -3, rx: -PI / 2 });
+      mesh(Box(0.22, 1.9, 1.3), body, { x: sx, y: 1, z: 6.2 });
+    }
+    mesh(Box(6.4, 0.25, 1.2), wing, { y: 0.4, z: 6.4 });
+    mesh(Sph(0.85, 10, 8), glass, { y: 0.8, z: -1.8, s: [1, 0.8, 1.5] });
+    wheels(1, -1, -2);
+    prop.position.z = -6.2;
+    blades(4.8);
+  } else {
+    mesh(Cyl(1.15, 0.55, 9, 10), body, { rx: -PI / 2 });
+    mesh(Cone(1.15, 1.8, 10), body, { z: -5.4, rx: -PI / 2 });
+    mesh(Box(13.5, 0.35, 2.4), wing, { y: -0.2, z: -0.9 });
+    mesh(Box(1, 0.4, 2.45), accent, { x: 6.4, y: -0.2, z: -0.9 });
+    mesh(Box(1, 0.4, 2.45), accent, { x: -6.4, y: -0.2, z: -0.9 });
+    mesh(Box(4.6, 0.25, 1.3), wing, { y: 0.2, z: 4 });
+    mesh(Box(0.25, 2.2, 1.6), body, { y: 1.3, z: 4.1 });
+    mesh(Sph(0.85, 10, 8), glass, { y: 0.85, z: -1.4, s: [1, 0.8, 1.6] });
+    wheels(1.2, -1.1, -2);
+    prop.position.z = -6.4;
+    blades(5.4);
+  }
   group.add(prop);
   return {
-    group, prop,
+    group, prop, kind,
     setSkin(s) { body.color.set(s.body); wing.color.set(s.wing); accent.color.set(s.accent); },
   };
 }

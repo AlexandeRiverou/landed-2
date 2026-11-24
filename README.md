@@ -256,6 +256,14 @@ hull; a **lore note** (a little paper plane) pays +150 and opens a short card, "
 away). The last of the 12 notes only turns up once you've read the other 11. Notes read and coins found are remembered
 between visits and shown on the title card.
 
+**Hangar and Lore shelf** (`src/hangar.js`): two buttons on the title card (and the Game Over card). The **Hangar**
+spends hidden coins on planes, each a sidegrade with its own low-poly shape and factory paint: Sky Pup (free,
+balanced), Dart (3 coins: +8% speed, boost refills 15% faster, 90 hull), Bumblebee (7: 125 hull, mends 25% faster, 6%
+slower, boost drains 10% faster) and Twin Hornet (12: +12% fire rate, boost lasts 10% longer, 90 hull). Your wallet is
+the coins you've ever found minus the price of the planes you own. The plane you pick is remembered and flies from the
+next fresh run (at once on the title card). The **Lore** shelf shows every note you've read; the rest are "???" and the
+last page stays sealed until the other 11 are found. Saved in `localStorage` (`landed.hangar`, `landed.plane`).
+
 **Power-ups** (`src/powerups.js`): a spinning gift floats into view ahead of you about once a minute (the first after
 25 s; never more than one waiting), and every boss drops one. Most last close to a minute (Time Freeze 22 s, Ghost Mode 35 s, Double
 Points 70 s), shown with a countdown in the bottom-left: Bubble Shield, Rapid Fire, Triple Shot, Homing Bullets, Turbo (while you

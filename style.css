@@ -436,3 +436,25 @@ button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
   #devmenu { padding: 8px; }
   #devmenu .dev-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Hangar and Lore shelf (hangar.js): two buttons on the title and Game Over cards, each opening a scrolling panel. */
+.menu-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.menu-row .menu-btn { margin-top: 12px; font-size: 16px; padding: 8px 16px; min-height: 44px; border-radius: 12px; background: #fff3c4; box-shadow: 0 4px 0 var(--ink); }
+.menu-row .menu-btn:hover { background: #ffe68a; }
+.menu-panel { z-index: 40; }
+.menu-panel .card { max-height: 100%; display: flex; flex-direction: column; text-align: left; padding: 16px 18px; }
+.menu-panel h2 { margin: 0; text-align: center; font-size: 28px; color: var(--accent); -webkit-text-stroke: 1px var(--ink); text-shadow: 0 3px 0 var(--ink); }
+.menu-panel .panel-sub { margin: 6px 0 10px; text-align: center; font-weight: 700; color: #a0662a; }
+.menu-panel .panel-list { overflow-y: auto; touch-action: pan-y; display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.menu-panel .panel-back { align-self: center; margin-top: 12px; font-size: 17px; padding: 8px 28px; min-height: 44px; background: #f4f0ff; }
+.paint-slot:empty { display: none; }
+.plane-row { display: flex; align-items: center; gap: 10px; background: #f4f0ff; border-radius: 12px; padding: 8px 10px; }
+.plane-info { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.plane-info b { font-size: 16px; }
+.plane-info .plane-perks { font-weight: 700; color: #5a3ab0; }
+.plane-row .plane-btn { margin: 0; font-size: 14px; padding: 8px 12px; min-height: 44px; min-width: 96px; border-radius: 12px; box-shadow: 0 4px 0 var(--ink); }
+.plane-row .plane-btn:disabled { cursor: default; opacity: 0.55; transform: none; box-shadow: 0 4px 0 var(--ink); }
+.plane-row .plane-btn.flying { opacity: 1; background: #7aff9a; }
+.lore-row { background: linear-gradient(160deg, #fffaf0, #f3e3bf); border: 2px solid var(--ink); border-radius: 10px; padding: 8px 12px; }
+.lore-row b { display: block; font-size: 15px; }
+.lore-row p { margin: 3px 0 0; font-size: 13px; font-weight: 600; font-style: italic; line-height: 1.35; }
+.lore-row.locked { background: #ece8f4; opacity: 0.7; }

@@ -4188,6 +4188,52 @@ try {
     await ctx.close();
   }
 
+  // Hangar and Lore shelf (hangar.js): a fresh context with 5 hidden coins and one note read. The title card's
+  // buttons show both; Dart (3 coins) is bought and flown at once, Twin Hornet (12) is out of reach; Enter in a panel
+  // doesn't take off and Escape closes it; the plane and wallet survive a reload; the Lore shelf shows the read note,
+  // "???" for the rest and the last page sealed; then the Dart takes off and flies.
+  const shop = {};
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 } });
+    await ctx.addInitScript(() => {
+      if (localStorage.getItem('landed.coins') === null) { localStorage.setItem('landed.coins', '5'); localStorage.setItem('landed.lore', '["dent"]'); }
+    });
+    const hp = await guard(await ctx.newPage());
+    await hp.goto(origin + '/');
+    await hp.waitForFunction(() => window.G && window.G.step && window.G.hangar, null, { timeout: 30000 });
+    await hp.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
+    const btns = () => hp.evaluate(() => [...document.querySelectorAll('#title .menu-btn')].map((b) => b.textContent));
+    shop.title = await btns();
+    shop.overButtons = await hp.evaluate(() => document.querySelectorAll('#gameover .menu-btn').length);
+    await hp.click('#title .menu-btn >> nth=0');
+    const rows = () => hp.evaluate(() => Object.fromEntries([...document.querySelectorAll('#hangar .plane-row')].map((r) => [r.dataset.plane, { text: r.querySelector('button').textContent, off: r.querySelector('button').disabled }])));
+    shop.before = { open: await hp.isVisible('#hangar'), rows: await rows() };
+    await hp.click('#hangar .plane-row[data-plane="dart"] button');
+    shop.after = await hp.evaluate(() => { const G = window.G, p = G.player; return { wallet: G.hangar.wallet, kind: p.model.kind, speed: p.baseSpeed, hull: p.maxHealth, regen: p.stats.boostRegen, sub: document.querySelector('#hangar .panel-sub').textContent }; });
+    shop.after.rows = await rows();
+    await hp.keyboard.press('Enter');
+    shop.enterStarted = await hp.evaluate(() => window.G.started);
+    await hp.keyboard.press('Escape');
+    shop.closed = !(await hp.isVisible('#hangar'));
+    shop.titleAfter = await btns();
+    await hp.reload();
+    await hp.waitForFunction(() => window.G && window.G.step && window.G.hangar, null, { timeout: 30000 });
+    await hp.evaluate(() => { window.G.finds.off = true; });
+    shop.reloaded = await hp.evaluate(() => { const G = window.G; return { selected: G.hangar.selected, kind: G.player.model.kind, wallet: G.hangar.wallet, owned: [...G.hangar.owned].sort().join(), speed: G.player.baseSpeed }; });
+    await hp.click('#title .menu-btn >> nth=1');
+    shop.lore = await hp.evaluate(() => {
+      const r = [...document.querySelectorAll('#lore-book .lore-row')];
+      return { open: !document.getElementById('lore-book').classList.contains('hidden'), n: r.length, sub: document.querySelector('#lore-book .panel-sub').textContent,
+        dent: r.find((x) => x.dataset.note === 'dent')?.textContent, locked: r.filter((x) => x.classList.contains('locked')).length, last: r.at(-1).textContent };
+    });
+    await hp.click('#lore-book .panel-back');
+    shop.loreClosed = !(await hp.isVisible('#lore-book'));
+    await hp.click('#start');
+    shop.flight = await hp.evaluate(() => { const G = window.G, p = G.player; for (let k = 0; k < 60; k++) G.step(1 / 30); return { started: G.started, kind: p.model.kind, inScene: !!p.model.group.parent, finite: Number.isFinite(p.pos.x + p.pos.y + p.pos.z), dead: p.dead }; });
+    await ctx.close();
+  }
+  report.shop = shop;
+
   console.log(JSON.stringify(report, null, 2));
 
   const checks = [
@@ -4492,6 +4538,13 @@ try {
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
     [desk.pauseShown && desk.pauseCalls === 'fs,quit,quit', 'desktop: with the bridge, the pause card has Quit too'],
+    [shop.title[0] === '🛩️ HANGAR · 🪙 5' && shop.title[1] === '📜 LORE · 1/12' && shop.overButtons === 2, `hangar: the title card shows HANGAR with the coin wallet and LORE with notes read, and Game Over has both (${JSON.stringify({ title: shop.title, over: shop.overButtons })})`],
+    [shop.before.open && shop.before.rows.pup.text === 'FLYING' && shop.before.rows.dart.text === 'BUY' && !shop.before.rows.dart.off && shop.before.rows.hornet.text === 'NEED 7 MORE' && shop.before.rows.hornet.off, `hangar: Sky Pup flying, Dart (3) for sale, Twin Hornet (12) out of reach with 5 coins (${JSON.stringify(shop.before)})`],
+    [shop.after.wallet === 2 && shop.after.kind === 'dart' && Math.abs(shop.after.speed - 44 * 1.08) < 0.01 && shop.after.hull === 90 && Math.abs(shop.after.regen - 1.15) < 1e-9 && shop.after.rows.dart.text === 'FLYING' && shop.after.rows.pup.text === 'FLY THIS' && shop.after.sub.startsWith('🪙 2 coins'), `hangar: buying the Dart takes 3 coins and flies it at once (+8% speed, 90 hull, boost refills 15% faster) (${JSON.stringify(shop.after)})`],
+    [!shop.enterStarted && shop.closed && shop.titleAfter[0] === '🛩️ HANGAR · 🪙 2', `hangar: Enter in a panel doesn't take off, Escape closes it, the title button shows the new wallet (${JSON.stringify({ enter: shop.enterStarted, closed: shop.closed, title: shop.titleAfter })})`],
+    [shop.reloaded.selected === 'dart' && shop.reloaded.kind === 'dart' && shop.reloaded.wallet === 2 && shop.reloaded.owned === 'dart,pup' && Math.abs(shop.reloaded.speed - 44 * 1.08) < 0.01, `hangar: the bought plane, the pick and the wallet survive a reload (${JSON.stringify(shop.reloaded)})`],
+    [shop.lore.open && shop.lore.n === 12 && shop.lore.sub.startsWith('1/12') && shop.lore.dent.includes('The First Landing') && shop.lore.locked === 11 && shop.lore.last.includes('Sealed') && shop.loreClosed, `lore shelf: 12 rows, the read note in full, "???" for the rest, the last page sealed, Back closes it (${JSON.stringify(shop.lore)})`],
+    [shop.flight.started && shop.flight.kind === 'dart' && shop.flight.inScene && shop.flight.finite && !shop.flight.dead, `hangar: the picked plane takes off and flies (${JSON.stringify(shop.flight)})`],
   ];
   for (const [ok, label] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`); if (!ok) failed = true; }
 } catch (e) {
