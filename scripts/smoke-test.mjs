@@ -27,9 +27,48 @@ const browser = await chromium.launch({
 });
 const errors = [];
 let failed = false;
+
+// Repeatable randomness. The game rolls Math.random for everything: the world seed at boot, every zone's new landscape,
+// enemy spawns, objective picks, power-ups. With real randomness each run flew a different world, so a check that
+// needs, say, a cave dome ahead or dry land under the X failed now and then, a different one each run. In the test,
+// Math.random is a seeded generator instead, and it is seeded again at the start of every page.evaluate (a different
+// seed each call, worked out from the run's seed, the page and the call's number), so frames that run between two
+// calls in real time can't shift the rolls the next check sees. SMOKE_SEED=<n> flies another world; SMOKE_SEED=random
+// picks one and prints it, so a failure it finds can be replayed.
+const SEED = process.env.SMOKE_SEED === 'random' ? (Math.random() * 2 ** 32) >>> 0 : (Number(process.env.SMOKE_SEED) || 20261124) >>> 0;
+console.log(`Smoke test seed: ${SEED} (replay with SMOKE_SEED=${SEED})`);
+const mix = (...xs) => { let h = 0x811c9dc5; for (const x of xs) { h = Math.imul(h ^ (x >>> 0), 0x01000193); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; } return h >>> 0; };
+let pages = 0;
+const seedRandom = async (page) => {
+  const pageNo = ++pages;
+  await page.addInitScript((s) => {
+    let a = s >>> 0;
+    const rand = () => { // mulberry32
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
+    Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+  }, mix(SEED, pageNo, 0));
+  // page.evaluate(fn, arg) runs `async (arg) => { reseed; return fn(arg) }` instead: one call, so no frame can come
+  // between the reseed and the check. Playwright sends String(fn) to the page, so the wrapper only needs its text.
+  const evaluate = page.evaluate.bind(page);
+  let call = 0;
+  page.evaluate = (fn, arg) => {
+    if (typeof fn !== 'function') return evaluate(fn, arg);
+    const src = `async (arg) => { window.__smokeSeed?.(${mix(SEED, pageNo, ++call)}); return (${fn.toString()})(arg); }`;
+    const wrapped = () => {};
+    wrapped.toString = () => src;
+    return evaluate(wrapped, arg);
+  };
+};
+
 try {
   // Every page records page and console errors, and gets no network beyond the local server.
   const guard = async (page) => {
+    await seedRandom(page);
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
