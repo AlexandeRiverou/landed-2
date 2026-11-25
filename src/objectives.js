@@ -1,7 +1,7 @@
 // Objective types. Each one exposes hooks (grow / approach / teleport / easier / magnet)
 // so the persuasion system can bend it toward a player who is ignoring it.
 import * as THREE from 'three';
-import { makeRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, makeTextSprite, disposeTree } from './models.js';
+import { makeRing, dressRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, makeTextSprite, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
 import * as C from './challenges.js';
@@ -97,6 +97,7 @@ export function spinRing(ring, dt, t) {
   const u = ring.userData;
   u.studs.rotation.z += dt * 0.8;
   u.glowMat.opacity = 0.22 + Math.sin(t * 4) * 0.1;
+  if (u.dress) u.dress(dt, t);
 }
 
 export function objective(o) {
@@ -114,6 +115,7 @@ export function objective(o) {
 function mkHoop(G, opt = {}) {
   const R = opt.radius || 17;
   const ring = makeRing(R, opt.color ?? '#ffc23a');
+  if (opt.type) dressRing(ring, opt.type);
   // A run's very first hoop sits nearly straight ahead and closer, so it's on screen from the start.
   const first = !opt.type && G.objectives.completed === 0;
   ring.position.copy(pointAhead(G, opt.dMin ?? (first ? 300 : 350), opt.dMax ?? (first ? 450 : 620), opt.spread ?? (first ? 0.35 : 1.1)));
@@ -140,6 +142,7 @@ function mkHoop(G, opt = {}) {
       if (G.player.pos.distanceTo(ring.position) > 150) faceFlat(ring, G.player.pos, dt);
       if (this.timeLimit) {
         const left = this.timeLimit - this.t;
+        ring.userData.timeFrac = left / this.timeLimit;
         this.progress = `⏱ ${Math.max(0, left).toFixed(1)}s left`;
         if (left < 8 && !warnedTime) { warnedTime = true; G.ui.notify('8 seconds! The hoop is checking its watch.', 'warn'); }
         if (left <= 0) return 'fail';

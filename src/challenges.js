@@ -2,7 +2,7 @@
 // a ground bullseye, stunt flying (speed, upside down), pest control, survival and a sightseeing tour.
 // Same contract as objectives.js: hooks the persuasion system can use on a player who ignores them.
 import * as THREE from 'three';
-import { makeRing, makeGalleryTarget, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
+import { makeRing, dressRing, makeGalleryTarget, makeGoose, makePlane, makeLandmark, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { WAVES, GARY } from './enemies.js';
 import { columnFade, columnHeight } from './lightcolumn.js';
@@ -15,7 +15,7 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 export function mkMovingHoop(G) {
   const R = 18;
-  const ring = makeRing(R, '#7aff6a');
+  const ring = dressRing(makeRing(R, '#7aff6a'), 'moving');
   const holder = new THREE.Object3D(); // the hoop's anchor; persuasion moves this, the hoop wanders around it
   holder.position.copy(pointAhead(G, 380, 560, 0.9, 60, 110));
   ring.position.copy(holder.position);
@@ -56,7 +56,7 @@ export function mkMovingHoop(G) {
 
 export function mkShrinkHoop(G) {
   const R = 16, START = 2.4, MIN = 0.3;
-  const ring = makeRing(R, '#ff9a3a');
+  const ring = dressRing(makeRing(R, '#ff9a3a'), 'shrink');
   ring.position.copy(pointAhead(G, 380, 560, 0.9));
   faceFlat(ring, G.player.pos);
   G.scene.add(ring);

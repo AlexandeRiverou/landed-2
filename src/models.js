@@ -1552,6 +1552,81 @@ export function setRingColor(ring, color) {
   ring.userData.glowMat.color.set(color);
 }
 
+// Hoop styles, so each hoop objective reads at a glance (B3). The classic gold hoop keeps its studs; the others swap
+// them for a look that says what the hoop does. Everything sits on or outside the rim, never in the opening, and is
+// visual only (crossRing does the hit test). spinRing calls u.dress(dt, t) every frame.
+//   tiny:   a scope reticle, four ticks pointing in and a faint bezel that breathes
+//   timed:  a clock, twelve ticks and an outer arc that drains clockwise as time runs out (u.timeFrac, 0..1)
+//   moving: a pair of feathered wings that flap
+//   shrink: eight chevrons that keep sliding inward
+export function dressRing(ring, style) {
+  const u = ring.userData, R = u.R, color = u.mat.color;
+  const rim = R + Math.max(1, R * 0.09); // outer edge of the tube
+  const soft = (opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
+  const dress = new THREE.Group();
+  ring.add(dress);
+  if (style === 'tiny') {
+    u.studs.visible = false;
+    const ticks = new THREE.Group(), tickMat = basic('#ffffff');
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * PI * 2;
+      add(ticks, Box(R * 0.32, 0.35, 0.35), tickMat, { x: Math.cos(a) * (rim + R * 0.3), y: Math.sin(a) * (rim + R * 0.3), rz: a });
+    }
+    const bezelMat = soft(0.18);
+    add(dress, Tor(R * 1.75, 0.22, 4, 40), bezelMat);
+    dress.add(ticks);
+    u.dress = (dt, t) => { ticks.rotation.z -= dt * 0.25; bezelMat.opacity = 0.12 + Math.sin(t * 2) * 0.06; };
+  } else if (style === 'timed') {
+    u.studs.visible = false;
+    const tickMat = basic('#ffffff');
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * PI * 2, long = k % 3 === 0;
+      add(dress, Box(0.5, long ? 3 : 1.8, 0.5), tickMat, { x: Math.cos(a) * (rim + 2), y: Math.sin(a) * (rim + 2), rz: a - PI / 2 });
+    }
+    const N = 24, step = (PI * 2) / N, arcMat = soft(0.5), segs = [];
+    for (let i = 0; i < N; i++) {
+      // Segment i starts at 12 o'clock and runs clockwise; the sweep hides them from the top as time passes.
+      segs.push(add(dress, Tor(rim + 5, 0.45, 4, 3, step * 0.8), arcMat, { rz: PI / 2 - (i + 0.9) * step }));
+    }
+    u.timeFrac = 1;
+    u.dress = (dt, t) => {
+      const gone = Math.round((1 - THREE.MathUtils.clamp(u.timeFrac, 0, 1)) * N);
+      for (let i = 0; i < N; i++) segs[i].visible = i >= gone;
+      arcMat.opacity = u.timeFrac < 0.3 ? 0.45 + Math.sin(t * 9) * 0.15 : 0.5;
+    };
+  } else if (style === 'moving') {
+    const featherMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: color, emissiveIntensity: 0.25, flatShading: true });
+    const wings = [-1, 1].map((side) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * rim, R * 0.15, 0);
+      [R * 0.55, R * 0.44, R * 0.32].forEach((len, k) => {
+        add(pivot, Box(len, R * 0.1, 0.4), featherMat, { x: side * len / 2, y: -k * R * 0.1, rz: side * -0.12 * k });
+      });
+      dress.add(pivot);
+      return pivot;
+    });
+    u.dress = (dt, t) => { wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * Math.sin(t * 3.2) * 0.35; }); };
+  } else if (style === 'shrink') {
+    u.studs.visible = false;
+    const chevMat = soft(0.6), chevs = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * PI * 2;
+      const c = add(dress, Cone(R * 0.08, R * 0.2, 4), chevMat, { rz: a + PI / 2 });
+      c.userData.a = a;
+      chevs.push(c);
+    }
+    u.dress = (dt, t) => {
+      const phase = (t * 0.9) % 1; // each sweep: slide in from outside, fade out near the rim
+      for (const c of chevs) {
+        const r = rim + R * (0.45 - 0.3 * phase);
+        c.position.set(Math.cos(c.userData.a) * r, Math.sin(c.userData.a) * r, 0);
+      }
+      chevMat.opacity = 0.6 * Math.sin(phase * PI);
+    };
+  }
+  return ring;
+}
+
 export function makeStar() {
   const shape = new THREE.Shape();
   for (let i = 0; i < 10; i++) {
