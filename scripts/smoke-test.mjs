@@ -170,6 +170,7 @@ try {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
     window.OBJ_FOR_TEST = await import('./src/objectives.js');
     window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
+    window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
@@ -854,6 +855,53 @@ try {
       p.pos.y = p.prevPos.y = top + 150;
       return r;
     };
+    // Magmadora: out of reach under the lava; a ring on the lava 1.2 s+ before she breaks, where her head comes up; her
+    // arc crosses your path; 3 fireballs out of her mouth at the top; her body hurts (and can be hit) while it's up; two
+    // frills shot off leave one fireball a spit.
+    const serpentChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, WL = G.world.seaLevel, r = { spawned: true, maxHp: e.maxHp, segs: e.mesh.userData.segs.length };
+      const fly = (n, until = () => false) => { for (let i = 0; i < n; i++) { p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; p.pos.y = p.prevPos.y = WL + 90; step(1); if (until()) return true; } return false; };
+      const shoot = (at) => { while (p.bullets.length) p.removeBullet(0); const hp0 = e.hp; p.shootCd = 0; p.fire(); for (const b of p.bullets) { b.pos.copy(at); b.vel.set(0, 0, 0); } G.enemies.update(0); return hp0 - e.hp; };
+      fly(30 * 12, () => e.mv?.phase === 'under' && !e.mv.plan && !e.mv.visible);
+      r.shieldUnder = e.shield;
+      r.hitUnder = +shoot(e.pos.clone()).toFixed(2);
+      const hz0 = G.enemies.hazards.list.filter((h) => h.owner === e).length;
+      fly(30 * 8, () => !!e.mv.plan);
+      const plan = e.mv.plan, ringAt = G.time;
+      r.rings = G.enemies.hazards.list.filter((h) => h.owner === e).length - hz0;
+      if (plan) {
+        // Where the top of the arc is against your path: the plan's middle, off your flat heading.
+        const mid = new V().lerpVectors(plan.A, plan.B, 0.5), f = new V(p.forward.x, 0, p.forward.z).normalize(), to = mid.clone().sub(p.pos).setY(0);
+        r.crossOff = Math.round(to.clone().addScaledVector(f, -to.dot(f)).length());
+        r.crossAhead = Math.round(to.dot(f));
+        r.span = Math.round(plan.A.distanceTo(plan.B));
+      }
+      let up = null, mouthOff = -1, spat = 0, seg = null;
+      const shots0 = new Set(G.enemies.shots);
+      fly(30 * 8, () => {
+        if (!up && e.mv.phase === 'arc' && e.mesh.userData.head.visible) up = { warned: +(G.time - ringAt).toFixed(2), fromRing: Math.round(Math.hypot(e.pos.x - plan.A.x, e.pos.z - plan.A.z)) };
+        const fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.owner === e);
+        if (fresh.length && mouthOff < 0) {
+          const m = e.mesh.userData.mouth.getWorldPosition(new V());
+          mouthOff = Math.round(Math.min(...fresh.map((x) => x.pos.distanceTo(m) - x.vel.length() / 30)));
+          spat = fresh.length;
+          seg = e.mesh.userData.segs.findIndex((x) => x.visible);
+        }
+        return spat > 0 && seg >= 0;
+      });
+      Object.assign(r, { up, mouthOff, spat, shieldUp: e.shield });
+      if (seg >= 0) {
+        const at = e.mesh.userData.segs[seg].getWorldPosition(new V());
+        r.bodyHit = shoot(at) > 0;
+        r.touches = window.BOSS_MOVES_FOR_TEST.breach.touches(e, at, 4);
+      }
+      for (const fr of e.mesh.userData.parts.filter((x) => x.name === 'frill')) { let n = 0; while (!fr.broken && n < 60) { G.enemies.damagePart(e, fr, 1, fr.obj.getWorldPosition(new V())); n++; } r.frillHits = n; }
+      const shots1 = new Set(G.enemies.shots);
+      let spat2 = 0;
+      fly(30 * 16, () => (spat2 = G.enemies.shots.filter((x) => !shots1.has(x) && x.owner === e).length) > 0);
+      r.spatNoFrills = spat2;
+      return r;
+    };
     const startBoss = (kind, opts) => {
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
@@ -867,20 +915,22 @@ try {
       // The fort needs flat land: calm the mountains for its turn so the test never depends on the terrain roll.
       // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
-      const { ground, sea } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
-      if (sea) seaUp();
+      // Magmadora needs a lava sea (any sea will do for her test): the same flood.
+      const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
+      if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed;
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
       for (let i = 0; i < 30 * 10; i++) {
-        G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(e.pos, 2, 1 / 30); step(1);
+        G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(swim ? e.pos.clone().setY(G.world.seaLevel + 90) : e.pos, 2, 1 / 30); step(1);
         if (sea && Math.abs(e.pos.y - G.world.seaLevel) > 0.01) afloat = false;
       }
       const attacks = e.attacks;
       if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
+      if (swim && e.kind === kind) out.serpent = serpentChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -888,6 +938,31 @@ try {
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
     if (!out.carrier) out.carrier = { spawned: false };
+    if (!out.serpent) out.serpent = { spawned: false };
+    // Magmadora is Volcano Land's: the deck never brings her anywhere else (another boss comes instead), and in Volcano
+    // Land, once the openers are done, she comes first.
+    {
+      // (The land is only looked up by name, so the zone index is swapped without entering the zone.)
+      const { ZONES } = await import('./src/zones.js');
+      const O = G.objectives, saved = { deck: O.bossDeck.slice(), level: O.bossLevel, zone: G.zones.index, amp: G.world.amp, seaLevel: G.world.seaLevel };
+      const draw = () => { const obj = O.makeBoss(); const k = obj.boss; obj.dispose(G); return k; };
+      const L = out.serpent.lands = {};
+      seaUp();
+      O.bossLevel = 3;
+      O.bossDeck = ['lavaSerpent', 'kingDrone'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.elsewhere = draw();
+      L.waits = O.bossDeck.includes('lavaSerpent');
+      O.bossDeck = ['lavaSerpent'];
+      L.topUp = draw(); // only another land's boss left: the deck tops up rather than always bringing King Drone
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'lavaSerpent'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Volcano Land');
+      L.home = draw();
+      G.zones.index = saved.zone;
+      Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
+      Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
+      G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+    }
     // Lead bosses (the octopus & co.) hold a slot in front of you while you just fly on. Over calm land, so a
     // mountain range can't hold one back; called off rather than beaten, so no extra win reshapes the world.
     out.leadBosses = {};
@@ -942,8 +1017,8 @@ try {
       try {
         for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
           tidy();
-          const land = def.sea && { amp: G.world.amp, seaLevel: G.world.seaLevel };
-          if (def.sea) seaUp(); // the carrier needs open sea
+          const land = (def.sea || def.swim) && { amp: G.world.amp, seaLevel: G.world.seaLevel };
+          if (def.sea || def.swim) seaUp(); // the carrier needs open sea, Magmadora a lava sea
           G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
           const [e] = startBoss(kind, { mod: null, duo: false });
           const prev = e.pos.clone(), f = new V(), side = new V(), track = [];
@@ -4565,6 +4640,8 @@ try {
     [(({ carrier: c }) => !c.diveLanded && c.deck?.landed && c.deck.secret && c.deck.patched && c.deck.bonus >= 300 && c.deck.onTop === 2.5 && c.deck.rode && c.deck.held && c.deck.tookOff)(report), `HMS Overkill's secret: a gentle approach lands on its deck (hull patched, +300 or more, the Welcome Aboard secret), the deck carries you along with its guns quiet, and pulling up takes off unhurt; a steep dive onto it doesn't land (${JSON.stringify(report.carrier?.deck)}, dive landed: ${report.carrier?.diveLanded})`],
     [(({ fort: f }) => f?.spawned && f.towerDist >= 30 && f.hullHit && f.cannonHits >= 3 && f.cannonHits <= 8 && f.cannonCost === 0.03 && f.wreck && f.stages === 2 && f.breached && f.mortarDown >= 2 && f.fortStill)(report), `Fort Grumpington: its hull boxes take hits on a tower 30 m+ from its middle, a tower cannon takes only a few hits (3 to 8), costs it 3% and leaves a wreck, its damage shows in two stages (a wall top falls), and ducking sinks only its mortar (${JSON.stringify(report.fort)})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
+    [(({ serpent: s }) => s.spawned && s.segs >= 12 && s.shieldUnder === 0 && s.hitUnder === 0 && s.rings === 2 && s.crossOff <= 40 && s.crossAhead > 0 && s.span >= 90 && s.up && s.up.warned >= 1.2 && s.up.fromRing <= 20 && s.mouthOff >= 0 && s.mouthOff <= 4 && s.spat === 3 && s.shieldUp === 1 && s.bodyHit && s.touches && s.frillHits >= 3 && s.frillHits <= 12 && s.spatNoFrills === 1)(report), `Magmadora: can't be hurt under the lava; two rings mark where she comes up 1.2 s+ before she breaks, and her head breaks the lava at the near one; her arc spans 90 m+ across your path, ahead of you; 3 fireballs come out of her mouth at the top; her body can be shot and hurts while it's up; a frill takes a few hits, and with both gone she spits one fireball (${JSON.stringify(report.serpent)})`],
+    [(({ lands: l }) => l && l.elsewhere === 'kingDrone' && l.waits && l.topUp !== 'lavaSerpent' && l.home === 'lavaSerpent')(report.serpent || {}), `Magmadora only comes in Volcano Land (another boss comes elsewhere, she waits in the deck, a deck of only her tops up), and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
     ...(() => {
@@ -4573,13 +4650,13 @@ try {
         jellyEmpress: (s) => s.maxSpeed > 35 && s.blobs > 0, mineMother: (s) => s.ring >= 6 && s.angles >= 6,
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
-        fortGrump: (s) => /udu/.test(s.shields), carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
+        fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
       const zones = Object.entries(report.moveZones || {});
       return [
-        [Object.keys(kinds).length >= 15 && miss.length === 0, `every boss shows its signature move: blink, lightning columns, bombing runs, pulses, mine ring, royal guard, bee shell, perch, dive, joust, wingman roll, duck, jets, lane snaps, puffed approach (missing: ${miss.map((k) => `${k} ${JSON.stringify(kinds[k])}`).join('; ') || 'none'})`],
+        [Object.keys(kinds).length >= 15 && miss.length === 0, `every boss shows its signature move: blink, lightning columns, bombing runs, pulses, mine ring, royal guard, bee shell, perch, dive, joust, wingman roll, duck, jets, lane snaps, puffed approach, lava breach (missing: ${miss.map((k) => `${k} ${JSON.stringify(kinds[k])}`).join('; ') || 'none'})`],
         [fired.length >= 10 && fired.every((h) => h.fired >= 1) && hz.every((h) => !h.onBreak) && report.moves.chaseTeleports === 0, `boss hazards give 1 s+ of warning, and none (nor a teleport) starts while a boss is on a break (${hz.length} hazards, quickest ${Math.min(...fired.map((h) => h.fired))} s, on a break ${hz.filter((h) => h.onBreak).length}, teleports on a break ${report.moves?.chaseTeleports})`],
         [zones.length === 8 && zones.every(([, z]) => z.outside === 0 && z.attacks > 0) && zones.filter(([k, z]) => k.endsWith('pigeonDon') && z.sat).length === 2, `boss moves in a cave and in space: bosses stay between floor and roof, keep attacking, and the Godfeather finds perches (${JSON.stringify(report.moveZones)})`],
       ];

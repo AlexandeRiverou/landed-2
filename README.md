@@ -333,6 +333,13 @@ doesn't by itself, but flying on from where it put you does.
   weak spot. Its hull is solid: fly into it (or dive through the deck) and you're bumped up over the deck. It looks the part: a two-tone hull with its number (07), a painted flight deck with
   an angled landing deck, catapults and parked jets, an island with a funnel that smokes, radars, blinking lights and
   a flag, and a foaming wake. It also hides a secret (docs/secrets.md has the spoiler).
+- Magmadora, the Molten Noodle (Volcano Land's own boss; the deck brings her only there, and first there once the two
+  openers are done): a 90 m lava serpent of basalt plates over a glowing belly. She hides under the lava, where bullets
+  do nothing. 1.4 s before she breaks, a ring on the lava marks where she'll come up and a darker one where she'll dive
+  back in, either side of your path; she arcs right across it (the top 25 m over you) and spits 3 fireballs from her
+  mouth at the top (5 enraged), her jaw opening and throat glowing first. Level flight under the arch is safe; her body
+  hurts (20) and can be shot while it's up. The two gill frills behind her head (each one shot off is one fireball
+  fewer) and the ember on her back are the weak spots. 115 hp, 18 a fireball.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
@@ -568,10 +575,11 @@ Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, s
 card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 16, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
+- **Bosses:** start any of the 17, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
   (where there is none, King Drone comes instead and you get a notice). HMS Overkill always comes: the menu finds open
   sea round you (up to 6 km out) and puts you 600 m off it, or, in a zone with none, flies you to the Tropical
-  Archipelago first. Neither comes as twins. The
+  Archipelago first. Magmadora always comes too: the menu flies you to Volcano Land and puts you 300 m off a lava sea.
+  None of the three comes as twins. The
   **Grumbleglobe** button jumps to its zone and starts the planet fight (it ignores the modifier and Twins).
 - **Objectives:** start any of the 39 types. Types the current zone doesn't offer are greyed out.
 - **Power-ups:** grab any of the 13.

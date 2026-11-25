@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -320,6 +320,18 @@ export const BOSSES = {
     taunts: ['HMS Overkill: "This is your captain speaking. Please return to your seat. Forever."', 'HMS Overkill: "I have six guns and a gift shop."', 'HMS Overkill: "Unsinkable. It says so right on the brochure."'],
     rage: ['All hands to the guns! Even the cook.', 'The captain has taken off his hat. This is serious.'],
   },
+  // Land boss (lands: zone names): the deck only brings it in its own land. Magmadora lives in the lava (swim: its move
+  // sets its whole path; bullets do nothing while it's all under), surfacing in telegraphed arcs across your path.
+  // reach: how far from its head (m, at scale) its trailing body can still be hit.
+  lavaSerpent: {
+    make: makeLavaSerpent, scale: 3, crownY: 1.6, crownZ: -0.3, crownS: 0.5, radius: 7, hp: 115, speed: 0, orbit: 0, dmg: 20,
+    face: 'none', ground: true, swim: true, lands: ['Volcano Land'], reach: 110, markerUp: 40,
+    name: 'Magmadora, the Molten Noodle', short: 'Magmadora', noun: 'Magmadora',
+    move: 'breach',
+    desc: 'A lava serpent as long as a runway. A glowing ring on the lava shows where she\'ll burst out: she arcs right over your path and spits fireballs from the top. Fly under the arch, shoot her while she\'s up (the frills behind her head and the ember on her back are soft), and she can\'t be hurt under the lava.',
+    taunts: ['Magmadora: "I am not a noodle. I am a SPICY noodle."', 'Magmadora: "Ssssurf\'s up. The surf is lava."', 'Magmadora: "I swim in lava. You can\'t even land."'],
+    rage: ['Magmadora has reached a rolling boil.', 'She is boiling over. Mostly onto you.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -400,6 +412,7 @@ const BOSS_BREAK_TEXT = {
   tentacle: 'Tentacle severed! Fewer arms, fewer orbs in the spiral.',
   gun: 'Deck gun destroyed! One less cannon on that deck.',
   cannon: 'Tower cannon down! One less cannon on the walls.',
+  frill: 'Frill snapped off! Less spit, same attitude.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -443,7 +456,7 @@ export class Enemies {
     const body = def.make(false);
     const crown = makeCrown(def.crownS);
     crown.position.set(def.crownX || 0, def.crownY, def.crownZ || 0);
-    body.add(crown);
+    (body.userData.crownOn || body).add(crown); // on its head, for a boss whose head moves on its own (Magmadora)
     (body.userData.parts ||= []).push({ obj: crown, r: 2.4 * def.crownS, mult: 2, hp: 10, name: 'crown' });
     for (const part of body.userData.parts) if (Number.isFinite(part.hp) && part.name !== 'crown' && !part.keepHp) part.hp *= 6;
     mesh.add(body);
@@ -840,6 +853,10 @@ export class Enemies {
         }
         break;
       }
+      case 'lavaSerpent':
+        cd = 0.5; // she only spits at the top of an arc (her move holds every other attack)
+        BOSS_MOVES.breach.spit(this, e);
+        break;
       case 'fortGrump': {
         cd = 2.4;
         const u = e.mesh.userData, guns = (u.guns || []).filter((g) => g.gun.visible);
@@ -1165,7 +1182,8 @@ export class Enemies {
       if (e.boom) { this.mineBlast(e); this.kill(i, false); continue; }
 
       e.pos.addScaledVector(e.vel, dt);
-      if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
+      if (e.def.swim) { /* its move sets its whole path, in and out of the lava */ }
+      else if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
       else if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else if (e.def.vent) e.pos.y = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) - 0.5; // in the lava (or rock)
       else {
@@ -1188,6 +1206,7 @@ export class Enemies {
       // can come in low over the stern to land). Coming down through the deck is.
       const above = e.def.deck && p.pos.y > e.pos.y + e.def.deck.y * e.mesh.scale.x;
       const touching = p.landed?.deck === e ? false
+        : e.def.swim ? BOSS_MOVES.breach.touches(e, p.pos, 4 * p.sizeScale)
         : e.def.boxes ? dist < e.radius * 1.8 && this.inHull(e, p.pos, 4 * p.sizeScale, above ? e.def.deck.solid : e.def.boxes) : dist < e.radius + 4 * p.sizeScale;
       if (e.def.boxes && touching && !p.dead && !calm) this.bumpOffHull(e);
       if (!p.dead && !calm && touching && e.contactCd <= 0) {
@@ -1210,14 +1229,14 @@ export class Enemies {
         }
       }
       // Bullets: weak points and breakable parts first, then the body. A moth on your wing is out of your line of fire.
-      const broad = e.latched ? -1 : (e.radius * 1.8 + 3) ** 2;
+      const broad = e.latched ? -1 : (e.def.reach ? e.def.reach * e.mesh.scale.x / e.def.scale : e.radius * 1.8 + 3) ** 2;
       for (let b = p.bullets.length - 1; b >= 0; b--) {
         const bp = p.bullets[b].pos;
         if (bp.distanceToSquared(e.pos) > broad) continue;
         const part = this.hitPart(e, bp);
         if (!part && (e.def.boxes ? !this.inHull(e, bp, 2) : bp.distanceToSquared(e.pos) > (e.radius + 2) ** 2)) continue;
         if (this.guarded(e, p.bullets[b], bp)) { p.removeBullet(b); continue; }
-        if (e.shield === 0 && !e.boss) { p.removeBullet(b); G.fx.sparkle(bp, '#9aa0a6'); continue; } // a Magma Spitter under the lava
+        if (e.shield === 0 && (!e.boss || e.def.swim)) { p.removeBullet(b); G.fx.sparkle(bp, '#9aa0a6'); continue; } // a Magma Spitter (or Magmadora) under the lava
         const dmg = (p.bullets[b].dmg || 1) * (e.vulnerable || 1) * (e.shield ?? 1) * (e.dazed > 0 ? 1.5 : 1); // dazed bosses take ×1.5
         p.removeBullet(b);
         if (part) this.damagePart(e, part, dmg, bp);
@@ -1228,7 +1247,7 @@ export class Enemies {
         }
         if (e.hp <= 0) break;
       }
-      if (e.hp <= 0) { G.fx.explosion(e.pos); G.fx.confetti(e.pos); this.kill(i, true); }
+      if (e.hp <= 0) { if (e.def.swim) BOSS_MOVES.breach.surface(e); G.fx.explosion(e.pos); G.fx.confetti(e.pos); this.kill(i, true); }
     }
     const bosses = this.list.filter((e) => e.boss && !e.dead);
     // Faster mending only while it has lost you or is coming back: shadowing you from its standoff isn't a rest.
@@ -1279,7 +1298,7 @@ export class Enemies {
     const s = e.mesh.scale.x;
     let best = null, bd = Infinity;
     for (const part of parts) {
-      if (part.broken) continue;
+      if (part.broken || (part.seg && !part.obj.visible)) continue; // a serpent segment under the lava
       part.obj.getWorldPosition(_pp);
       const d = _pp.distanceToSquared(pos), r = part.r * s + 1.5;
       if (d < r * r && d < bd) { bd = d; best = part; }
@@ -1334,6 +1353,7 @@ export class Enemies {
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
       case 'gun': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'cannon': if (e.boss) e.hp -= e.maxHp * 0.03; break;
+      case 'frill': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1926,6 +1946,7 @@ export class Enemies {
       e.snap = Math.max(0, (e.snap || 0) - dt);
       u.claws.forEach((c, k) => { c.rotation.y = (k ? -1 : 1) * (e.snap > 0 ? 0.5 : Math.sin(e.t * 2) * 0.15); });
     }
+    if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {
       animateBoss(this, e, dt); // squash, duck, roll, blink, dazed stars, tractor beam
@@ -2013,6 +2034,7 @@ export class Enemies {
   kill(i, byPlayer) {
     const G = this.G, e = this.list[i];
     e.dead = true;
+    if (e.def.swim) BOSS_MOVES.breach.surface(e); // Magmadora goes up (and drops her power-up) above the lava
     // Blowing up close to the ground leaves a crater: bosses leave a big one.
     const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
     if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
