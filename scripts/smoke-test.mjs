@@ -1022,7 +1022,7 @@ try {
         const put = () => b.at.copy(p.pos).addScaledVector(b.dir, -(b.dist + 3)); // the band's middle 3 m behind them
         put();
         const speed0 = p.speed;
-        p.grace = 1; step(1);
+        p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable, and a gust leaves an invulnerable plane alone
         g.hit = e.mv.hits - hits;
         g.push = +p.gust.length().toFixed(1);
         g.flatY = +Math.abs(p.gust.y).toFixed(2);
