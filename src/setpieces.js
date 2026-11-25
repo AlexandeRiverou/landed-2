@@ -1,5 +1,5 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle, and
-// meteors falling onto the Moon and Mars.
+// meteors falling onto the Moon and Mars, and Frozen Peaks' ice arches.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -54,6 +54,21 @@ export const METEOR = {
   dmg: 8,                // x1.5 enemy damage = 12 hull (impact blast or ramming one)
 };
 
+// Ice arches (Frozen Peaks): a couple of great natural arches of blue ice stand in the valleys ahead, icicles hanging
+// from their spans. Threading one is a "+30 Ice threader!", once per arch. The ice is solid: like the castle, a bump
+// knocks a little hull and shoves you clear, never a wreck.
+export const ARCH = {
+  count: 2,              // arches around at once
+  near: 450, far: 900,   // a new one appears this far ahead
+  drop: 1300,
+  apart: 400,            // arches keep at least this far from each other
+  span: [70, 100],       // inner width of the opening
+  rise: [28, 40],        // how high the arch's legs stand before the curve starts
+  thick: 6,              // half the thickness of the ice
+  score: 30,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+};
+
 const _local = new THREE.Vector3();
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
 const SMOKE = ['#3a3030', '#4a4040', '#5a504c'];
@@ -64,6 +79,11 @@ export class SetPieces {
     this.kind = null;
     this.list = [];
     this.meteors = [];
+    this.arches = [];
+    this.archT = 0;
+    this.ice = new THREE.MeshLambertMaterial({ color: '#cbeaff', flatShading: true, transparent: true, opacity: 0.88 });
+    this.ice2 = new THREE.MeshLambertMaterial({ color: '#9fd4f4', flatShading: true });
+    this.iceGlow = new THREE.MeshBasicMaterial({ color: '#e8f8ff', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
     this.meteorT = 0;
     this.meteorGeo = new THREE.DodecahedronGeometry(1, 0);
     this.meteorRock = new THREE.MeshLambertMaterial({ color: '#4a3a34', flatShading: true });
@@ -90,6 +110,8 @@ export class SetPieces {
     this.siteT = 0;
     while (this.meteors.length) this.dropMeteor(0);
     this.meteorT = rand(...METEOR.first);
+    while (this.arches.length) this.dropArch(0);
+    this.archT = 0;
   }
 
   get geysers() { return this.kind === 'geysers' ? this.list : []; }
@@ -167,6 +189,7 @@ export class SetPieces {
   update(dt) {
     if (this.kind === 'castle') { this.updateCastle(dt); return; }
     if (this.kind === 'meteors') { this.updateMeteors(dt); return; }
+    if (this.kind === 'arches') { this.updateArches(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -472,5 +495,109 @@ export class SetPieces {
       if (!this.meteorHitTip) { this.meteorHitTip = true; G.ui.notify('Meteors leave craters! Shoot them down, or steer clear of the glowing rings.', 'warn', 4, 1); }
     }
     this.dropMeteor(i);
+  }
+
+  // ---- Frozen Peaks: ice arches -----------------------------------------------------------------------------------
+  get archList() { return this.arches; }
+
+  placeArch() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 4; tries++) {
+      const d = rand(ARCH.near, ARCH.far), s = rand(-0.5, 0.5) * d;
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      if (this.arches.some((a) => Math.hypot(a.pos.x - x, a.pos.z - z) < ARCH.apart)) continue;
+      // Square on to the way you're flying, so the opening faces you.
+      if (this.buildArch(x, z, Math.atan2(f.x, f.z), rand(...ARCH.span), rand(...ARCH.rise))) return;
+    }
+  }
+
+  // An arch centred on (x, z), its opening facing along yaw: legs at local x = +-(R + t), the curve's centre at local
+  // height `spring` (above the higher leg's ground), radius R + t through the middle of the ice.
+  buildArch(x, z, yaw, span, rise) {
+    const G = this.G, t = ARCH.thick, R = span / 2 + t, cs = Math.cos(yaw), sn = Math.sin(yaw);
+    const legGround = [-1, 1].map((k) => G.terrain.surfaceHeight(x + k * R * cs, z - k * R * sn));
+    const base = Math.min(...legGround), spring = Math.max(...legGround) + rise - base; // local heights from `base`
+    if (G.terrain.surfaceHeight(x, z) - base > spring - 15) return null; // a hill in the way: the opening would be buried
+    const g = new THREE.Group(), geos = [];
+    const mesh = (geo, m) => { geos.push(geo); const o = new THREE.Mesh(geo, m); g.add(o); return o; };
+    for (const k of [-1, 1]) { // the legs, flaring out at the foot
+      const h = spring + 20;
+      const leg = mesh(new THREE.CylinderGeometry(t, t * 1.6, h, 7), this.ice);
+      leg.position.set(k * R, spring - h / 2, 0);
+    }
+    const span3 = mesh(new THREE.TorusGeometry(R, t, 6, 24, Math.PI), this.ice); // the curve
+    span3.position.y = spring;
+    const glow = mesh(new THREE.TorusGeometry(R, t * 1.5, 6, 24, Math.PI), this.iceGlow); // a faint frosty halo
+    glow.position.y = spring;
+    for (let k = 0; k < 9; k++) { // icicles under the span
+      const a = 0.25 + (k / 8) * (Math.PI - 0.5), len = rand(4, 10);
+      const ic = mesh(new THREE.ConeGeometry(rand(0.8, 1.4), len, 5), this.ice2);
+      ic.rotation.x = Math.PI; // point down
+      ic.position.set(Math.cos(a) * (R - t), spring + Math.sin(a) * (R - t) - len / 2, rand(-t * 0.5, t * 0.5));
+    }
+    g.position.set(x, base, z);
+    g.rotation.y = yaw;
+    G.scene.add(g);
+    this.arches.push({ group: g, geos, pos: g.position, yaw, R, spring, threaded: false, bumpT: 0, prevZ: null });
+    return this.arches.at(-1);
+  }
+
+  dropArch(i) {
+    const a = this.arches[i];
+    this.G.scene.remove(a.group);
+    for (const geo of a.geos) geo.dispose();
+    this.arches.splice(i, 1);
+  }
+
+  // The player in an arch's frame: x across the opening, y up from its base, z through it.
+  archLocal(a, out) {
+    const p = this.G.player.pos, dx = p.x - a.pos.x, dz = p.z - a.pos.z, cs = Math.cos(-a.yaw), sn = Math.sin(-a.yaw);
+    return out.set(dx * cs + dz * sn, p.y - a.pos.y, -dx * sn + dz * cs);
+  }
+
+  updateArches(dt) {
+    const G = this.G, p = G.player;
+    for (let i = this.arches.length - 1; i >= 0; i--) {
+      if (Math.hypot(this.arches[i].pos.x - p.pos.x, this.arches[i].pos.z - p.pos.z) > ARCH.drop) this.dropArch(i);
+    }
+    if (this.arches.length < ARCH.count && !G.terrain.stale && (this.archT -= dt) <= 0) { this.archT = 0.5; this.placeArch(); }
+    if (p.dead) { for (const a of this.arches) a.prevZ = null; return; }
+    const r = 2.5 * (p.sizeScale || 1), t = ARCH.thick;
+    for (const a of this.arches) {
+      a.bumpT = Math.max(0, a.bumpT - dt);
+      const L = this.archLocal(a, _local);
+      // Threading: crossing the arch's plane inside the opening (under the curve, between the legs).
+      const inner = a.R - t - r, h = L.y - a.spring;
+      const inside = Math.abs(L.x) < inner && (h < 0 ? L.y > 0 : Math.hypot(L.x, h) < inner);
+      if (a.prevZ !== null && Math.sign(a.prevZ) !== Math.sign(L.z) && inside && !a.threaded) {
+        a.threaded = true;
+        G.score += ARCH.score;
+        G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${ARCH.score} Ice threader!`);
+        G.fx.emit(p.pos, 40, { colors: ['#ffffff', '#cbeaff', '#9fd4f4'], speed: 20, life: 1.2, size: 4, gravity: -6 });
+      }
+      a.prevZ = L.z;
+      if (Math.abs(L.z) > t + r) continue; // nowhere near the ice
+      // The ice: the curve (a half ring) and the two legs below it.
+      let px = 0, py = 0;
+      if (h >= 0) {
+        const d = Math.hypot(L.x, h), gap = Math.abs(d - a.R);
+        if (gap >= t + r || d < 1e-3) continue;
+        const push = (t + r - gap) * Math.sign(d - a.R || 1) / d; // straight out of the ring, in or out
+        px = L.x * push; py = h * push;
+      } else {
+        const leg = Math.sign(L.x || 1) * a.R, gap = Math.abs(L.x - leg);
+        if (gap >= t * 1.3 + r) continue;
+        px = (t * 1.3 + r - gap) * Math.sign(L.x - leg || -Math.sign(L.x || 1));
+      }
+      const cs = Math.cos(a.yaw), sn = Math.sin(a.yaw);
+      p.pos.x += px * cs; p.pos.z += -px * sn; p.pos.y += py;
+      if (a.bumpT > 0) continue;
+      a.bumpT = ARCH.bumpEvery;
+      p.damage(ARCH.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#ffffff', '#cbeaff'], speed: 18, life: 0.8, size: 4 });
+      if (!this.archTip) { this.archTip = true; G.ui.notify('Ice is hard! Thread the arch through the middle for points.', 'warn', 4, 1); }
+    }
   }
 }

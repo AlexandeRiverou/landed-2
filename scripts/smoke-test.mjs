@@ -4579,7 +4579,29 @@ try {
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m2); k++) { p.pos.copy(near); G.step(1 / 30); }
       out.landedNear = { gone: !SP.meteorList.includes(m2), hits: hits.filter((n) => n === METEOR.dmg) };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length;
+    // Frozen Peaks: ice arches ahead. Threading one is +30 once; the ice is solid, a leg knocks once and shoves you off.
+    const { ARCH } = await import('./src/setpieces.js');
+    out.moonArches = SP.archList.length;
+    into('Frozen Peaks');
+    for (let k = 0; k < 40 && !SP.archList.length; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    out.arches = SP.archList.length;
+    const a = SP.archList[0];
+    if (a) {
+      const cs = Math.cos(a.yaw), sn = Math.sin(a.yaw);
+      const put = (lx, ly, lz) => p.pos.set(a.pos.x + lx * cs + lz * sn, a.pos.y + ly, a.pos.z - lx * sn + lz * cs);
+      hits.length = 0;
+      const s3 = G.score;
+      for (let k = 0; k <= 40; k++) { put(0, a.spring * 0.6, 20 - k); clear(); G.step(1 / 30); }
+      for (let k = 0; k <= 40; k++) { put(0, a.spring * 0.6, -20 + k); clear(); G.step(1 / 30); } // back through: no second bonus
+      out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
+      hits.length = 0;
+      a.bumpT = 0;
+      put(a.R, a.spring * 0.5, 0); // inside a leg
+      G.step(1 / 30);
+      const L = SP.archLocal(a, p.pos.clone());
+      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01 };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -4998,6 +5020,7 @@ try {
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
+    [(({ setPieces: q }) => q.arches >= 1 && q.moonArches === 0 && q.beltArches === 0 && q.thread?.threaded && q.thread.score >= 30 && q.thread.score < 60 && q.thread.hits === 0 && q.leg?.hits === 1 && q.leg.off)(report), `set pieces: Frozen Peaks has ice arches (no other land does); threading one is +30 once with no bump, a leg is solid: one knock and you're shoved off (${JSON.stringify(report.setPieces && { arches: report.setPieces.arches, moon: report.setPieces.moonArches, belt: report.setPieces.beltArches, thread: report.setPieces.thread, leg: report.setPieces.leg })})`],
     [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
     [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore >= 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
     [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
