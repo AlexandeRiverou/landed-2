@@ -162,12 +162,7 @@ export class SetPieces {
     this.mill = null;
     this.millT = 0;
     this.millTip = false;
-    this.millStone = new THREE.MeshLambertMaterial({ color: '#8a7e70', flatShading: true });
-    this.millWall = new THREE.MeshLambertMaterial({ color: '#efe2c8', flatShading: true });
-    this.millRoof = new THREE.MeshLambertMaterial({ color: '#b5532e', flatShading: true });
-    this.millWood = new THREE.MeshLambertMaterial({ color: '#6a4a30', flatShading: true });
-    this.millCanvas = new THREE.MeshLambertMaterial({ color: '#f3e6c8', flatShading: true, side: THREE.DoubleSide });
-    this.millDark = new THREE.MeshLambertMaterial({ color: '#3a2a20' });
+    this.millMats = null; // made with the first mill, so a run that never meets one never builds them
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -976,23 +971,31 @@ export class SetPieces {
   }
 
   buildMill(x, y, z, yaw) {
+    const M = (this.millMats ||= {
+      stone: new THREE.MeshLambertMaterial({ color: '#8a7e70', flatShading: true }),
+      wall: new THREE.MeshLambertMaterial({ color: '#efe2c8', flatShading: true }),
+      roof: new THREE.MeshLambertMaterial({ color: '#b5532e', flatShading: true }),
+      wood: new THREE.MeshLambertMaterial({ color: '#6a4a30', flatShading: true }),
+      canvas: new THREE.MeshLambertMaterial({ color: '#f3e6c8', flatShading: true, side: THREE.DoubleSide }),
+      dark: new THREE.MeshLambertMaterial({ color: '#3a2a20' }),
+    });
     const G = this.G, g = new THREE.Group(), geos = [], B = MILL.base, H = B + MILL.towerH;
     const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
-    mesh(new THREE.CylinderGeometry(16, 17, B + 8, 10), this.millStone).position.y = (B - 8) / 2; // sunk 8 m
-    mesh(new THREE.CylinderGeometry(8, 13, MILL.towerH, 8), this.millWall).position.y = B + MILL.towerH / 2;
+    mesh(new THREE.CylinderGeometry(16, 17, B + 8, 10), M.stone).position.y = (B - 8) / 2; // sunk 8 m
+    mesh(new THREE.CylinderGeometry(8, 13, MILL.towerH, 8), M.wall).position.y = B + MILL.towerH / 2;
     for (const h of [0.3, 0.62]) { // timber bands
       const r = 13 - 5 * h;
-      mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.5, 1.4, 8), this.millWood).position.y = B + MILL.towerH * h;
+      mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.5, 1.4, 8), M.wood).position.y = B + MILL.towerH * h;
     }
-    mesh(new THREE.ConeGeometry(10.5, 14, 8), this.millRoof).position.y = H + 7;
-    const door = mesh(new THREE.BoxGeometry(5, 8, 1), this.millDark);
+    mesh(new THREE.ConeGeometry(10.5, 14, 8), M.roof).position.y = H + 7;
+    const door = mesh(new THREE.BoxGeometry(5, 8, 1), M.dark);
     door.position.set(0, B + 4, 12.6);
     for (const [wx, wy] of [[-4, B + 22], [4, B + 38], [0, B + 50]]) { // little windows up the front
-      const w = mesh(new THREE.BoxGeometry(2.4, 3.2, 1), this.millDark);
+      const w = mesh(new THREE.BoxGeometry(2.4, 3.2, 1), M.dark);
       const r = 13 - 5 * (wy - B) / MILL.towerH;
       w.position.set(wx, wy, Math.sqrt(Math.max(0, r * r - wx * wx)) + 0.2);
     }
-    const axle = mesh(new THREE.CylinderGeometry(1.2, 1.2, MILL.hubZ - 4, 6), this.millWood);
+    const axle = mesh(new THREE.CylinderGeometry(1.2, 1.2, MILL.hubZ - 4, 6), M.wood);
     axle.rotation.x = Math.PI / 2;
     axle.position.set(0, H, 4 + (MILL.hubZ - 4) / 2);
     // The sails: a rotor at the hub, turning about the axle (local z). Each sail's arm runs along its +y, the canvas
@@ -1000,17 +1003,17 @@ export class SetPieces {
     const rotor = new THREE.Group();
     rotor.position.set(0, H, MILL.hubZ);
     g.add(rotor);
-    mesh(new THREE.SphereGeometry(3.5, 8, 6), this.millWood, rotor);
+    mesh(new THREE.SphereGeometry(3.5, 8, 6), M.wood, rotor);
     const reach = 6 + MILL.sail * 0.82;
     for (let k = 0; k < 4; k++) {
       const sail = new THREE.Group();
       sail.rotation.z = k * Math.PI / 2;
       rotor.add(sail);
-      mesh(new THREE.BoxGeometry(1.4, MILL.sail, 1.4), this.millWood, sail).position.set(0, 3 + MILL.sail / 2, 0);
-      const cloth = mesh(new THREE.BoxGeometry(MILL.sailW, reach - 6, 0.4), this.millCanvas, sail);
+      mesh(new THREE.BoxGeometry(1.4, MILL.sail, 1.4), M.wood, sail).position.set(0, 3 + MILL.sail / 2, 0);
+      const cloth = mesh(new THREE.BoxGeometry(MILL.sailW, reach - 6, 0.4), M.canvas, sail);
       cloth.position.set(MILL.sailW / 2 + 0.7, 6 + (reach - 6) / 2, 0.4);
       for (let j = 0; j <= 5; j++) { // the lattice
-        const slat = mesh(new THREE.BoxGeometry(MILL.sailW + 0.6, 0.45, 0.8), this.millWood, sail);
+        const slat = mesh(new THREE.BoxGeometry(MILL.sailW + 0.6, 0.45, 0.8), M.wood, sail);
         slat.position.set(MILL.sailW / 2 + 0.7, 6 + (reach - 6) * j / 5, 0.5);
       }
     }
