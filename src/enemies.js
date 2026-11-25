@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -342,6 +342,17 @@ export const BOSSES = {
     taunts: ['Glacierra: "Chill. No, really. I insist."', 'Glacierra: "I am a ray of sunshine. A frozen one."', 'Glacierra: "Mind the draft. I AM the draft."'],
     rage: ['Glacierra is giving you the cold shoulder. Both of them.', 'Her aurora has gone a very angry green.'],
   },
+  // Land boss for the desert lands: circles you; every 3rd attack two mirage copies shimmer in and copy its volleys
+  // with harmless fake orbs. Only the real one casts a shadow, and hitting it pops the mirages (see MIRAGE).
+  sunBeetle: {
+    make: makeSunBeetle, scale: 4, crownY: 1.3, crownZ: 1, crownS: 0.6, radius: 18, hp: 95, speed: 30, orbit: 150, orbitRate: 0.3, dmg: 20, face: 'player',
+    lands: ['Canyon Country', 'Dune Sea', 'Salt Mirror', 'Mars'],
+    name: 'Pharaoh Scarabus, the Sun Beetle', short: 'Pharaoh Scarabus', noun: 'Pharaoh Scarabus',
+    move: 'mirage',
+    desc: 'A giant golden scarab rolling the desert sun. It calls up mirage copies of itself that fire fake orbs: only the real one casts a shadow on the sand, and one hit on it pops the mirages. Shoot its horn off for smaller volleys; the sun-disc it carries is soft.',
+    taunts: ['Pharaoh Scarabus: "I roll the sun across the sky. You are a much smaller job."', 'Pharaoh Scarabus: "Is that me? Is THAT me? Guess."', 'Pharaoh Scarabus: "Sand in your engine. Sand everywhere. Forever."'],
+    rage: ['Pharaoh Scarabus is seeing double. So are you.', 'The heat haze is getting personal.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -424,6 +435,7 @@ const BOSS_BREAK_TEXT = {
   cannon: 'Tower cannon down! One less cannon on the walls.',
   frill: 'Frill snapped off! Less spit, same attitude.',
   crystal: 'Wingtip crystal shattered! Her shard fans are thinner now.',
+  horn: 'Horn snapped off! Pharaoh Scarabus fires smaller volleys now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -870,6 +882,10 @@ export class Enemies {
         cd = 3.2; // the wing-up and fan come from her move (fans); attacks wait while she aims
         BOSS_MOVES.fans.start(this, e, n);
         break;
+      case 'sunBeetle':
+        cd = 2.6; // volleys; every 3rd attack calls up the mirages instead (see the mirage move)
+        BOSS_MOVES.mirage.attack(this, e, n);
+        break;
       case 'lavaSerpent':
         cd = 0.5; // she only spits at the top of an arc (her move holds every other attack)
         BOSS_MOVES.breach.spit(this, e);
@@ -1213,7 +1229,7 @@ export class Enemies {
       this.animate(e, dt);
       if (e.marker) {
         e.marker.position.set(e.pos.x, e.pos.y + (e.def.markerUp ?? e.radius * (e.mesh.scale.x || 1)) + 6, e.pos.z);
-        e.marker.visible = dist > 70 && !calm;
+        e.marker.visible = dist > 70 && !calm && !(e.mv?.mir > 0); // (no marker on the real Sun Beetle among its mirages)
       }
 
       // Player contact.
@@ -1372,6 +1388,7 @@ export class Enemies {
       case 'cannon': if (e.boss) e.hp -= e.maxHp * 0.03; break;
       case 'frill': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crystal': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'horn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1940,7 +1957,7 @@ export class Enemies {
     const u = e.mesh.userData;
     if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
-    if (u.wings && !u.webs) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
+    if (u.wings && !u.webs && !u.scarab) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
@@ -1965,6 +1982,7 @@ export class Enemies {
       u.claws.forEach((c, k) => { c.rotation.y = (k ? -1 : 1) * (e.snap > 0 ? 0.5 : Math.sin(e.t * 2) * 0.15); });
     }
     if (u.webs) BOSS_MOVES.fans.pose(this, e, dt); // Glacierra rolls her wings into her next fan's plane
+    if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {
@@ -2001,7 +2019,11 @@ export class Enemies {
       if (s.g) s.vel.y -= s.g * dt; // dropped bombs and eggs fall
       s.pos.addScaledVector(s.vel, dt);
       const d2 = s.pos.distanceToSquared(p.pos), hit = !p.dead && d2 < s.r2 * p.sizeScale * p.sizeScale;
-      if (hit) {
+      if (hit && s.fake) {
+        // A mirage's orb: it shimmers away on you, harmless.
+        this.G.fx.emit(s.pos, 10, { colors: ['#ffe8a0', '#bfefff'], speed: 20, life: 0.5, size: 4 });
+        if (!(this.mirageNews > this.G.time)) { this.mirageNews = this.G.time + 6; this.G.ui.notify('Just a mirage! That orb was fake.', 'good', 2); }
+      } else if (hit) {
         const h0 = p.health;
         p.damage(s.dmg);
         // Glacierra's shards also frost part of your boost tank (only when they actually hurt).
@@ -2017,7 +2039,8 @@ export class Enemies {
         this.G.fx.popText(_pp.copy(p.pos).addScaledVector(p.up, 5), `Whiff! +${TINY.whiff}`);
       }
       const ground = !hit && s.pos.y < this.G.terrain.surfaceHeight(s.pos.x, s.pos.z, s.pos.y);
-      if (ground) {
+      if (ground && s.fake) this.G.fx.emit(s.pos, 6, { colors: ['#ffe8a0', '#bfefff'], speed: 12, life: 0.5, size: 4 }); // no crater
+      else if (ground) {
         // Orbs that miss blow holes in the landscape.
         this.G.terrain.deform(s.pos.x, s.pos.z, 5, 2.5);
         this.G.fx.emit(s.pos, 25, { colors: ['#ffb03a', '#8a6a4a', '#555555'], speed: 30, life: 0.8, size: 6, up: 15 });
