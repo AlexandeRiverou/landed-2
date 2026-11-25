@@ -4470,6 +4470,7 @@ try {
     out.volcanoCastle = !!SP.castleInfo;
     // Princess Kingdom: one huge castle ahead. Its gate is a bonus way in, its stone is solid but only knocks you.
     const { CASTLE } = await import('./src/setpieces.js');
+    out.volcanoMeteorsAll = SP.meteorList.length; // still in Volcano Land here
     into('Princess Kingdom');
     for (let k = 0; k < 40 && !SP.castleInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
     const c = SP.castleInfo;
@@ -4488,7 +4489,31 @@ try {
       const L = SP.castleLocal(c, p.pos.clone());
       out.tower = { hits: hits.slice(), out: Math.hypot(L.x - CASTLE.half, L.z - CASTLE.half) >= CASTLE.towerR * 1.15 - 0.01 };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo;
+    // The Moon: meteors streak down ahead. Shot down: +20. Left alone: a crater, and a knock if you're close.
+    const { METEOR } = await import('./src/setpieces.js');
+    into('The Moon');
+    let most = 0;
+    for (let k = 0; k < 30 * 25 && !most; k++) { G.step(1 / 30); most = Math.max(most, SP.meteorList.length); }
+    out.moonMeteors = most;
+    SP.meteorT = 1e9; // no new ones while the checks run
+    SP.meteorList.slice().forEach(() => SP.dropMeteor(0));
+    const fwd = (d) => p.pos.clone().addScaledVector(p.forward, d);
+    {
+      const t = fwd(500), m = SP.spawnMeteor(t.x, t.z), s2 = G.score;
+      for (let k = 0; k < 6 && SP.meteorList.includes(m); k++) { const mesh = new (p.model.group.constructor)(); G.scene.add(mesh); p.bullets.push({ mesh, pos: m.pos.clone(), vel: m.vel.clone(), life: 1, dmg: 1 }); G.step(1 / 30); }
+      out.shot = { gone: !SP.meteorList.includes(m), score: G.score - s2 };
+    }
+    {
+      hits.length = 0;
+      const t = fwd(500), m = SP.spawnMeteor(t.x, t.z), far = p.pos.clone();
+      for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m); k++) { p.pos.copy(far); G.step(1 / 30); }
+      out.landedFar = { gone: !SP.meteorList.includes(m), hits: hits.filter((n) => n === METEOR.dmg).length }; // the Moon's asteroids hit harder, they don't count
+      hits.length = 0;
+      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), near = new far.constructor(t2.x + 25, m2.target.y + 12, t2.z); // in the blast, out of its path
+      for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m2); k++) { p.pos.copy(near); G.step(1 / 30); }
+      out.landedNear = { gone: !SP.meteorList.includes(m2), hits: hits.filter((n) => n === METEOR.dmg) };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -4900,6 +4925,7 @@ try {
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
+    [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
     [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
     [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore >= 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
     [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
