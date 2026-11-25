@@ -4188,7 +4188,7 @@ try {
   report.landEnemies = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { ZONES } = await import('./src/zones.js');
-    const { MAGMA, COMET } = await import('./src/enemies.js');
+    const { MAGMA, COMET, SQUIRREL } = await import('./src/enemies.js');
     const zi = (n) => ZONES.findIndex((z) => z.name === n);
     const god = p.god, timer = E.spawnTimer, calm = E.calmTimer, score = G.score, damage = p.damage;
     E.spawnTimer = 1e9; E.calmTimer = 0;
@@ -4245,6 +4245,55 @@ try {
     B.popped = bats.filter((b) => b.dead).length;
     B.hits = hits.slice();
     out.bats = { states: [...B.states], popped: B.popped, hits: B.hits };
+    clear();
+    // Flying Squirrels are tail-shy (SQUIRREL): one behind you never dives and comes round wide without bumping you; a
+    // dive that ends up behind you, or a barrel roll, makes it peel off, harmless, and come back round in front. A dive
+    // from the front still hits.
+    into('Meadowlands');
+    p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 120;
+    const nose = (e) => e.pos.clone().sub(p.pos).normalize().dot(p.forward);
+    const Q = {};
+    // A: 45 m behind, ready to dive: it doesn't, and nothing touches you while it's behind.
+    hits = [];
+    let q = E.spawn('flyingSquirrel', ahead(-45, 5)), prev = q.state;
+    q.cd = 0;
+    Q.behind = { flares: [], bumps: 0, states: new Set() };
+    step(30 * 3, () => {
+      if (q.state === 'flare' && prev !== 'flare') Q.behind.flares.push(+nose(q).toFixed(2));
+      if (hits.length && nose(q) < SQUIRREL.front) Q.behind.bumps = hits.length;
+      Q.behind.states.add(q.state); prev = q.state;
+    });
+    Q.behind.states = [...Q.behind.states];
+    clear();
+    // B: a dive that ends up 40 m behind you peels off: harmless while it peels, back in front within a few seconds.
+    hits = [];
+    q = E.spawn('flyingSquirrel', ahead(-40, 3));
+    q.state = 'swoop'; q.stateT = 0;
+    G.step(1 / 30);
+    Q.dive = { state: q.state, harmless: q.contactCd === Infinity, backIn: null };
+    for (let k = 1; k <= 30 * 6 && Q.dive.backIn == null; k++) { G.step(1 / 30); if (q.state === 'idle') Q.dive.backIn = +(k / 30).toFixed(1); }
+    Q.dive.nose = +nose(q).toFixed(2);
+    Q.dive.hits = hits.length;
+    clear();
+    // C: a barrel roll with a squirrel on your tail shakes it off (and says why, once).
+    hits = [];
+    q = E.spawn('flyingSquirrel', ahead(-50, 3));
+    q.cd = 99;
+    E.shakeTold = false;
+    p.maneuverCd = 0; p.startManeuver('left');
+    step(3);
+    Q.roll = { state: q.state, told: E.shakeTold };
+    p.maneuver = null; p.dodging = false; p.maneuverCd = 0;
+    clear();
+    // D: dead ahead, it flares, dives and hits you for its 12 hull.
+    hits = [];
+    q = E.spawn('flyingSquirrel', ahead(80));
+    q.cd = 0;
+    Q.front = { states: new Set() };
+    step(30 * 4, () => Q.front.states.add(q.state));
+    Q.front.states = [...Q.front.states];
+    Q.front.hits = hits.slice();
+    out.squirrels = Q;
     clear();
     // Comet Charger in Low Orbit: winds up, then charges at COMET.speed.
     into('Low Orbit');
@@ -4748,6 +4797,7 @@ try {
     [(({ landEnemies: q }) => q.meadow.length === 0 && q.volcano.includes('emberBat') && q.volcano.includes('magmaSpitter') && !q.volcano.includes('cometCharger') && q.belt.length === 1 && q.belt[0] === 'cometCharger' && q.moon.includes('cometCharger'))(report), `land enemies: Ember Bats and Magma Spitters only in Volcano Land, Comet Chargers only in space lands (${JSON.stringify(report.landEnemies && { meadow: report.landEnemies.meadow, volcano: report.landEnemies.volcano, belt: report.landEnemies.belt, moon: report.landEnemies.moon })})`],
     [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.fired >= k.shots && s.firedIn === 'up')(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
     [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
+    [(({ landEnemies: { squirrels: q } }) => q.behind.flares.length === 0 && q.behind.bumps === 0 && q.dive.state === 'peel' && q.dive.harmless && q.dive.backIn != null && q.dive.backIn <= 5 && q.dive.nose > 0.3 && q.dive.hits === 0 && q.roll.state === 'peel' && q.roll.told && q.front.states.includes('flare') && q.front.hits.length >= 1 && q.front.hits.every((n) => n === 12))(report), `land enemies: a Flying Squirrel behind you never dives or bumps you, peels off harmlessly when it ends up on your tail or you roll, comes back round in front, and still hits from the front (${JSON.stringify(report.landEnemies?.squirrels)})`],
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
