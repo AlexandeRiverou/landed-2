@@ -131,6 +131,9 @@ try {
       try { return update(...args); } finally { if (had) Object.defineProperty(performance, 'now', had); else delete performance.now; }
     };
     window.__smokeAside(window.G.audio, 'update'); // the music rolls its notes when the audio clock says it's time
+    // The Autumn Woods' windmill (land 2, flown through by many early checks) rolls its spot and its leaves aside, so it
+    // can't shift the rolls those checks were tuned on.
+    for (const k of ['placeMill', 'updateMill']) window.__smokeAside(window.G.zones.setPieces, k);
   });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
