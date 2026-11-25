@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { world, WORLD_DEFAULTS, PALETTES, ZONE_PALETTES, reseed, clearCraters, clearPads, clearTunnels, clearCity } from './world.js';
 import { Asteroids } from './asteroids.js';
+import { SetPieces } from './setpieces.js';
 import { CURVE, AXIS_CURVE, CURVE_AXIS, noCurve } from './curve.js';
 import { disposeTree } from './models.js';
 
@@ -59,7 +60,7 @@ export const ZONES = [
   {
     name: 'Volcano Land', blurb: 'Lava seas and falling ash. Do not land. Really, do not.',
     world: { palette: 'volcanic', amp: 1.4, spikes: 1.5, seaLevel: 25, propTheme: 'spooky', propDensity: 0.6 },
-    sky: 'volcano', weather: 'ash', clouds: ['#5a4a48', 50], fog: 0.75, mood: 'ember', lock: [...LOCK, 'weather', 'sea'],
+    sky: 'volcano', weather: 'ash', clouds: ['#5a4a48', 50], fog: 0.75, mood: 'ember', setPiece: 'geysers', lock: [...LOCK, 'weather', 'sea'],
   },
   {
     name: 'Tropical Archipelago', blurb: 'A thousand islands, palm trees, and suspiciously calm whales.',
@@ -183,6 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
@@ -241,6 +243,7 @@ export class Zones {
     G.sky.azimuth = z.sunAzimuth ?? Math.random() * Math.PI * 2;
     G.sky.decor.clear();
     this.asteroids.configure(z.asteroids || 0, !!z.comets);
+    this.setPieces.configure(z.setPiece);
     this.buildDecor(z.decor, !instant);
     if (!instant) {
       G.terrain.rebuildAll(ZONE_SHIFT.REBUILD_DELAY);
@@ -360,6 +363,7 @@ export class Zones {
   update(dt) {
     const G = this.G, z = this.current;
     this.asteroids.update(dt);
+    this.setPieces.update(dt);
     const cam = G.camera.position;
     this.decor.position.copy(cam);
     if (this.fading) this.fading.group.position.copy(cam);

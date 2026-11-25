@@ -4275,6 +4275,53 @@ try {
     return out;
   });
 
+  // Land set pieces: Volcano Land keeps a few fire geysers on dry rock round the player (none in other lands). A vent
+  // idles, rumbles, then blows a pillar of fire: flying through it scorches once per eruption, skimming past is a
+  // "Toasty!" near miss worth a few points.
+  report.setPieces = await page.evaluate(async () => {
+    const G = window.G, p = G.player, E = G.enemies, SP = G.zones.setPieces, out = {};
+    const { ZONES } = await import('./src/zones.js');
+    const { GEYSER } = await import('./src/setpieces.js');
+    const zi = (n) => ZONES.findIndex((z) => z.name === n);
+    const god = p.god, timer = E.spawnTimer, damage = p.damage, score = G.score;
+    E.spawnTimer = 1e9;
+    G.powerups.active.clear();
+    const clear = () => { E.list.slice().forEach((x) => E.removeEnemy(x)); E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh)); };
+    const step = (n, f) => { for (let k = 0; k < n; k++) { f?.(); G.step(1 / 30); } };
+    const into = (name) => { G.zones.enter(zi(name)); G.objectives.cooldown = 1e9; clear(); p.god = true; };
+    into('Meadowlands'); step(60); out.meadow = SP.list.length;
+    into('Volcano Land');
+    for (let k = 0; k < 40 && SP.list.length < 3; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    out.count = SP.list.length;
+    out.dry = SP.list.every((v) => v.mouth.y + 4 - 22.6 >= G.world.seaLevel + GEYSER.dry - 0.01);
+    const hits = [];
+    p.damage = function (n) { hits.push(n); };
+    // One vent through its cycle, with the plane parked inside the pillar.
+    const v = SP.list[0], states = [];
+    const at = (dx) => () => { p.pos.set(v.mouth.x + dx, v.mouth.y + 40, v.mouth.z); p.vel?.set?.(0, 0, 0); clear(); };
+    v.state = 'idle'; v.t = 0.05;
+    for (let k = 0; k < 30 * 6 && !(states.includes('blast') && v.state === 'idle'); k++) {
+      at(0)(); G.step(1 / 30);
+      if (states.at(-1) !== v.state) states.push(v.state);
+    }
+    out.states = states;
+    out.hits = hits.slice();
+    // Next eruption, parked just beside the pillar: a near miss, no scorch.
+    hits.length = 0;
+    const s0 = G.score;
+    v.state = 'rumble'; v.t = 0.05;
+    step(30 * 3, at(GEYSER.radius + 6));
+    out.nearHits = hits.length;
+    out.nearScore = G.score - s0;
+    into('Meteor Belt'); step(30); out.belt = SP.list.length;
+    p.damage = damage;
+    p.god = god;
+    E.spawnTimer = timer;
+    G.score = score;
+    G.zones.enter(0);
+    return out;
+  });
+
   // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
   // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
   // after the jump, so this doesn't depend on whether the reload wins the race.
@@ -4673,6 +4720,8 @@ try {
     [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
+    [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
+    [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore === 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
     [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
     [desk.titleShown && desk.titleCalls === 'fs,quit' && desk.blurred, 'desktop: with the bridge, the title card shows Fullscreen and Quit, and they call it'],
