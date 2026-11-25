@@ -799,6 +799,249 @@ export function makeCannon(hat) {
   return g;
 }
 
+// Fort Grumpington, the ground boss: a stone fortress on a rocky plinth (its gate toward +Z). Crenellated curtain walls,
+// a gatehouse with a portcullis (it drops when the fort ducks), four corner towers, each with a cannon that swivels to
+// aim and can be shot off into a smoking ruin (its stair turret's red roof and pennant go with it), braziers at the
+// gate, and a central keep with a grumpy face (glowing window eyes, stone brows, a frown), pepperpot turrets, a
+// chimney, the big flag and, on its roof, the great mortar (the breakable barrel) that sinks into the keep when the
+// fort ducks. Damage shows as it loses hp (userData.damage): fires and scorch marks at 2/3, a wall top falling to
+// rubble, cracks glowing in the keep and the flag on fire at 1/3. The static stone is merged into one mesh.
+// FORT_HULL lists its solid boxes in model units [x0, x1, y0, y1, z0, z1]: bullets hit them and planes bump off them.
+export const FORT_HULL = [
+  [-6.6, 6.6, -1, 5.5, 6, 7.2], [-3.2, 3.2, -1, 6.8, 5.4, 7.8], [-6.6, 6.6, -1, 5.5, -7.2, -6], [-7.2, -6, -1, 5.5, -6.6, 6.6], [6, 7.2, -1, 5.5, -6.6, 6.6],
+  ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [a * 6.6 - 2.2, a * 6.6 + 2.2, -1, 8.4, b * 6.6 - 2.2, b * 6.6 + 2.2]),
+  [-2.9, 2.9, -1, 9.2, -2.9, 2.9], [-9.5, 9.5, -3, 0.5, -9.5, 9.5],
+];
+const FV = {
+  stone: '#aaa190', stone2: '#958c7c', stone3: '#bdb4a2', course: '#857c6d', dark: '#2a2622', rock: '#8a8378', rock2: '#6f685f',
+  earth: '#8a7a5a', flag: '#c0322a', gold: '#ffcf3a', wood: '#6e4a2c', iron: '#2c2c33', roof: '#b8452f', moss: '#6a8a48',
+  soot: '#2b2724', ember: '#ff8a3a', glass: '#ffc860',
+};
+// A run of curtain wall along x (axis 'x', at z = c) or along z (axis 'z', at x = c), from a0 to a1, between heights
+// y0 and y1; `out` (±1) is the outer face's side. With cap: the wall walk, merlons on the outer edge, arrow slits.
+function fortWall(S, axis, c, a0, a1, out, y0, y1, cap) {
+  const len = a1 - a0, mid = (a0 + a1) / 2, T = 1.2;
+  const at = (u, y, v, size, color, extra = {}) => S.push(axis === 'x'
+    ? P(Box(size[0], size[1], size[2]), color, { x: u, y, z: c + v, ...extra })
+    : P(Box(size[2], size[1], size[0]), color, { x: c + v, y, z: u, ...extra }));
+  at(mid, (y0 + y1) / 2, 0, [len, y1 - y0, T], FV.stone);
+  for (const y of [1.5, 2.6, 3.7]) if (y > y0 + 0.1 && y < y1 - 0.1) at(mid, y, 0, [len + 0.02, 0.12, T + 0.04], FV.course);
+  if (y0 < 1) at(mid, 0.8, out * 0.12, [len + 0.05, 0.8, T + 0.3], FV.stone2); // a sloped foot
+  if (!cap) return;
+  at(mid, y1 + 0.12, 0, [len + 0.1, 0.25, T + 0.25], FV.stone3);
+  const n = Math.max(1, Math.round(len / 1.3));
+  for (let k = 0; k < n; k++) at(a0 + (k + 0.5) * (len / n), y1 + 0.7, out * (T / 2 - 0.15), [0.75, 0.9, 0.45], FV.stone);
+  for (let k = 0; k < n; k += 2) at(a0 + (k + 0.5) * (len / n), y1 - 1.8, out * 0.02, [0.16, 0.9, T + 0.06], FV.dark);
+}
+// A little flame: an orange cone round a yellow one (unlit, flickers in Enemies.animate).
+function fortFlame(g, x, y, z, s = 1) {
+  const f = new THREE.Group();
+  f.position.set(x, y, z);
+  f.scale.setScalar(s);
+  add(f, Cone(0.45, 1.1, 6), basic('#ff7a2a', { transparent: true, opacity: 0.9 }), { y: 0.55 });
+  add(f, Cone(0.25, 0.7, 5), basic('#fff0a0'), { y: 0.4 });
+  g.add(f);
+  return f;
+}
+export function makeFort() {
+  const g = new THREE.Group(), S = [], L = []; // S: stone and paint (lit); L: lights (unlit, they glow)
+  // The plinth: a rocky mound reaching down below the ground (so it never floats on a gentle slope), boulders at its rim.
+  S.push(P(Cyl(10.4, 11.6, 4, 9), FV.rock, { y: -1.6 }), P(Cyl(11.6, 12.4, 1.6, 9), FV.rock2, { y: -4.2 }));
+  S.push(P(Cyl(10.5, 10.5, 0.3, 9), FV.earth, { y: 0.35 }));
+  for (let k = 0; k < 11; k++) { const a = k * 0.57 + 0.3, r = 10.6 + (k % 3) * 0.4; S.push(P(Dod(0.8 + (k % 4) * 0.25), k % 2 ? FV.rock : FV.rock2, { x: Math.cos(a) * r, y: 0.1, z: Math.sin(a) * r, ry: k })); }
+  S.push(P(Box(12, 0.2, 12), FV.stone2, { y: 0.5 })); // the courtyard's flagstones
+  // Curtain walls. The left wall's front half has its top built separately: it falls to rubble at 1/3 hp.
+  const breach = [];
+  fortWall(S, 'x', -6.6, -4.6, 4.6, -1, 0.4, 4.4, true);
+  fortWall(S, 'z', 6.6, -4.6, 4.6, 1, 0.4, 4.4, true);
+  fortWall(S, 'z', -6.6, -4.6, 0.2, -1, 0.4, 4.4, true);
+  fortWall(S, 'z', -6.6, 0.2, 4.6, -1, 0.4, 2.9, false);
+  fortWall(breach, 'z', -6.6, 0.2, 4.6, -1, 2.9, 4.4, true);
+  for (const s of [-1, 1]) fortWall(S, 'x', 6.6, s > 0 ? 3.1 : -4.6, s > 0 ? 4.6 : -3.1, 1, 0.4, 4.4, true);
+  S.push(P(Box(0.06, 1.4, 1.6), FV.moss, { x: -7.22, y: 1.3, z: -2 }), P(Box(0.06, 1.2, 1.4), FV.moss, { x: 7.22, y: 1.5, z: 3 }), P(Box(1.6, 1, 0.06), FV.moss, { x: 3.5, y: 1.2, z: -7.22 }));
+  // The gatehouse: two flanking towers, the lintel over a dark passage, an iron portcullis (below), the lowered
+  // drawbridge with its chains, and the red banner with the fort's grumpy crest.
+  for (const s of [-1, 1]) {
+    S.push(P(Box(1.6, 6, 2.4), FV.stone, { x: s * 2.4, y: 3.4, z: 6.6 }));
+    for (const y of [1.6, 3, 4.6]) S.push(P(Box(1.64, 0.12, 2.44), FV.course, { x: s * 2.4, y, z: 6.6 }));
+    S.push(P(Box(1.9, 0.3, 2.7), FV.stone3, { x: s * 2.4, y: 6.5, z: 6.6 }));
+    for (const [dx, dz] of [[-0.55, 1.1], [0.55, 1.1], [-0.55, -1.1], [0.55, -1.1]]) S.push(P(Box(0.6, 0.9, 0.5), FV.stone, { x: s * 2.4 + dx, y: 7.1, z: 6.6 + dz }));
+    S.push(P(Box(0.16, 1, 0.1), FV.dark, { x: s * 2.4, y: 4.6, z: 7.82 }));
+  }
+  S.push(P(Box(3.2, 2.4, 2.4), FV.stone, { x: 0, y: 4.6, z: 6.6 }), P(Box(3.3, 0.3, 2.6), FV.stone3, { y: 3.4, z: 6.6 }));
+  S.push(P(Box(3.2, 3, 0.3), FV.dark, { y: 1.9, z: 5.6 }), P(Box(0.1, 3, 2.4), FV.dark, { x: -1.55, y: 1.9, z: 6.6 }), P(Box(0.1, 3, 2.4), FV.dark, { x: 1.55, y: 1.9, z: 6.6 }));
+  S.push(P(Box(3, 0.22, 2.8), FV.wood, { y: 0.5, z: 9.1 }));
+  for (let k = -1; k <= 1; k++) S.push(P(Box(0.06, 0.24, 2.8), FV.dark, { x: k * 0.75, y: 0.52, z: 9.1 }));
+  for (const s of [-1, 1]) S.push(P(Box(0.08, 0.08, 4.2), FV.iron, { x: s * 1.4, y: 2.4, z: 8.6, rx: 0.85 }));
+  S.push(P(Box(1.8, 2.2, 0.08), FV.flag, { y: 4.7, z: 7.85 }), P(Box(1.8, 0.22, 0.1), FV.gold, { y: 5.75, z: 7.86 }), P(Box(1.8, 0.22, 0.1), FV.gold, { y: 3.65, z: 7.86 }));
+  S.push(P(Cyl(0.42, 0.42, 0.1, 10), FV.gold, { y: 4.5, z: 7.9, rx: PI / 2 }));
+  for (const s of [-1, 1]) S.push(P(Box(0.6, 0.14, 0.1), FV.dark, { x: s * 0.4, y: 5.15, z: 7.92, rz: -s * 0.4 }));
+  const portcullis = new THREE.Group();
+  portcullis.position.set(0, 1.9, 7.45);
+  const bars = [];
+  for (let k = -3; k <= 3; k++) bars.push(P(Box(0.12, 3, 0.12), FV.iron, { x: k * 0.42 }));
+  for (const y of [-0.9, 0, 0.9]) bars.push(P(Box(2.9, 0.12, 0.12), FV.iron, { y }));
+  for (let k = -3; k <= 3; k++) bars.push(P(Cone(0.09, 0.3, 4), FV.iron, { x: k * 0.42, y: -1.6, rx: PI }));
+  portcullis.add(new THREE.Mesh(M(bars), lam('#ffffff', { vertexColors: true })));
+  g.add(portcullis);
+  // Braziers either side of the drawbridge.
+  const flames = [];
+  for (const s of [-1, 1]) {
+    S.push(P(Cyl(0.12, 0.18, 1.4, 5), FV.iron, { x: s * 2.2, y: 1.1, z: 8.4 }), P(Cyl(0.55, 0.3, 0.45, 8), FV.iron, { x: s * 2.2, y: 1.95, z: 8.4 }));
+    flames.push(fortFlame(g, s * 2.2, 2.05, 8.4, 0.9));
+  }
+  // Corner towers: a battered base, stone courses, arrow slits, a corbelled top ring and eight merlons.
+  const guns = [];
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = sx * 6.6, cz = sz * 6.6;
+    S.push(P(Cyl(2.05, 2.2, 6.8, 9), FV.stone, { x: cx, y: 3.8, z: cz }), P(Cyl(2.25, 2.7, 1.4, 9), FV.stone2, { x: cx, y: 1.1, z: cz }));
+    for (const y of [2.6, 4.1, 5.6]) S.push(P(Cyl(2.12, 2.12, 0.12, 9), FV.course, { x: cx, y, z: cz }));
+    S.push(P(Cyl(2.45, 2.1, 0.6, 9), FV.stone3, { x: cx, y: 7.4, z: cz }));
+    for (let k = 0; k < 8; k++) {
+      const a = k * PI / 4 + PI / 8;
+      S.push(P(Box(0.75, 0.9, 0.45), FV.stone, { x: cx + Math.cos(a) * 2.2, y: 8.15, z: cz + Math.sin(a) * 2.2, ry: PI / 2 - a }));
+    }
+    for (const a of [Math.atan2(sz, sx), Math.atan2(sz, sx) + 0.9, Math.atan2(sz, sx) - 0.9]) for (const y of [3.3, 5]) {
+      S.push(P(Box(0.16, 0.85, 0.2), FV.dark, { x: cx + Math.cos(a) * 2.08, y, z: cz + Math.sin(a) * 2.08, ry: PI / 2 - a }));
+    }
+    // Its cannon on a swivel ring, and its stair turret (red roof, pennant): shot off together, leaving a wreck.
+    const gun = new THREE.Group();
+    gun.position.set(cx, 7.7, cz);
+    add(gun, Cyl(1.15, 1.25, 0.4, 9), lam(FV.iron));
+    const aim = new THREE.Group();
+    aim.position.y = 0.55;
+    add(aim, Box(1.3, 0.7, 1.6), lam(FV.wood));
+    for (const s of [-0.7, 0.7]) add(aim, Cyl(0.35, 0.35, 0.15, 8), lam(FV.dark), { x: s, y: -0.15, rz: PI / 2 });
+    add(aim, Cyl(0.28, 0.38, 2.8, 8), lam(FV.iron), { y: 0.35, z: 1.1, rx: PI / 2 });
+    add(aim, Cyl(0.42, 0.42, 0.35, 8), lam('#e8302a'), { y: 0.35, z: 2.45, rx: PI / 2 });
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(0, 0.35, 2.8);
+    aim.add(muzzle);
+    gun.add(aim);
+    const turret = new THREE.Group();
+    turret.position.set(sx * 1.35, 0.4, sz * 1.35); // on the outer corner, clear of the cannon's swing
+    add(turret, Cyl(0.6, 0.6, 1.6, 8), lam(FV.stone3), { y: 0.8 });
+    add(turret, Cone(0.85, 1.5, 8), lam(FV.roof), { y: 2.35 });
+    add(turret, Sph(0.16, 5, 4), lam(FV.gold), { y: 3.15 });
+    add(turret, Cyl(0.04, 0.04, 1.6, 4), lam(FV.dark), { y: 3.9 });
+    const pennant = new THREE.Group();
+    pennant.position.y = 4.5;
+    add(pennant, Box(0.04, 0.5, 1), lam(FV.flag), { z: -0.5 });
+    add(pennant, Box(0.04, 0.26, 0.7), lam(FV.gold), { z: -1.3 });
+    turret.add(pennant);
+    gun.add(turret);
+    g.add(gun);
+    const wreck = new THREE.Group();
+    wreck.position.copy(gun.position);
+    add(wreck, Cyl(1.15, 1.25, 0.35, 9), lam(FV.soot));
+    add(wreck, Box(1.2, 0.5, 1.2), lam('#3a2f2a'), { y: 0.35, rz: 0.35 });
+    add(wreck, Cyl(0.26, 0.32, 1.4, 6), lam(FV.iron), { x: 0.3, y: 0.6, z: 0.5, rx: 1.2, rz: -0.5 });
+    add(wreck, Cyl(0.6, 0.6, 0.8, 8), lam(FV.soot), { x: sx * 1.35, y: 0.8, z: sz * 1.35 });
+    add(wreck, Cone(0.8, 0.9, 8), lam('#6a2a20'), { x: sx * 1.35 + 0.3, y: 1.1, z: sz * 1.35, rz: 1.1 });
+    wreck.visible = false;
+    g.add(wreck);
+    breakable(g, gun, 2.2, 'cannon', GUN_HP, { keepHp: true, wreck });
+    guns.push({ gun, aim, wreck, muzzle, y0: gun.position.y, pennant });
+  }
+  // The keep: stepped stone, courses, a corbelled top with merlons, pepperpot turrets on its corners, a chimney.
+  S.push(P(Box(5.4, 7.4, 5.4), FV.stone, { y: 4.1 }), P(Box(5.9, 1, 5.9), FV.stone2, { y: 0.9 }));
+  for (const y of [2.4, 4.4, 7]) S.push(P(Box(5.46, 0.12, 5.46), FV.course, { y }));
+  S.push(P(Box(6, 0.5, 6), FV.stone3, { y: 8 }), P(Box(5.6, 0.2, 5.6), FV.stone2, { y: 8.3 }));
+  for (let k = 0; k < 5; k++) for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const u = -2.4 + k * 1.2;
+    S.push(P(Box(az ? 0.65 : 0.4, 0.8, az ? 0.4 : 0.65), FV.stone, { x: ax ? ax * 2.8 : u, y: 8.8, z: az ? az * 2.8 : u }));
+  }
+  for (const [x, z] of [[-2.9, -2.9], [2.9, -2.9], [-2.9, 2.9], [2.9, 2.9]]) {
+    S.push(P(Cyl(0.7, 0.55, 1.6, 8), FV.stone3, { x, y: 8.7, z }), P(Cone(0.95, 1.6, 8), FV.roof, { x, y: 10.3, z }), P(Sph(0.15, 5, 4), FV.gold, { x, y: 11.15, z }));
+  }
+  S.push(P(Box(0.7, 1.6, 0.7), FV.stone2, { x: 1.9, y: 9.1, z: 1.9 }), P(Box(0.85, 0.2, 0.85), FV.dark, { x: 1.9, y: 9.95, z: 1.9 }));
+  // The grumpy face on the keep's front: stone brows over glowing window eyes, pupils glaring down, a frown, a door.
+  for (const s of [-1, 1]) {
+    S.push(P(Box(1.15, 1.45, 0.12), FV.dark, { x: s * 1.2, y: 5.6, z: 2.72 }));
+    L.push(P(Box(0.9, 1.2, 0.1), FV.glass, { x: s * 1.2, y: 5.6, z: 2.76 }));
+    S.push(P(Box(0.34, 0.42, 0.06), FV.dark, { x: s * 1.05, y: 5.3, z: 2.83 }));
+    S.push(P(Box(1.6, 0.38, 0.4), FV.stone2, { x: s * 1.2, y: 6.6, z: 2.8, rz: s * 0.38 }));
+    S.push(P(Box(0.75, 0.24, 0.12), FV.dark, { x: s * 1.05, y: 4.15, z: 2.74, rz: -s * 0.45 }));
+  }
+  S.push(P(Box(1.3, 0.24, 0.12), FV.dark, { y: 4.42, z: 2.74 }));
+  S.push(P(Box(1.3, 1.7, 0.12), FV.wood, { y: 1.3, z: 3 }), P(Box(1.5, 0.18, 0.14), FV.dark, { y: 2.2, z: 3.02 }));
+  for (const [x, z, ry] of [[2.72, 0, PI / 2], [-2.72, 0, PI / 2], [0, -2.72, 0]]) for (const y of [3.4, 5.8]) S.push(P(Box(0.6, 0.9, 0.1), FV.dark, { x, y, z, ry }));
+  // The crown rests on a red cushion on the keep roof's back corner (Enemies.spawnBoss puts it there: crownX/Y/Z).
+  S.push(P(Box(1.5, 0.4, 1.5), FV.flag, { x: -1.6, y: 8.6, z: -1.6 }), P(Box(1.56, 0.08, 1.56), FV.gold, { x: -1.6, y: 8.8, z: -1.6 }));
+  const paint = new THREE.Mesh(M(S), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  g.add(paint);
+  g.add(new THREE.Mesh(M(L), new THREE.MeshBasicMaterial({ vertexColors: true })));
+  const breachMesh = new THREE.Mesh(M(breach), paint.material);
+  g.add(breachMesh);
+  // The big flag on the keep's back corner.
+  add(g, Cyl(0.08, 0.1, 4.2, 5), lam(FV.dark), { x: 1.9, y: 10.5, z: -1.9 });
+  add(g, Sph(0.18, 5, 4), lam(FV.gold), { x: 1.9, y: 12.65, z: -1.9 });
+  const flag = new THREE.Group();
+  flag.position.set(1.9, 11.7, -1.9);
+  add(flag, Box(0.05, 1.5, 2.6), lam(FV.flag), { z: -1.3 });
+  add(flag, Box(0.06, 0.3, 2.6), basic(FV.gold), { z: -1.3 });
+  add(flag, Cyl(0.35, 0.35, 0.07, 8), basic(FV.gold), { z: -1.3, y: 0.1, rz: PI / 2 });
+  g.add(flag);
+  // The great mortar on the keep roof (it sinks into the keep when the fort ducks): an iron mount, and the barrel
+  // (banded, with a red muzzle) that turns to aim at you, never lower than a mortar's lob (Enemies.animateFort). Shot off, it leaves a smoking stump.
+  const mortar = new THREE.Group();
+  mortar.position.y = 8.4;
+  add(mortar, Cyl(1.3, 1.5, 0.9, 10), lam(FV.iron), { y: 0.45 });
+  add(mortar, Cyl(1.55, 1.55, 0.2, 10), lam(FV.gold), { y: 0.9 });
+  const barrel = new THREE.Group();
+  barrel.position.y = 1.9;
+  const tube = new THREE.Group();
+  tube.position.z = 1.4;
+  add(tube, Cyl(0.95, 1.25, 3.6, 10), lam(FV.iron), { rx: PI / 2 });
+  for (const z of [-1.2, 0.2]) add(tube, Cyl(1.15, 1.15, 0.3, 10), lam('#4a4a52'), { z, rx: PI / 2 });
+  add(tube, Cyl(1.25, 1.25, 0.5, 10), lam('#e8302a'), { z: 1.8, rx: PI / 2 });
+  add(tube, Cyl(0.7, 0.7, 0.1, 10), basic('#111111'), { z: 2.06, rx: PI / 2 });
+  for (const s of [-1, 1]) add(barrel, Box(0.5, 0.5, 0.5), lam('#4a4a52'), { x: s * 1.25 });
+  barrel.add(tube);
+  const muzzle = new THREE.Object3D();
+  muzzle.position.z = 3.8;
+  barrel.add(muzzle);
+  mortar.add(barrel);
+  const stump = new THREE.Group();
+  add(stump, Cyl(0.9, 1.1, 1.2, 8), lam(FV.soot), { y: 1.6, rx: 0.4 });
+  add(stump, Box(1.2, 0.4, 0.8), lam('#3a2f2a'), { y: 2.1, z: 0.3, rz: 0.4 });
+  stump.visible = false;
+  mortar.add(stump);
+  g.add(mortar);
+  breakable(g, tube, 2.2, 'barrel', 3, { wreck: stump });
+  // Damage, in two stages (Enemies.animate): fires and soot at 2/3 hp; at 1/3 the breached wall top falls (rubble
+  // shows at its foot), cracks glow in the keep and the flag burns. `smoke` marks where each stage smokes.
+  const hidden = (o) => { o.visible = false; return o; };
+  const scorch = hidden(new THREE.Mesh(M([
+    P(Box(0.06, 1.6, 2.2), FV.soot, { x: -7.25, y: 3.4, z: -3 }), P(Box(2.4, 1.4, 0.06), FV.soot, { x: 3.5, y: 3.5, z: -7.25 }),
+    P(Box(0.06, 1.4, 2), FV.soot, { x: 7.25, y: 3.5, z: 2.4 }), P(Box(1.6, 1.2, 0.06), FV.soot, { x: -0.6, y: 6.6, z: 2.74 }),
+  ]), lam('#ffffff', { vertexColors: true })));
+  g.add(scorch);
+  const rubble = hidden(new THREE.Mesh(M([0, 1, 2, 3, 4, 5, 6].map((k) => P(Dod(0.5 + (k % 3) * 0.25), k % 2 ? FV.stone : FV.stone2, { x: -7.8 - (k % 3) * 0.5, y: 0.6 + (k % 2) * 0.3, z: 0.8 + k * 0.55, ry: k, rx: k * 0.7 }))), paint.material));
+  g.add(rubble);
+  const cracks = hidden(new THREE.Mesh(M([
+    P(Box(0.14, 1.4, 0.06), FV.ember, { x: 0.3, y: 7.1, z: 2.76, rz: 0.5 }), P(Box(0.14, 1.2, 0.06), FV.ember, { x: 0.65, y: 6.2, z: 2.76, rz: -0.4 }),
+    P(Box(0.12, 1.3, 0.06), FV.ember, { x: -2.2, y: 3.2, z: 2.76, rz: 0.3 }), P(Box(0.06, 1.5, 0.12), FV.ember, { x: 2.76, y: 5, z: 0.8, rx: 0.5 }),
+  ]), new THREE.MeshBasicMaterial({ vertexColors: true })));
+  g.add(cracks);
+  const fire1 = [fortFlame(g, -6.6, 4.5, -3, 1.1), fortFlame(g, 3.5, 4.5, -6.6, 1), fortFlame(g, 6.6, 4.5, 2.4, 1.1)].map(hidden);
+  const fire2 = [fortFlame(g, -6.6, 2.9, 2.4, 1.4), fortFlame(g, 1.9, 11.2, -1.9, 0.9), fortFlame(g, -1.8, 8.4, 1.8, 1)].map(hidden);
+  flames.push(...fire1, ...fire2);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const damage = [
+    { at: 2 / 3, show: [scorch, ...fire1], hide: [], smoke: [V(-6.6, 5.5, -3), V(3.5, 5.5, -6.6), V(6.6, 5.5, 2.4)] },
+    { at: 1 / 3, show: [rubble, cracks, ...fire2], hide: [breachMesh], smoke: [V(-6.6, 3.5, 2.4), V(1.9, 12, -1.9), V(-1.8, 9.5, 1.8)], burst: V(-6.6, 3.6, 2.4) },
+  ];
+  // Chimney smoke: four puffs that rise, swell and fade in turn.
+  const puffs = [];
+  for (let k = 0; k < 4; k++) puffs.push(add(g, Dod(0.6), new THREE.MeshLambertMaterial({ color: '#8a8f96', transparent: true, opacity: 0.5, depthWrite: false, flatShading: true }), { x: 1.9, y: 10, z: 1.9 }));
+  Object.assign(g.userData, {
+    guns, barrel, muzzle, mortar, portcullis, flames, damage, flag, wrecks: [stump], chimney: { puffs, at: [1.9, 10, 1.9], rise: 6, drift: [1, -2.5] },
+    duck: { mortar: 3.6, gun: 0.7, gate: 2.4 }, faceYou: true,
+  });
+  return g;
+}
+
 export function makeRivalJet(hat) {
   const g = new THREE.Group();
   const p = makePlane();

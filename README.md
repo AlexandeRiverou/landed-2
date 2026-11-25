@@ -319,8 +319,10 @@ doesn't by itself, but flying on from where it put you does.
 - Steven the Seagull Overlord: circles high, then dive-bombs (a shadow ring warns you). Dodge and he faceplants. A hit
   steals your boost.
 - The Mother of All Spiky Balloons: guarded by a spinning ring of mines. Find the gap. Mind the spike nova.
-- Fort Grumpington (a ground boss; never in space): pops up to fire mortars at marked rings, then ducks. Shoot it
-  while it's up, and aim for the barrel.
+- Fort Grumpington (a ground boss; never in space): a stone fortress with four corner towers and a grumpy keep. Its
+  tower cannons share an 8-orb volley and the great mortar on the keep lobs shells at marked rings, then the mortar
+  sinks into the keep and the portcullis drops while it ducks. Shoot the tower cannons off (3% each, a smoking ruin
+  left behind) and the mortar (down to one sad shell). Fires break out at 2/3 hp; at 1/3 a wall top falls.
 - HMS Overkill the aircraft carrier (a sea boss; only where there's open water): a 230 m ship that steams along the
   sea with six deck guns (broadsides), flak shells lobbed from the guns that burst into smoke at marked grey spheres,
   a rattling island gun, and Deck Fighters launched two at a time off its bow catapults (four up at most), which hunt
