@@ -357,8 +357,12 @@ doesn't by itself, but flying on from where it put you does.
   4%); the sun-disc is the weak spot. 95 hp.
 - Lady Hootrude, the Harvest Owl (an orbiting boss of the woods lands: Autumn Woods and Giant's Garden, not the
   Meadowlands where a run begins; the deck brings her only there, and first there once the two openers are done): a
-  plump autumn owl. Most attacks are a volley of 5 acorns (9 each) at where you're heading. Every 3rd attack (every 2nd
-  enraged) she stops and rears up instead: wings spread wide, chest glowing, leaves swirling, for 1.2 s (1.8 s the first
+  plump autumn owl. She starts sitting on top of a giant autumn oak and takes off with a hoot and a burst of leaves
+  when you come within 260 m, when you hit her, or after about 2 s (no attacks while she sits; no oak over water or under
+  a roof). In flight she beats her wings a few times, then glides, banks into her turns and keeps her eyes on you; her
+  shadow follows her on the ground. Most attacks are a volley of 5 acorns (9 each) at where you're heading. Every 3rd
+  attack (every 2nd enraged) she stops and rears up instead: wings raised high in a V, leaning back, talons forward,
+  chest glowing, leaves swirling, for 1.2 s (1.8 s the first
   time, with a tip; 1 s enraged). Then she beats a band of leaves at where you'll be: 70 m wide, 30 m tall, half width
   as it leaves her and full width by 120 m. It doesn't hurt, but if it reaches you it shoves you flat along its travel
   (45 m/s, fading within about a second, roughly 20 m of drift; half of any part straight back against your nose, so

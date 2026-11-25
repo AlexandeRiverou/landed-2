@@ -1375,41 +1375,113 @@ export function makeSunBeetle(hat) {
   return g;
 }
 
-// Lady Hootrude (woods lands): a plump autumn owl, russet and pumpkin, a cream face disc, amber eyes, two tall ear tufts
-// (breakable: weaker gusts) and a glowing amber chest (the soft spot, brighter while she rears up). Her wings hang folded
-// (userData.wings, posed by MOVES.gust) and spread wide before a gust.
+// Lady Hootrude (woods lands): a plump autumn owl, russet and pumpkin, a cream face disc with a dark rim, amber eyes, two
+// tall ear tufts (breakable: weaker gusts) and a glowing amber chest (the soft spot, brighter while she rears up). She is
+// rigged to fly (posed every frame by MOVES.gust.fly): userData.rig bobs with the wingbeat, head swivels and tilts, each
+// wing is an arm with a hand that lags the stroke (wings, hands), lids blink, talons tuck back, the tail fans.
 export function makeHarvestOwl(hat) {
-  const g = new THREE.Group();
+  const g = new THREE.Group(), rig = new THREE.Group();
+  g.add(rig);
   const russet = lam('#a0522d', { emissive: '#2a1206' }), pumpkin = lam('#c8692a', { emissive: '#2a1406' }), dark = lam('#6a3418');
-  const cream = lam('#f2e2c0'), wingMat = lam('#8a4a24', { emissive: '#1e0c04' }), tip = lam('#e8a33a');
-  add(g, Sph(2.4, 12, 9), russet, { s: [1, 1.15, 0.95] }); // the plump body
-  const chest = add(g, Sph(1.3, 10, 8), basic('#ffa040'), { y: -0.2, z: 1.75, s: [1, 1.2, 0.45] }); // the glowing chest
-  weak(g, chest, 1.5, 3);
-  for (let k = 0; k < 3; k++) add(g, Box(1.6 - k * 0.3, 0.12, 0.2), dark, { y: 0.6 - k * 0.55, z: 2.15, rz: 0 }); // chest bars
-  add(g, Sph(1.9, 12, 9), pumpkin, { y: 2.6, z: 0.3, s: [1.1, 0.95, 1] }); // head
-  add(g, Sph(1.6, 12, 8), cream, { y: 2.6, z: 1.55, s: [1.05, 0.9, 0.35] }); // face disc
-  for (const sd of [-1, 1]) {
-    add(g, Sph(0.52, 8, 6), basic('#ffbf2a'), { x: sd * 0.68, y: 2.78, z: 1.95 }); // amber eyes
-    add(g, Sph(0.26, 6, 4), basic('#1a1008'), { x: sd * 0.68, y: 2.78, z: 2.38 }); // pupils
-    add(g, Box(0.9, 0.18, 0.2), dark, { x: sd * 0.7, y: 3.35, z: 1.95, rz: sd * 0.3 }); // stern brows
-    const tuft = add(g, Cone(0.45, 1.9, 4), dark, { x: sd * 1.05, y: 4.25, z: 0.25, rz: -sd * 0.35 }); // ear tufts
-    breakable(g, tuft, 0.9, 'tuft', 2);
-    add(g, Cyl(0.12, 0.12, 0.9, 4), lam('#e8b030'), { x: sd * 0.7, y: -2.75, z: 0.5 }); // legs
-    for (const t of [-0.3, 0, 0.3]) add(g, Cone(0.12, 0.6, 4), lam('#e8b030'), { x: sd * 0.7 + t, y: -3.15, z: 0.85, rx: PI / 2 }); // talons
+  const cream = lam('#f2e2c0'), wingMat = lam('#8a4a24', { emissive: '#1e0c04' }), tip = lam('#e8a33a'), buff = lam('#d9a066');
+  const gold = lam('#e8b030'), streak = lam('#7a4422');
+  add(rig, Sph(2.4, 14, 10), russet, { s: [1, 1.15, 0.95] }); // the plump body
+  for (let k = -1; k <= 1; k++) add(rig, Sph(0.95, 6, 4), dark, { x: k * 1.25, y: 0.9 - Math.abs(k) * 0.3, z: -2.05, ry: k * 0.5, s: [1, 0.6, 0.3] }); // back scales
+  add(rig, Sph(1.9, 12, 8), cream, { y: -1.25, z: 0.85, s: [1, 0.9, 0.62] }); // the cream bib under the chest
+  for (let r = 0; r < 2; r++) for (let k = -1; k <= 1; k++) { // its dark chevrons
+    if (r && !k) continue;
+    add(rig, Cone(0.2, 0.5, 3), streak, { x: k * 0.65 + r * 0.32 * (k || 1), y: -1.35 - r * 0.6, z: 1.98 - r * 0.12, rx: PI, s: [1, 1, 0.4] });
   }
-  add(g, Cone(0.32, 1, 4), lam('#5a3a1a'), { y: 2.25, z: 2.2, rx: PI / 2 + 0.5 }); // beak
-  add(g, Cone(1.1, 2.4, 5), wingMat, { y: -1.3, z: -2.1, rx: -PI / 2 - 0.5, s: [1, 1, 0.35] }); // tail
+  const chest = add(rig, Sph(1.3, 10, 8), basic('#ffa040'), { y: -0.2, z: 1.75, s: [1, 1.2, 0.45] }); // the glowing chest
+  weak(g, chest, 1.5, 3);
+  for (let k = 0; k < 3; k++) add(rig, Box(1.6 - k * 0.3, 0.12, 0.2), dark, { y: 0.6 - k * 0.55, z: 2.15 }); // chest bars
+  // The head turns on her neck (y 1.9): everything on it is placed from there, the crown too (BOSSES crownY).
+  const head = new THREE.Group();
+  head.position.set(0, 1.9, 0.3);
+  rig.add(head);
+  add(head, Sph(1.9, 14, 10), pumpkin, { y: 0.7, s: [1.1, 0.95, 1] });
+  add(head, Sph(1.6, 14, 9), cream, { y: 0.7, z: 1.25, s: [1.05, 0.9, 0.35] }); // face disc
+  add(head, Tor(1.55, 0.16, 5, 20), dark, { y: 0.7, z: 1.38, s: [1.07, 0.92, 1] }); // its dark rim
+  for (const k of [-1, 0, 1]) add(head, Cone(0.35, 0.9, 4), russet, { x: k * 0.6, y: 1.9, z: -1.1, rx: -1, rz: -k * 0.3 }); // nape feathers
+  const lids = [];
+  for (const sd of [-1, 1]) {
+    add(head, Sph(0.52, 10, 8), basic('#ffbf2a'), { x: sd * 0.68, y: 0.88, z: 1.65 }); // amber eyes
+    add(head, Sph(0.26, 8, 6), basic('#1a1008'), { x: sd * 0.68, y: 0.88, z: 2.08 }); // pupils
+    add(head, Sph(0.08, 4, 3), basic('#ffffff'), { x: sd * 0.68 + 0.1, y: 1.0, z: 2.3 }); // a glint
+    const lid = add(head, Sph(0.56, 10, 6), pumpkin, { x: sd * 0.68, y: 0.88, z: 1.72, s: [1, 1, 0.75] }); // eyelids (for a blink)
+    lid.visible = false;
+    lids.push(lid);
+    add(head, Box(0.9, 0.18, 0.2), dark, { x: sd * 0.7, y: 1.45, z: 1.65, rz: sd * 0.3 }); // stern brows
+    const tuft = add(head, Cone(0.45, 1.9, 4), dark, { x: sd * 1.05, y: 2.35, z: -0.05, rz: -sd * 0.35 }); // ear tufts
+    add(tuft, Cone(0.22, 0.9, 4), tip, { y: 0.75, x: -sd * 0.12 }); // their light tips (they go with the tuft)
+    breakable(g, tuft, 0.9, 'tuft', 2);
+  }
+  add(head, Cone(0.32, 1, 4), lam('#5a3a1a'), { y: 0.35, z: 1.9, rx: PI / 2 + 0.5 }); // beak
+  // Legs from the hip, feathered to the ankle, gold toes: they tuck back in flight and reach forward in a rear-up.
+  const legs = new THREE.Group();
+  legs.position.set(0, -2.2, 0.5);
+  rig.add(legs);
+  for (const sd of [-1, 1]) {
+    add(legs, Sph(0.6, 8, 6), buff, { x: sd * 0.7, y: -0.15, s: [1, 1.3, 1] });
+    add(legs, Cyl(0.13, 0.13, 0.6, 4), gold, { x: sd * 0.7, y: -0.75 });
+    for (const t of [-0.3, 0, 0.3]) add(legs, Cone(0.12, 0.6, 4), gold, { x: sd * 0.7 + t, y: -0.95, z: 0.35, rx: PI / 2 }); // talons
+  }
+  // The tail: a fan of five banded feathers (fans out in a rear-up).
+  const tail = new THREE.Group();
+  tail.position.set(0, -1.1, -1.9);
+  rig.add(tail);
+  for (let k = 0; k < 5; k++) {
+    const f = add(tail, Cone(0.5, 2.6, 4), k % 2 ? tip : streak, { y: -0.4, z: -1.1, rx: PI / 2 - 0.5, s: [1, 1, 0.3] });
+    f.rotation.order = 'YXZ';
+    f.rotation.y = (k - 2) * 0.2;
+  }
+  // Wings: an arm from the shoulder (coverts on top, banded secondaries trailing) and a hand from the wrist with five
+  // separate primaries spread like fingers.
+  const hands = [];
   const wings = [-1, 1].map((sd) => {
     const w = new THREE.Group();
     w.position.set(sd * 2.1, 0.8, -0.1);
-    add(w, Sph(1.5, 8, 6), wingMat, { x: sd * 2, y: -0.2, s: [1.9, 0.32, 1.15] }); // the wing
-    for (const k of [0, 1, 2, 3]) add(w, Cone(0.35, 1.5, 4), k % 2 ? tip : wingMat, { x: sd * (1.6 + k * 0.75), y: -0.25, z: -1.3, rx: -PI / 2, s: [1, 1, 0.3] }); // flight feathers
-    w.rotation.z = -sd * 1.15; // folded
-    g.add(w);
+    add(w, Sph(1.45, 10, 6), wingMat, { x: sd * 1.35, y: -0.1, s: [1, 0.26, 1.05] });
+    for (const k of [0, 1]) add(w, Sph(0.6, 6, 4), russet, { x: sd * (0.7 + k * 1.1), y: 0.2, z: 0.55, s: [1, 0.4, 0.7] }); // coverts
+    for (const k of [0, 1, 2]) add(w, Cone(0.42, 1.7, 4), k % 2 ? tip : wingMat, { x: sd * (0.6 + k * 0.9), y: -0.15, z: -1.1, rx: -PI / 2, s: [1, 1, 0.3] });
+    const hand = new THREE.Group();
+    hand.position.set(sd * 2.7, -0.1, 0);
+    w.add(hand);
+    add(hand, Sph(1.05, 8, 6), wingMat, { x: sd * 0.85, s: [1, 0.24, 0.85] });
+    for (let k = 0; k < 5; k++) {
+      const f = add(hand, Cone(0.26, 2.3, 4), k % 2 ? tip : streak, { x: sd * (1.5 + k * 0.08), z: 0.35 - k * 0.32, rz: -sd * PI / 2, s: [0.3, 1, 1] });
+      f.rotation.order = 'YXZ';
+      f.rotation.y = sd * k * 0.16; // fanned back like fingers
+    }
+    hands.push(hand);
+    w.rotation.z = -sd * 1.15; // folded until she flies (MOVES.gust.fly)
+    rig.add(w);
     return w;
   });
-  Object.assign(g.userData, { wings, owl: true, chest: chest.material, crownOn: g });
-  if (hat) partyHat(g, 4.4);
+  Object.assign(g.userData, { wings, hands, head, lids, talons: legs, tail, rig, owl: true, chest: chest.material, crownOn: head });
+  if (hat) partyHat(head, 2.5);
+  return g;
+}
+
+// Lady Hootrude's harvest oak: a giant autumn tree with a bare snag and crossbar on top (userData.perchY) where she sits
+// until you come near (MOVES.gust.spawn / PERCH). Decoration only: no collision, like the world's other trees.
+export function makeHarvestOak() {
+  const g = new THREE.Group(), bark = lam('#5a3a22'), bark2 = lam('#47301e');
+  const leaves = ['#c8511e', '#e08a2a', '#b8452a', '#e8b23a'].map((c) => lam(c));
+  add(g, Cyl(3.4, 5.8, 52, 7), bark, { y: 22 }); // the trunk, a little under the ground
+  for (let k = 0; k < 4; k++) { const a = k * PI / 2 + 0.4; add(g, Cone(2.4, 9, 5), bark2, { x: Math.cos(a) * 4.2, y: 1.5, z: Math.sin(a) * 4.2, rx: Math.sin(a) * 0.7, rz: -Math.cos(a) * 0.7 }); } // roots
+  for (let k = 0; k < 5; k++) { // boughs
+    const a = k * 1.3, y = 30 + (k % 3) * 5;
+    add(g, Cyl(0.9, 1.8, 20, 5), bark, { x: Math.cos(a) * 7, y: y + 4, z: Math.sin(a) * 7, rx: Math.sin(a) * 1, rz: -Math.cos(a) * 1 });
+  }
+  for (let k = 0; k < 10; k++) { // the canopy: faceted clumps in four autumn colours
+    const a = k * 2.4, r = k < 7 ? 13 : 4, y = k < 7 ? 40 + (k % 3) * 4 : 52 + (k - 7) * 2;
+    add(g, Ico(k < 7 ? 10 + (k % 3) * 2 : 11, 0), leaves[k % 4], { x: Math.cos(a) * r, y, z: Math.sin(a) * r });
+  }
+  add(g, Cyl(0.9, 1.7, 22, 5), bark2, { y: 57, rz: 0.06 }); // the bare snag above the leaves
+  add(g, Cyl(0.7, 0.7, 11, 5), bark2, { x: 0.65, y: 67.4, rz: PI / 2 }); // her perch
+  g.userData.perchY = 68;
+  g.userData.canopyY = 46;
   return g;
 }
 
