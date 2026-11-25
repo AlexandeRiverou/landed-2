@@ -186,7 +186,9 @@ one (Grumbleglobe has its Grumblings). Each uses one of three shared moves (TYPE
   holds a spot off to one side ahead of you; when its thruster and eye swell (1.1 s, a rising hum) it locks on to
   where you'll be and charges at 150 m/s (24 hull). Turn or climb when it lights up. Also in Planet Pebble and Ringworld.
 - **Swoopers** (in threes or fours; one at a time puffs up, then dives into you): **Flying Squirrels** (Meadowlands,
-  Autumn Woods, Giant's Garden, Ringworld; 12 hull), **Hail Sprites** (Frozen Peaks, Hollow Peaks, Stratosphere;
+  Autumn Woods, Giant's Garden, Ringworld; 12 hull; tail-shy: they only dive from in front, a dive commits 35 m out so
+  a hard turn or roll makes it overshoot, and one on your tail for 2 s, or any stunt, makes it tumble off and come back
+  round in front, harmless on the way), **Hail Sprites** (Frozen Peaks, Hollow Peaks, Stratosphere;
   10 hull), **Crystal Bats** (Crystal Caverns, Alien World; 2 hits each, 12 hull), **Glitch Bugs** (Metropolis, Neon
   Grid, Blockland; 12 hull).
 - **Ambushers** (hide under the ground, a glowing ring gives them away, pop up and spit a 3-shot fan; safe from

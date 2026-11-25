@@ -45,7 +45,7 @@ export const TYPES = {
   emberBat: { hp: 1, radius: 4, dmg: 12, speed: 50, make: makeEmberBat, score: 35, minScore: 0, weight: 1.8, kamikaze: true, act: 'swoop', lands: ['Volcano Land'], name: 'Ember Bats', intro: 'Ember Bats! They circle ahead, then swoop. A bat that stops and flares is about to dive at you.' },
   magmaSpitter: { hp: 4, radius: 7, dmg: 15, speed: 0, make: makeMagmaSpitter, score: 110, minScore: 0, weight: 1.6, kamikaze: false, vent: true, act: 'ambush', max: 3, markerUp: 10, lands: ['Volcano Land'], name: 'Magma Spitter', intro: 'Magma Spitters hide in the lava. A bubbling ring means one is coming up to spit fire. Shoot it while it\'s up: under the lava it\'s safe.' },
   cometCharger: { hp: 4, radius: 6, dmg: 24, speed: 46, make: makeCometCharger, score: 130, minScore: 0, weight: 2, kamikaze: false, act: 'charge', max: 3, lands: ['Low Orbit', 'Meteor Belt', 'Gas Giant', 'The Moon', 'Planet Pebble', 'Ringworld'], name: 'Comet Charger', intro: 'A Comet Charger! When its thruster glows it\'s about to ram where you\'re going. Turn or climb when it lights up.' },
-  flyingSquirrel: { hp: 1, radius: 4, dmg: 12, speed: 52, make: makeFlyingSquirrel, score: 35, minScore: 0, weight: 1.8, kamikaze: true, act: 'swoop', trail: ['#c49a5a', '#8ac44a', '#e8c49a'], chirp: 1800, lands: ['Meadowlands', 'Autumn Woods', 'Giant\'s Garden', 'Ringworld'], name: 'Flying Squirrels', intro: 'Flying Squirrels! They glide in a ring ahead, then dive. A squirrel that puffs up is coming for you. You have no nuts. They don\'t believe you.' },
+  flyingSquirrel: { hp: 1, radius: 4, dmg: 12, speed: 52, make: makeFlyingSquirrel, score: 35, minScore: 0, weight: 1.8, kamikaze: true, act: 'swoop', trail: ['#c49a5a', '#8ac44a', '#e8c49a'], chirp: 1800, lands: ['Meadowlands', 'Autumn Woods', 'Giant\'s Garden', 'Ringworld'], name: 'Flying Squirrels', intro: 'Flying Squirrels! They glide in a ring ahead, then dive. A squirrel that puffs up is coming for you. You have no nuts. They don\'t believe you. One on your tail? Roll to shake it off.', tailShy: true },
   hailSprite: { hp: 1, radius: 4, dmg: 10, speed: 54, make: makeHailSprite, score: 30, minScore: 0, weight: 1.6, kamikaze: true, act: 'swoop', trail: ['#ffffff', '#cfefff', '#9ad8ff'], chirp: 2200, lands: ['Frozen Peaks', 'Hollow Peaks', 'Stratosphere'], name: 'Hail Sprites', intro: 'Hail Sprites! They spin ahead, then pelt down. One that sparkles is about to dive. Weather, but personal.' },
   crystalBat: { hp: 2, radius: 4, dmg: 12, speed: 50, make: makeCrystalBat, score: 45, minScore: 0, weight: 1.8, kamikaze: true, act: 'swoop', trail: ['#c49aff', '#7a4ad8', '#e0fff8'], chirp: 1300, lands: ['Crystal Caverns', 'Alien World'], name: 'Crystal Bats', intro: 'Crystal Bats! Shiny, pointy, and tougher than they look. One that flashes is about to swoop.' },
   glitchBug: { hp: 1, radius: 4, dmg: 12, speed: 56, make: makeGlitchBug, score: 35, minScore: 0, weight: 1.8, kamikaze: true, act: 'swoop', trail: ['#ff3ad0', '#3af4ff', '#ffffff'], chirp: 900, lands: ['Metropolis', 'Neon Grid', 'Blockland'], name: 'Glitch Bugs', intro: 'Glitch Bugs! They flicker ahead, then zip at you. One that freezes mid air is about to dive. Have you tried turning it off and on again?' },
@@ -138,6 +138,13 @@ const MOTH_BOOST = 0.15, MOTH_HP = 2;
 // Ember Bats: circle `ring` m round a point `ahead` m in front of you; every `every` s one stops and flares for `flare`
 // s (a chirp), then swoops at `swoop` × its speed for up to `swoopT` s.
 export const BAT = { ahead: 90, ring: 45, every: [2.5, 4.5], flare: 0.4, swoop: 1.7, swoopT: 2.2, range: 240 };
+// Tail-shy swoopers (TYPES `tailShy`: Flying Squirrels). One only flares while it's in front of you (`front`: the cosine
+// off your nose). Its dive homes until it's `commit` m away, then glides straight at where you were, so a hard turn or
+// a roll makes it overshoot. One on your tail (cosine below `behind`, within `near` m) for `tail` s, or the moment you
+// do a stunt, peels off: it tumbles for `tumble` s, then glides out `wide` m to one side and back round ahead of you at
+// `back` × its speed, touching nothing (no contact damage), and can't flare again for `rest` s. `giveUp`: s before a
+// peel ends anyway.
+export const SQUIRREL = { front: 0.3, commit: 35, behind: -0.3, near: 90, tail: 2, tumble: 0.5, wide: 28, back: 1.6, rest: 1.5, giveUp: 6 };
 // Magma Spitters: under the lava (bullets do nothing, a bubbling ring shows where) for `under` s, `rise` s up, `up` s
 // out (cracks brighten for `wind` s, then a fan of `shots` fireballs, `spread` rad apart, at `speed`), `sink` s down.
 // They only come up for a plane within `range` m. `depth`: how far under the mound sits (model units).
@@ -424,6 +431,7 @@ export class Enemies {
     this.orbMats = new Map();
     this.breather = false; // every boss alive has lost you or is coming back (not waiting): see player.js regen
     this.shookAt = -99;
+    this.shakeTold = false; // the squirrel shake-off tip (see peel), once
     this.backAt = -99;
     this.waitAt = -99;
     this.hazards = new Hazards(G); // bosses' telegraphed area attacks (see warn)
@@ -1538,26 +1546,70 @@ export class Enemies {
   // Ember Bat (see BAT): circles ahead of you trailing sparks; now and then it stops, flares (eyes and a chirp) and
   // swoops at you, trailing more.
   emberBat(e, toP, dist, dt, steer) {
-    const G = this.G, p = G.player, d = e.def;
+    const G = this.G, p = G.player, d = e.def, S = SQUIRREL, shy = d.tailShy;
+    // Where it is round your nose: 1 dead ahead, -1 right behind (tail-shy swoopers only care, see SQUIRREL).
+    const nose = shy ? -toP.dot(p.forward) / Math.max(dist, 1) : 1;
+    if (shy) {
+      if (e.state === 'peel') return this.peelBack(e, nose, dist, dt, steer);
+      e.restT = Math.max(0, (e.restT || 0) - dt);
+      const onTail = !p.dead && nose < S.behind && dist < S.near && e.state !== 'flare';
+      e.tailT = onTail ? (e.tailT || 0) + dt : 0;
+      // A dive that ends up behind you before it commits has lost you, too.
+      if (onTail && (p.maneuver || e.tailT >= S.tail || (e.state === 'swoop' && !e.commit))) return this.peel(e, !!p.maneuver);
+    }
     if (Math.random() < dt * (e.state === 'swoop' ? 30 : 8)) G.fx.emit(e.pos, 1, { colors: d.trail || ['#ff6a1a', '#ffb03a', '#ffe14a'], speed: 4, life: 0.6, size: e.state === 'swoop' ? 6 : 4 });
     if (e.state === 'flare') {
       e.vel.multiplyScalar(Math.exp(-dt * 6));
       e.mesh.scale.setScalar(e.baseScale * (1 + 0.25 * Math.sin(e.stateT * 40))); // a shiver: here it comes
       if (e.stateT >= BAT.flare) { e.state = 'swoop'; e.stateT = 0; e.mesh.scale.setScalar(e.baseScale); }
     } else if (e.state === 'swoop') {
-      steer(_w.copy(toP).normalize().multiplyScalar(this.chase(d) * BAT.swoop), 3.5);
-      if (e.stateT > BAT.swoopT) { e.state = 'idle'; e.stateT = 0; e.cd = rand(...BAT.every); }
+      // A tail-shy one commits inside S.commit m: straight at where you were, no more homing.
+      if (shy && !e.commit && dist < S.commit) { e.commit = true; e.vel.copy(toP).normalize().multiplyScalar(this.chase(d) * BAT.swoop); }
+      if (!e.commit) steer(_w.copy(toP).normalize().multiplyScalar(this.chase(d) * BAT.swoop), 3.5);
+      if (e.stateT > BAT.swoopT) { e.state = 'idle'; e.stateT = 0; e.commit = false; e.cd = rand(...BAT.every); }
     } else {
       const a = e.t * 1.3 + e.seed;
       _w.copy(p.pos).addScaledVector(flatForward(p, _s), BAT.ahead).add(_pp.set(Math.cos(a) * BAT.ring, 10 + Math.sin(e.t * 2.3 + e.seed) * 8, Math.sin(a) * BAT.ring)).sub(e.pos);
+      if (shy && nose < 0) this.besideYou(e, nose).sub(e.pos); // behind you, it comes round wide, not through you
       steer(_w.multiplyScalar(1.5).clampLength(0, this.chase(d) * 1.2), 2);
       e.cd -= dt;
       // One bat at a time flares (the swarm takes turns).
-      if (e.cd <= 0 && dist < BAT.range && !p.dead && !this.list.some((x) => x !== e && x.type === e.type && x.state === 'flare')) {
+      if (e.cd <= 0 && dist < BAT.range && !p.dead && (!shy || (nose > S.front && e.restT <= 0)) && !this.list.some((x) => x !== e && x.type === e.type && x.state === 'flare')) {
         e.state = 'flare'; e.stateT = 0; e.baseScale = e.mesh.scale.x;
         G.fx.emit(e.pos, 8, { colors: d.trail || ['#ff6a1a', '#ffb03a', '#ffe14a'], speed: 10, life: 0.5, size: 5 }); // a sparkle: this one's next
         G.audio.tone(d.chirp || 1500, 0.12, { type: 'square', vol: 0.04, slide: 900 });
       }
+    }
+  }
+
+  // A tail-shy swooper loses its glide (see SQUIRREL): a puff of fur, a sliding chirp, and off it tumbles. `shaken`: you
+  // did a stunt (the first time, you hear why it worked). No points: the reward is a squirrel back in front of your guns.
+  peel(e, shaken) {
+    const G = this.G, d = e.def;
+    e.state = 'peel'; e.stateT = 0; e.tailT = 0; e.commit = false;
+    e.contactCd = Infinity; // harmless until it's back in front (peelBack clears it)
+    G.fx.emit(e.pos, 10, { colors: d.trail || ['#c49a5a', '#e8c49a'], speed: 9, life: 0.6, size: 5 });
+    G.audio.tone((d.chirp || 1500) * 1.2, 0.18, { type: 'triangle', vol: 0.04, slide: -900 });
+    if (shaken && !this.shakeTold) { this.shakeTold = true; G.ui.notify('Shook it off! Squirrels hate barrel rolls.', 'good', 2.5, 0); }
+  }
+
+  // Where a tail-shy swooper behind you heads (into _w): SQUIRREL.wide m out to its side of you, a little ahead and up;
+  // once it's in front, on round to the ring ahead.
+  besideYou(e, nose) {
+    const p = this.G.player, f = flatForward(p, _s);
+    e.side ??= Math.random() < 0.5 ? -1 : 1;
+    return _w.copy(p.pos).add(_pp.set(-f.z, 0, f.x).multiplyScalar(e.side * SQUIRREL.wide).setY(10)).addScaledVector(f, nose < SQUIRREL.front ? 20 : BAT.ahead);
+  }
+
+  // Peeling off: a short tumble, then out wide beside you and round to the ring ahead. Done once it's in front again.
+  peelBack(e, nose, dist, dt, steer) {
+    const S = SQUIRREL;
+    if (e.stateT < S.tumble) { e.tumble = (e.tumble || 0) + dt * 14; e.vel.multiplyScalar(Math.exp(-dt * 3)); e.vel.y -= 25 * dt; return; }
+    e.tumble = 0;
+    // Fast enough to get back round you even while you boost.
+    steer(this.besideYou(e, nose).sub(e.pos).normalize().multiplyScalar(Math.max(this.chase(e.def) * S.back, this.G.player.speed * 1.3)), 3);
+    if ((nose > S.front && dist > S.commit) || e.stateT > S.giveUp) {
+      e.state = 'idle'; e.stateT = 0; e.tumble = 0; e.contactCd = 0; e.restT = S.rest; e.cd = Math.max(e.cd || 0, S.rest);
     }
   }
 
@@ -1898,6 +1950,7 @@ export class Enemies {
     if (e.type === 'ufo') e.mesh.rotation.y += dt * 1.5;
     if (e.type === 'drone' || e.type === 'storm' || e.type === 'kites' || e.type === 'sniperOwl' || e.type === 'grudgeRock' || e.type === 'grumbling' || e.def.act === 'ambush') e.mesh.lookAt(this.G.player.pos.x, e.pos.y, this.G.player.pos.z);
     else if (e.vel.lengthSq() > 1 && e.type !== 'mine' && e.type !== 'ufo' && e.def.act !== 'ambush') e.mesh.lookAt(_w.copy(e.pos).add(e.vel));
+    if (e.tumble) e.mesh.rotateZ(e.tumble); // a peeling squirrel tumbles head over tail
   }
 
   updateShots(dt) {
