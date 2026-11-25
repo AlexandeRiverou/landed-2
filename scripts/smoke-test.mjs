@@ -4548,8 +4548,16 @@ try {
     hits = [];
     q = E.spawn('flyingSquirrel', ahead(80));
     q.cd = 0;
-    Q.front = { states: new Set() };
-    step(30 * 4, () => Q.front.states.add(q.state));
+    Q.front = { states: new Set(), dives: 0 };
+    // Its ring spot ahead is random, so one dive can come in from wide and miss: up to 8 s, with it ready again each
+    // time it's back round, until one connects.
+    for (let k = 0; k < 30 * 8 && !hits.length && !q.dead; k++) {
+      if (q.state === 'idle' && q.cd > 0 && Q.front.states.has('swoop')) q.cd = 0;
+      const was = q.state;
+      G.step(1 / 30);
+      if (q.state === 'swoop' && was !== 'swoop') Q.front.dives++;
+      Q.front.states.add(q.state);
+    }
     Q.front.states = [...Q.front.states];
     Q.front.hits = hits.slice();
     out.squirrels = Q;
@@ -4713,10 +4721,15 @@ try {
       out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
       hits.length = 0;
       a.bumpT = 0;
+      // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
+      // back into the leg after the shove.
+      const v0 = p.speed, w0 = p.wind.clone();
+      p.speed = 0.001; p.wind.set(0, 0, 0);
       put(a.R, a.spring * 0.5, 0); // inside a leg
       G.step(1 / 30);
       const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01 };
+      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2) };
+      p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
     // solid: one knock per jump, and you're shoved clear.
