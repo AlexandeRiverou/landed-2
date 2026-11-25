@@ -4,6 +4,7 @@ import { ZONES } from './zones.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
 import { OBJECTIVE_TYPES, findOpenSea } from './objectives.js';
 import { POWERUPS } from './powerups.js';
+import { SERPENT } from './bossmoves.js';
 import { xpForLevel } from './progression.js';
 import { SECRETS } from './secrets.js';
 
@@ -239,9 +240,10 @@ export class DevMenu {
     const G = this.G, def = BOSSES[kind];
     this.clearObjective();
     const duo = this.duo.checked && !def.ground; // the fort never comes as twins
-    const obj = G.objectives.makeBoss(kind, { mod: this.mod.value || null, duo, spot: def.sea ? this.toOpenSea() : null });
+    const spot = def.swim ? this.toLava(def) : def.sea ? this.toOpenSea() : null;
+    const obj = G.objectives.makeBoss(kind, { mod: this.mod.value || null, duo, spot });
     G.objectives.start(obj, 'boss');
-    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs ${def.sea ? 'open sea' : 'flat land'}), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
+    if (obj.boss !== kind) G.ui.notify(`No room for ${def.short} here (it needs ${def.swim ? 'a lava sea' : def.sea ? 'open sea' : 'flat land'}), so ${BOSSES[obj.boss].short} came instead.`, 'warn', 4, 2);
     else if (this.duo.checked && !duo) G.ui.notify(`${def.short} doesn't do twins. Just the one.`, 'info', 3, 2);
     this.close();
   }
@@ -259,6 +261,18 @@ export class DevMenu {
     const dx = spot.x - p.pos.x, dz = spot.z - p.pos.z, d = Math.hypot(dx, dz), back = Math.max(0, d - 600);
     p.spawn(p.pos.x + (dx / d) * back, p.pos.z + (dz / d) * back, Math.atan2(-dx / d, -dz / d));
     return spot;
+  }
+
+  // Magmadora lives in her own land's lava: go there (Volcano Land), find a lava sea round you, and put you 300 m off it,
+  // facing it. Returns where she waits (under the lava), or null (then King Drone stands in).
+  toLava(def) {
+    const G = this.G, p = G.player, i = ZONES.findIndex((z) => def.lands.includes(z.name));
+    if (i >= 0 && i !== G.zones.index) { G.zones.enter(i); G.zones.sinceZone = 0; }
+    const spot = findOpenSea(G, 6000, SERPENT.clear);
+    if (!spot) return null;
+    const dx = spot.x - p.pos.x, dz = spot.z - p.pos.z, d = Math.hypot(dx, dz), back = Math.max(0, d - 300);
+    p.spawn(p.pos.x + (dx / d) * back, p.pos.z + (dz / d) * back, Math.atan2(-dx / d, -dz / d));
+    return spot.setY(spot.y - 30);
   }
 
   startSiege() {

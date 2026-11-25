@@ -1218,6 +1218,70 @@ export function makeMagmaSpitter(hat) {
   return g;
 }
 
+// Magmadora, the Lava Serpent (Volcano Land's boss): a horned basalt head with a hinged jaw and a throat that glows
+// before it spits, then SERPENT_SEGS body segments, each a cooled crust plate over a hot orange belly with a glowing seam
+// between plates, tapering to a spiked tail. enemies.js lays the segments along the head's path every frame
+// (userData.segs, model units apart SERPENT_GAP). Weak points: two gill frills behind the head (they can be shot off) and
+// an ember core on the mid-back, all with the usual faint halo.
+export const SERPENT_SEGS = 16, SERPENT_GAP = 1.9;
+export function makeLavaSerpent(hat) {
+  const g = new THREE.Group();
+  const crust = lam('#2b2226'), crust2 = lam('#3a2c2a'), belly = lam('#ff7a2a', { emissive: '#7a2008' });
+  const seam = basic('#ff5a14'), hot = basic('#ffd23a'), horn = lam('#1a1416'), fin = lam('#8a2a14', { side: THREE.DoubleSide, emissive: '#3a0a04' });
+  const head = new THREE.Group();
+  add(head, Dod(1.9), crust, { s: [1, 0.75, 1.35] }); // the skull
+  add(head, Box(2.2, 0.9, 1.8), crust2, { y: 0.15, z: 1.9 }); // the snout
+  add(head, Box(2.6, 0.25, 0.3), horn, { y: 1.05, z: 1.1, rx: 0.2 }); // the brow ridge
+  for (const x of [-0.7, 0.7]) {
+    add(head, Sph(0.36, 6, 4), hot, { x, y: 0.75, z: 1.35 }); // eyes
+    add(head, Box(0.1, 0.42, 0.1), basic('#140a0a'), { x, y: 0.75, z: 1.68 }); // slit pupils
+    add(head, Cone(0.38, 2.2, 5), horn, { x: x * 1.25, y: 1.25, z: -0.9, rx: -1.15, rz: -x * 0.5 }); // swept-back horns
+    add(head, Cone(0.22, 1.1, 4), horn, { x: x * 1.5, y: 0.5, z: -0.4, rx: -1.3, rz: -x * 1.1 }); // cheek spikes
+    add(head, Box(0.12, 0.12, 1.6), seam, { x: x * 1.05, y: 0.15, z: 0.6, ry: x * 0.25 }); // glowing cheek cracks
+    add(head, Sph(0.12, 4, 3), hot, { x: x * 0.4, y: 0.55, z: 2.85 }); // nostrils
+  }
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -0.35, 0.6); // hinged at the back of the mouth
+  add(jaw, Box(2, 0.45, 2.4), crust2, { y: -0.2, z: 1.1 });
+  add(jaw, Box(1.6, 0.12, 2), seam, { y: 0.06, z: 1.1 }); // the hot inside of the mouth
+  for (const x of [-0.75, -0.25, 0.25, 0.75]) add(jaw, Cone(0.13, 0.4, 4), basic('#f4e8d0'), { x, y: 0.25, z: 2.1 }); // teeth
+  head.add(jaw);
+  const throat = add(head, Sph(0.55, 8, 6), basic('#ff5a14', { transparent: true, opacity: 0.6 }), { y: -0.2, z: 1.6 });
+  const mouth = new THREE.Object3D();
+  mouth.position.set(0, -0.2, 3);
+  head.add(mouth);
+  const frills = [-1, 1].map((sd) => {
+    const f = new THREE.Group();
+    f.position.set(sd * 1.5, 0.2, -0.9);
+    add(f, new THREE.CircleGeometry(1.15, 5, -0.9, 1.8), fin, { ry: sd * 1.1 }); // a fan of webbing
+    for (const a of [-0.5, 0, 0.5]) add(f, Box(0.1, 0.1, 1.2), seam, { x: sd * 0.35, y: a * 1.1, z: -0.3, ry: sd * 0.9, rx: -a }); // its glowing ribs
+    head.add(f);
+    weak(g, f, 1.1, 2, { name: 'frill', hp: 1.5 });
+    return f;
+  });
+  g.add(head);
+  const segs = [];
+  for (let k = 0; k < SERPENT_SEGS; k++) {
+    const t = k / (SERPENT_SEGS - 1), r = 1.75 - 1.15 * t ** 1.4; // thick behind the head, thin at the tail
+    const sg = new THREE.Group();
+    add(sg, Dod(r), crust, { y: r * 0.18, s: [1, 0.78, 1.25] }); // the cooled crust plate on top
+    add(sg, Sph(r * 0.86, 8, 6), belly, { y: -r * 0.22, s: [1.02, 0.7, 1.2] }); // the hot belly
+    add(sg, Tor(r * 0.92, r * 0.1, 4, 12), seam, { z: -r * 1.05 }); // the glowing seam to the next plate
+    if (k % 2 === 0 && k < SERPENT_SEGS - 1) add(sg, Cone(r * 0.32, r * 1.1, 4), horn, { y: r * 0.95, z: -r * 0.2, rx: -0.5 }); // dorsal spikes
+    if (k === SERPENT_SEGS - 1) add(sg, Cone(r * 0.7, r * 3.2, 5), horn, { z: -r * 2, rx: -PI / 2 }); // the tail spike
+    if (k === 6) { // the ember core, a slow hot heart showing through a split in the crust
+      const core = add(sg, Ico(r * 0.42, 0), hot, { y: r * 0.95, z: r * 0.1 });
+      weak(g, core, r * 0.5, 3);
+    }
+    g.add(sg);
+    segs.push(sg);
+    (g.userData.parts ||= []).push({ obj: sg, r: r * 1.15, mult: 1, hp: Infinity, name: 'seg', seg: true });
+  }
+  Object.assign(g.userData, { head, jaw, throat, mouth, frills, segs, segR: segs.map((_, k) => 1.75 - 1.15 * (k / (SERPENT_SEGS - 1)) ** 1.4), crownOn: head });
+  if (hat) partyHat(head, 2);
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {

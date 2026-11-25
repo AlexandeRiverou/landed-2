@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { makeRing, dressRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, makeTextSprite, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
+import { SERPENT } from './bossmoves.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
@@ -654,6 +655,7 @@ function shuffle(list) {
 function bossSpot(G, def) {
   if (!def.ground) return pointAhead(G, 420, 560, 0.4, 70, 110);
   if (G.zones.current.noGround) return null;
+  if (def.swim) { const s = seaSpot(G, LAVA_CLEAR); return s && s.setY(waterLine() - 30); } // Magmadora, under the lava
   if (def.sea) return seaSpot(G);
   const flat = (x, z) => G.enemies.isGentleGround(x, z) && [[15, 0], [-15, 0], [0, 15], [0, -15]].every(([dx, dz]) => G.enemies.isGentleGround(x + dx, z + dz));
   for (let k = 0; k < 80; k++) {
@@ -665,14 +667,14 @@ function bossSpot(G, def) {
 }
 
 // Where the carrier appears: open water ahead, deep enough SEA_CLEAR m all round (it's 230 m long). Null when there's none.
-const SEA_CLEAR = 150;
-function seaSpot(G) {
+const SEA_CLEAR = 150, LAVA_CLEAR = SERPENT.clear; // Magmadora needs less room than a carrier
+function seaSpot(G, clear = SEA_CLEAR) {
   const deep = (x, z) => G.terrain.surfaceHeight(x, z) < waterLine() - 4;
   for (let k = 0; k < 80; k++) {
     const s = pointAhead(G, 450, 800, 1.1);
     if (!deep(s.x, s.z)) continue;
     let ok = true;
-    for (let a = 0; a < 8 && ok; a++) ok = deep(s.x + Math.cos(a * Math.PI / 4) * SEA_CLEAR, s.z + Math.sin(a * Math.PI / 4) * SEA_CLEAR);
+    for (let a = 0; a < 8 && ok; a++) ok = deep(s.x + Math.cos(a * Math.PI / 4) * clear, s.z + Math.sin(a * Math.PI / 4) * clear);
     if (ok) return s.setY(waterLine());
   }
   return null;
@@ -680,7 +682,7 @@ function seaSpot(G) {
 
 // Open sea anywhere round you (the developer menu's carrier): rings out to `maxR` m, the nearest deep, clear spot first.
 // It reads the world's height function, not the built chunks: right after a zone change those still hold the old land.
-export function findOpenSea(G, maxR = 6000) {
+export function findOpenSea(G, maxR = 6000, clear = SEA_CLEAR) {
   const deep = (x, z) => heightAt(x, z) < waterLine() - 4;
   const p = G.player.pos;
   for (let r = 500; r <= maxR; r += 250) {
@@ -689,7 +691,7 @@ export function findOpenSea(G, maxR = 6000) {
       const a = (k / n) * Math.PI * 2, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
       if (!deep(x, z)) continue;
       let ok = true;
-      for (let b = 0; b < 8 && ok; b++) ok = deep(x + Math.cos(b * Math.PI / 4) * SEA_CLEAR, z + Math.sin(b * Math.PI / 4) * SEA_CLEAR);
+      for (let b = 0; b < 8 && ok; b++) ok = deep(x + Math.cos(b * Math.PI / 4) * clear, z + Math.sin(b * Math.PI / 4) * clear);
       if (ok) return new THREE.Vector3(x, waterLine(), z);
     }
   }
@@ -739,7 +741,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
     // A boss on a break isn't pulled at all, an engaged one never closer than its standoff (the dug-in fort: as ever).
     approach(G, f) {
       for (const e of alive()) {
-        if (e.chase || e.def.sea) continue; // a ship can't be dragged over land
+        if (e.chase || e.def.sea || e.def.swim) continue; // a ship can't be dragged over land, nor a serpent out of the lava
         const d = e.pos.distanceTo(G.player.pos);
         e.pos.lerp(G.player.pos, e.def.ground ? f * 0.6 : Math.min(f * 0.6, Math.max(0, 1 - bossStandoff(e.def) / Math.max(d, 1))));
       }
@@ -820,10 +822,17 @@ export class Objectives {
     let spot = null;
     if (kind) spot = opts?.spot || bossSpot(G, BOSSES[kind]); // the developer menu may bring its own
     else {
-      if (!this.bossDeck.length) this.bossDeck = shuffle(Object.keys(BOSSES));
-      for (let i = 0; i < this.bossDeck.length && !spot; i++) {
+      // A land boss (BOSSES `lands`) only comes in its own land, and there it comes first once the openers are done;
+      // elsewhere it waits in the deck. A deck left with only other lands' bosses is topped up.
+      const here = G.zones.current.name, fits = (k) => !BOSSES[k].lands || BOSSES[k].lands.includes(here);
+      if (!this.bossDeck.some(fits)) this.bossDeck.push(...shuffle(Object.keys(BOSSES).filter((k) => !this.bossDeck.includes(k))));
+      // (Not past a boss relax mode interrupted: that one comes back first, see suspend.)
+      const local = this.bossLevel >= OPENERS.length && !this.bossBack ? (k) => !!BOSSES[k].lands : () => false;
+      this.bossBack = false;
+      const order = this.bossDeck.map((k, i) => i).filter((i) => fits(this.bossDeck[i])).sort((a, b) => local(this.bossDeck[b]) - local(this.bossDeck[a]));
+      for (const i of order) {
         spot = bossSpot(G, BOSSES[this.bossDeck[i]]);
-        if (spot) kind = this.bossDeck.splice(i, 1)[0];
+        if (spot) { kind = this.bossDeck.splice(i, 1)[0]; break; }
       }
     }
     if (!spot) { kind = 'kingDrone'; spot = bossSpot(G, BOSSES[kind]); }
@@ -924,7 +933,7 @@ export class Objectives {
     G.persuasion.reset(null);
     if (obj.siege) { this.held = obj; obj.doze(true); } // the planet stays, asleep (planetboss.js)
     else {
-      if (obj.type === 'boss') { this.pendingBoss = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
+      if (obj.type === 'boss') { this.pendingBoss = true; this.bossBack = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
       obj.dispose(G);
     }
     this.current = null;

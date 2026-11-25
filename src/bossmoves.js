@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
+import { SERPENT_GAP } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -17,6 +18,12 @@ export const special = (e) => !e.chase && !e.behind && !e.fresh;
 // The carrier's steaming: water must be `depth` m deep `probe` m past its bow; it turns at `turn` rad/s. flakDmg: a
 // flak burst's damage within its 16 m sphere.
 export const STEAM = { probe: 120, depth: 4, turn: 0.3, flakDmg: 7 };
+// Magmadora's breach (enemy-time s, m): `under` s out of reach under the lava (`underRage` enraged); `warn` s before she
+// breaks, rings mark where she'll come up and dive back in, `side` m either side of where you'll be; she arcs across
+// your path in `arc` s, its top `apex` m over you (kept `high` m above the lava), and spits `spit` fireballs from her
+// mouth at the top (`spitRage` enraged, one fewer per frill shot off), `windup` s after her jaw opens.
+export const SERPENT = { under: 3, underRage: 2, warn: 1.4, arc: 3, side: [50, 70, 85, 100], apex: 25, high: [40, 120], spit: 3, spitRage: 5, spitSpeed: 60, spitDmg: 18, windup: 0.5, clear: 80 };
+const LAVA_FX = ['#ff6a1a', '#ffd23a', '#ff3a0a', '#3a1a10'];
 
 // ---------- small helpers ----------
 
@@ -754,6 +761,148 @@ export const MOVES = {
       }
       G.audio.noise(0.15, { vol: 0.1, freq: 300 }); // the guns' thump
       G.audio.tone(900, 0.4, { type: 'sine', vol: 0.04, slide: -500 });
+    },
+  },
+
+  // Magmadora (Volcano Land): under the lava (shield 0) for SERPENT.under s; SERPENT.warn s before she breaks, a ring
+  // marks where she'll come up and a smaller, darker one where she'll dive back in, either side of where you'll be.
+  // Then her head runs a parabola from one ring to the other, crossing your path with its top SERPENT.apex m over you,
+  // her body following along the same path (lay), and spits at the top. She carries on down into the lava until her
+  // tail is in. No ring fits the lava near your path: she waits (and says so once, if it goes on).
+  breach: {
+    step(en, e, c) {
+      const G = en.G, WL = waterLine(), m = e.mv ||= { phase: 'under', t: 0, plan: null, waitT: 0, visible: false, dir: new THREE.Vector3(0, 0, 1) };
+      m.t += c.dt;
+      const under = (e.enraged ? SERPENT.underRage : SERPENT.under) * e.cdMul;
+      if (m.phase === 'under') {
+        if (!m.plan && m.t >= under - SERPENT.warn) {
+          m.plan = this.plan(en, e, c, WL);
+          if (!m.plan) {
+            m.t = under - SERPENT.warn - 0.5; // look again in half a second
+            if ((m.waitT += 0.5) > 6 && !m.hinted) { m.hinted = true; G.ui.notify(`${e.short} only surfaces in the lava. Fly out over the lava sea!`, 'warn', 3.5, 0); }
+            return true;
+          }
+          m.waitT = 0;
+          e.pos.copy(this.at(m.plan, 0, WL)); // she swims there unseen
+          e.trail = null; // her body comes up out of the lava behind her
+          en.warn(m.plan.A.clone().setY(WL + 0.3), 14, '#ff6a1a', SERPENT.warn, null, { shape: 'ring', owner: e });
+          en.warn(m.plan.B.clone().setY(WL + 0.3), 10, '#8a2a10', SERPENT.warn, null, { shape: 'ring', owner: e });
+          G.fx.emit(m.plan.A.clone().setY(WL), 14, { colors: LAVA_FX, speed: 8, life: 1.4, size: 6, up: 6 }); // the lava bubbles
+          G.audio.noise(1.2, { vol: 0.1, freq: 140 }); // a low rumble
+        }
+        if (m.plan && m.t >= under) { m.phase = 'arc'; m.t = 0; m.spat = false; m.wind = false; }
+        return true;
+      }
+      // The arc: u 0 (8 m under the near ring) → 0.5 (the top, over your path) → 1 (8 m under the far ring) and on down.
+      const u = m.t * e.speedMul / SERPENT.arc;
+      const next = this.at(m.plan, u + 0.01, WL);
+      e.pos.copy(this.at(m.plan, u, WL));
+      m.dir.subVectors(next, e.pos).normalize();
+      const wind = 0.5 - SERPENT.windup / SERPENT.arc;
+      if (!m.spat && u >= wind) m.wind = true; // her jaw opens and her throat glows
+      if (!m.spat && u >= 0.5) m.spitDue = true; // the attack switch spits (Enemies.bossBehave, see spit)
+      if (u > 0.85) { m.spitDue = false; m.wind = false; }
+      if ((u > 1.05 && !m.visible) || u > 3) { m.phase = 'under'; m.t = 0; m.plan = null; m.spitDue = false; m.wind = false; }
+      return true;
+    },
+    hold: (e) => !e.mv?.spitDue,
+    // Where her head is at u along a plan (see step).
+    at(plan, u, WL) {
+      return new THREE.Vector3().lerpVectors(plan.A, plan.B, u).setY(WL - 8 + (plan.H + 8) * 4 * u * (1 - u));
+    },
+    // Two rings on lava either side of where you'll be at the top of her arc (or a bit before or past it), or null.
+    plan(en, e, c, WL) {
+      const G = en.G, p = c.p, f = flatFwd(p, new THREE.Vector3()), side = sideOf(f, new THREE.Vector3());
+      const look = (SERPENT.warn + SERPENT.arc * 0.5 / e.speedMul) / c.pace; // real s until the top
+      const X = p.pos.clone().addScaledVector(f, p.speed * look);
+      const lava = (v) => G.terrain.surfaceHeight(v.x, v.z) < WL - 2;
+      const H = THREE.MathUtils.clamp(p.pos.y + SERPENT.apex - WL, SERPENT.high[0], SERPENT.high[1]);
+      const flip = Math.random() < 0.5 ? 1 : -1, d = new THREE.Vector3();
+      for (const along of [0, 25, -25, 50, 80, 120]) for (const half of SERPENT.side) for (const tilt of [0, 0.35, -0.35]) {
+        const mid = X.clone().addScaledVector(f, along);
+        d.copy(side).applyAxisAngle(Y, tilt).multiplyScalar(half * flip);
+        const A = mid.clone().add(d), B = mid.clone().sub(d);
+        if (lava(A) && lava(B)) return { A, B, H };
+      }
+      return null;
+    },
+    // At the top of the arc: fireballs out of her mouth, led at where you'll be, in a narrow fan.
+    spit(en, e) {
+      const m = e.mv, G = en.G, p = G.player, u = e.mesh.userData;
+      if (!m?.spitDue) return;
+      m.spitDue = false; m.spat = true;
+      e.mesh.updateMatrixWorld(true); // her head moved since it was last laid
+      const from = u.mouth.getWorldPosition(new THREE.Vector3());
+      const n = Math.max(1, (e.enraged ? SERPENT.spitRage : SERPENT.spit) - (e.broken?.frill || 0));
+      const tgt = p.pos.clone().addScaledVector(p.forward, p.speed * (from.distanceTo(p.pos) / SERPENT.spitSpeed) * 0.6);
+      const aim = tgt.sub(from), across = sideOf(aim.clone().setY(0).normalize(), new THREE.Vector3());
+      for (let k = 0; k < n; k++) {
+        const fan = (k - (n - 1) / 2) * 0.09 * aim.length();
+        en.fireOrb(from, aim.clone().addScaledVector(across, fan).add(_c.set(0, rand(-4, 4), 0)), SERPENT.spitSpeed, SERPENT.spitDmg, '#ff6a1a', 1.3).owner = e;
+      }
+      G.fx.emit(from, 18, { colors: ['#ffd23a', '#ff6a1a', '#ff3a0a'], speed: 22, life: 0.5, size: 7 }); // the flame out of her mouth
+      G.audio.noise(0.4, { vol: 0.14, freq: 600 });
+      G.audio.tone(160, 0.35, { type: 'sawtooth', vol: 0.05, slide: -60 });
+    },
+    // Per frame (Enemies.animate): lay her body along the path her head took, hide whatever is under the lava (bullets
+    // do nothing to her while all of her is), splash where each part crosses the surface, open the jaw for a spit.
+    lay(en, e, dt) {
+      const G = en.G, u = e.mesh.userData, m = e.mv, s = e.mesh.scale.x, WL = waterLine(), step = (SERPENT_GAP * s) / 4;
+      let tr = e.trail;
+      if (!tr || tr.at(-1).distanceTo(e.pos) > 60) tr = e.trail = [e.pos.clone()]; // a fresh dive point
+      for (let last = tr.at(-1), d = last.distanceTo(e.pos); d >= step; d -= step) {
+        last = last.clone().lerp(e.pos, step / d);
+        tr.push(last);
+      }
+      const keep = (u.segs.length + 2) * 4;
+      if (tr.length > keep) tr.splice(0, tr.length - keep);
+      e.mesh.updateMatrixWorld(true);
+      const splash = (at, big) => {
+        const v = _a.set(at.x, WL + 0.5, at.z);
+        G.fx.emit(v, big ? 22 : 5, { colors: LAVA_FX, speed: big ? 26 : 16, life: 0.9, size: big ? 8 : 6, up: big ? 30 : 18, gravity: 40 });
+        if (big) G.audio.noise(0.5, { vol: 0.12, freq: 300 });
+      };
+      const headUp = e.pos.y > WL - 2 * s;
+      if (u.head.visible !== headUp && m?.phase === 'arc') splash(e.pos, true);
+      u.head.visible = headUp;
+      u.head.lookAt(_b.copy(e.pos).add(m?.dir || _c.set(0, 0, 1)));
+      let visible = headUp;
+      u.segs.forEach((sg, k) => {
+        const i = Math.max(0, tr.length - 1 - (k + 1) * 4), pt = tr[i], ahead = k ? tr[Math.min(tr.length - 1, i + 4)] : e.pos;
+        sg.position.copy(pt).sub(e.pos).divideScalar(s);
+        sg.updateMatrixWorld();
+        if (ahead.distanceToSquared(pt) > 0.01) sg.lookAt(ahead);
+        const up = pt.y > WL - u.segR[k] * s * 1.2;
+        if (sg.visible !== up && m?.phase === 'arc') splash(pt, false);
+        sg.visible = up;
+        if (up) visible = true;
+      });
+      if (m) m.visible = visible;
+      e.shield = visible ? 1 : 0;
+      // Embers drip off her while she's up.
+      if (visible && Math.random() < dt * 10) {
+        const sg = u.segs[Math.floor(Math.random() * u.segs.length)];
+        if (sg.visible) G.fx.emit(sg.getWorldPosition(_a), 1, { colors: ['#ffb03a', '#ff6a1a'], speed: 3, life: 1.3, size: 5, gravity: 25 });
+      }
+      const open = m?.wind ? 0.6 : 0.06 + 0.04 * Math.sin(e.t * 3);
+      u.jaw.rotation.x += (open - u.jaw.rotation.x) * (1 - Math.exp(-dt * 10));
+      u.throat.material.opacity = m?.wind ? 0.95 : 0.45 + 0.1 * Math.sin(e.t * 2);
+      u.throat.scale.setScalar(m?.wind ? 1.35 : 1);
+    },
+    // Her highest part above the lava (or the lava's surface over her head): where she blows up when beaten.
+    surface(e) {
+      if (e.surfaced) return;
+      e.surfaced = true;
+      const u = e.mesh.userData, WL = waterLine();
+      let best = u.head.visible ? e.pos.clone() : null;
+      for (const sg of u.segs) if (sg.visible) { const w = sg.getWorldPosition(new THREE.Vector3()); if (!best || w.y > best.y) best = w; }
+      e.pos.copy(best || e.pos.clone().setY(WL + 10));
+    },
+    // Is `pos` touching her (head or any part above the lava), padded by `pad` m?
+    touches(e, pos, pad) {
+      const u = e.mesh.userData, s = e.mesh.scale.x;
+      if (u.head.visible && e.pos.distanceTo(pos) < e.radius + pad) return true;
+      return u.segs.some((sg, k) => sg.visible && sg.getWorldPosition(_a).distanceTo(pos) < u.segR[k] * s * 1.1 + pad);
     },
   },
 
