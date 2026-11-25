@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -353,6 +353,17 @@ export const BOSSES = {
     taunts: ['Pharaoh Scarabus: "I roll the sun across the sky. You are a much smaller job."', 'Pharaoh Scarabus: "Is that me? Is THAT me? Guess."', 'Pharaoh Scarabus: "Sand in your engine. Sand everywhere. Forever."'],
     rage: ['Pharaoh Scarabus is seeing double. So are you.', 'The heat haze is getting personal.'],
   },
+  // Land boss for the woods lands: circles you lobbing acorns; every 3rd attack she rears up and beats a band of leaves
+  // at you that shoves you off course (see GUST). Her ear tufts are breakable (weaker gusts), her chest is soft.
+  harvestOwl: {
+    make: makeHarvestOwl, scale: 4, crownY: 4.3, crownZ: 0.3, crownS: 0.55, radius: 18, hp: 95, speed: 30, orbit: 150, orbitRate: 0.3, dmg: 20, face: 'player',
+    lands: ['Autumn Woods', 'Giant\'s Garden'],
+    name: 'Lady Hootrude, the Harvest Owl', short: 'Lady Hootrude', noun: 'Lady Hootrude',
+    move: 'gust',
+    desc: 'A grand old owl in harvest colours. She circles you lobbing acorns; when she rears up with her wings wide, a storm of leaves is coming: slip aside or over it, or get blown off course. Pluck her ear tufts for weaker gusts; her puffed-out chest is soft.',
+    taunts: ['Lady Hootrude: "Who? WHO? You. Obviously you."', 'Lady Hootrude: "I have read every book in this forest. You are not in any of them."', 'Lady Hootrude: "Leaf me alone. No, wait. Leaf THIS."'],
+    rage: ['Lady Hootrude is in a fowl mood.', 'Her feathers are ruffled. All of them. Toward you.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -436,6 +447,7 @@ const BOSS_BREAK_TEXT = {
   frill: 'Frill snapped off! Less spit, same attitude.',
   crystal: 'Wingtip crystal shattered! Her shard fans are thinner now.',
   horn: 'Horn snapped off! Pharaoh Scarabus fires smaller volleys now.',
+  tuft: 'Ear tuft plucked! Her gusts are narrower now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -885,6 +897,10 @@ export class Enemies {
       case 'sunBeetle':
         cd = 2.6; // volleys; every 3rd attack calls up the mirages instead (see the mirage move)
         BOSS_MOVES.mirage.attack(this, e, n);
+        break;
+      case 'harvestOwl':
+        cd = 2.8; // acorn volleys; every 3rd attack (2nd enraged) a rear-up and a gust instead (see the gust move)
+        BOSS_MOVES.gust.attack(this, e, n);
         break;
       case 'lavaSerpent':
         cd = 0.5; // she only spits at the top of an arc (her move holds every other attack)
@@ -1389,6 +1405,7 @@ export class Enemies {
       case 'frill': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crystal': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'horn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'tuft': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1957,7 +1974,7 @@ export class Enemies {
     const u = e.mesh.userData;
     if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
-    if (u.wings && !u.webs && !u.scarab) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
+    if (u.wings && !u.webs && !u.scarab && !u.owl) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
@@ -1983,6 +2000,7 @@ export class Enemies {
     }
     if (u.webs) BOSS_MOVES.fans.pose(this, e, dt); // Glacierra rolls her wings into her next fan's plane
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
+    if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {

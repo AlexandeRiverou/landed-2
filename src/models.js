@@ -1375,6 +1375,44 @@ export function makeSunBeetle(hat) {
   return g;
 }
 
+// Lady Hootrude (woods lands): a plump autumn owl, russet and pumpkin, a cream face disc, amber eyes, two tall ear tufts
+// (breakable: weaker gusts) and a glowing amber chest (the soft spot, brighter while she rears up). Her wings hang folded
+// (userData.wings, posed by MOVES.gust) and spread wide before a gust.
+export function makeHarvestOwl(hat) {
+  const g = new THREE.Group();
+  const russet = lam('#a0522d', { emissive: '#2a1206' }), pumpkin = lam('#c8692a', { emissive: '#2a1406' }), dark = lam('#6a3418');
+  const cream = lam('#f2e2c0'), wingMat = lam('#8a4a24', { emissive: '#1e0c04' }), tip = lam('#e8a33a');
+  add(g, Sph(2.4, 12, 9), russet, { s: [1, 1.15, 0.95] }); // the plump body
+  const chest = add(g, Sph(1.3, 10, 8), basic('#ffa040'), { y: -0.2, z: 1.75, s: [1, 1.2, 0.45] }); // the glowing chest
+  weak(g, chest, 1.5, 3);
+  for (let k = 0; k < 3; k++) add(g, Box(1.6 - k * 0.3, 0.12, 0.2), dark, { y: 0.6 - k * 0.55, z: 2.15, rz: 0 }); // chest bars
+  add(g, Sph(1.9, 12, 9), pumpkin, { y: 2.6, z: 0.3, s: [1.1, 0.95, 1] }); // head
+  add(g, Sph(1.6, 12, 8), cream, { y: 2.6, z: 1.55, s: [1.05, 0.9, 0.35] }); // face disc
+  for (const sd of [-1, 1]) {
+    add(g, Sph(0.52, 8, 6), basic('#ffbf2a'), { x: sd * 0.68, y: 2.78, z: 1.95 }); // amber eyes
+    add(g, Sph(0.26, 6, 4), basic('#1a1008'), { x: sd * 0.68, y: 2.78, z: 2.38 }); // pupils
+    add(g, Box(0.9, 0.18, 0.2), dark, { x: sd * 0.7, y: 3.35, z: 1.95, rz: sd * 0.3 }); // stern brows
+    const tuft = add(g, Cone(0.45, 1.9, 4), dark, { x: sd * 1.05, y: 4.25, z: 0.25, rz: -sd * 0.35 }); // ear tufts
+    breakable(g, tuft, 0.9, 'tuft', 2);
+    add(g, Cyl(0.12, 0.12, 0.9, 4), lam('#e8b030'), { x: sd * 0.7, y: -2.75, z: 0.5 }); // legs
+    for (const t of [-0.3, 0, 0.3]) add(g, Cone(0.12, 0.6, 4), lam('#e8b030'), { x: sd * 0.7 + t, y: -3.15, z: 0.85, rx: PI / 2 }); // talons
+  }
+  add(g, Cone(0.32, 1, 4), lam('#5a3a1a'), { y: 2.25, z: 2.2, rx: PI / 2 + 0.5 }); // beak
+  add(g, Cone(1.1, 2.4, 5), wingMat, { y: -1.3, z: -2.1, rx: -PI / 2 - 0.5, s: [1, 1, 0.35] }); // tail
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    w.position.set(sd * 2.1, 0.8, -0.1);
+    add(w, Sph(1.5, 8, 6), wingMat, { x: sd * 2, y: -0.2, s: [1.9, 0.32, 1.15] }); // the wing
+    for (const k of [0, 1, 2, 3]) add(w, Cone(0.35, 1.5, 4), k % 2 ? tip : wingMat, { x: sd * (1.6 + k * 0.75), y: -0.25, z: -1.3, rx: -PI / 2, s: [1, 1, 0.3] }); // flight feathers
+    w.rotation.z = -sd * 1.15; // folded
+    g.add(w);
+    return w;
+  });
+  Object.assign(g.userData, { wings, owl: true, chest: chest.material, crownOn: g });
+  if (hat) partyHat(g, 4.4);
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {

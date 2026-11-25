@@ -355,6 +355,17 @@ doesn't by itself, but flying on from where it put you does.
   boss arrow and marker hide while they're up. Only the real one casts a shadow on the ground (a tip says so the first
   time), and one hit on the real one pops the mirages. Its horn is breakable (a volley is 3 orbs without it, and it costs it
   4%); the sun-disc is the weak spot. 95 hp.
+- Lady Hootrude, the Harvest Owl (an orbiting boss of the woods lands: Autumn Woods and Giant's Garden, not the
+  Meadowlands where a run begins; the deck brings her only there, and first there once the two openers are done): a
+  plump autumn owl. Most attacks are a volley of 5 acorns (9 each) at where you're heading. Every 3rd attack (every 2nd
+  enraged) she stops and rears up instead: wings spread wide, chest glowing, leaves swirling, for 1.2 s (1.8 s the first
+  time, with a tip; 1 s enraged). Then she beats a band of leaves at where you'll be: 70 m wide, 30 m tall, half width
+  as it leaves her and full width by 120 m. It doesn't hurt, but if it reaches you it shoves you flat along its travel
+  (45 m/s, fading within about a second, roughly 20 m of drift; half of any part straight back against your nose, so
+  a head-on gust blows you aside rather than stalling you) and costs 8 m/s of speed: turn aside or climb or dive
+  out of it. Once a gust, never up or down, never while you're landed or under 15 m off the ground, and never toward a
+  hill or a wall. Her two ear tufts are breakable: a gust is 56 m wide and shoves 32 m/s with one gone, 42 m and 22 m/s
+  (and no speed lost) with both (each costs her 4%). The glowing chest is the weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
@@ -590,7 +601,7 @@ Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, s
 card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 19, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
+- **Bosses:** start any of the 20, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
   (where there is none, King Drone comes instead and you get a notice). HMS Overkill always comes: the menu finds open
   sea round you (up to 6 km out) and puts you 600 m off it, or, in a zone with none, flies you to the Tropical
   Archipelago first. Magmadora always comes too: the menu flies you to Volcano Land and puts you 300 m off a lava sea.

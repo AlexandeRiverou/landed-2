@@ -36,6 +36,19 @@ export const SHARDS = { wind: 1.1, first: 1.8, shards: 7, min: 3, spread: 0.9, s
 // `orbs` orbs (`orbsHorn` once its horn is shot off), `dmg` each.
 export const MIRAGE = { last: 8, lastRage: 10, turn: 0.6, dy: 14, fadeIn: 0.5, fadeOut: 0.6, opacity: 0.75, orbs: 5, orbsHorn: 3, speed: 70, dmg: 8, spread: 0.1, color: '#ffb03a' };
 
+// Lady Hootrude's gusts (enemy-time s, m, enemy-unit m/s): every 3rd attack (every 2nd enraged) she stops and rears up,
+// wings spread wide, for `tell` s (`first` the first time, with a tip; `tellRage` enraged), then beats a band of
+// leaves at where you'll be when it gets there (`lead` ≈ 1/PACE: its speed is enemy units): `width` m wide (`widthTuft` with one or two ear tufts shot off), `height` m tall,
+// `depth` m deep, at `speed` (`speedRage` enraged). It starts at half width and is full width by `grow` m, and is gone
+// after `range` m (or 80 m past where you were). It doesn't hurt: it shoves you `push` m/s (real) along its flat travel
+// (`pushTuft`; the part of it straight back against your nose is halved, so a head-on gust blows you aside rather
+// than stalling you), fading at `decay`/s (Player.gust), and costs `slow` m/s of speed (none with both tufts gone). Once per
+// gust, and never while you're landed, under `clear` m off the ground, or `probe` m from a hill or wall along the shove.
+// Other attacks: `acorns` acorns, `acornDmg` each.
+export const GUST = { tell: 1.2, first: 1.8, tellRage: 1, width: 70, widthTuft: [56, 42], height: 30, depth: 12, speed: 90, speedRage: 100, grow: 120, range: 260, lead: 1.15, push: 45, pushTuft: [32, 22], decay: 2.2, slow: 8, clear: 15, probe: 25, acorns: 5, acornSpeed: 70, acornDmg: 9, acornSpread: 0.1, acornColor: '#8a5a2b', leaves: 120 };
+const LEAF_COLORS = ['#d2691e', '#e8a33a', '#b8452a', '#f2c14e', '#8a5a2b'];
+const _o = new THREE.Object3D(), CHEST = new THREE.Color('#ffa040'), CHEST_HOT = new THREE.Color('#ffe08a');
+
 // ---------- small helpers ----------
 
 // Your flat heading, smoothed (as the lead bosses do) so sharp turns don't whip a boss around.
@@ -283,6 +296,7 @@ export function endMoves(en, e) {
   clearBlobs(en, e);
   popGuards(en, e);
   if (e.mesh.userData.mirages) MOVES.mirage.hide(e);
+  if (e.mesh.userData.owl) MOVES.gust.hide(e);
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -293,6 +307,7 @@ export function dropBoss(en, e) {
   if (e.beam) { en.G.scene.remove(e.beam); e.beam.material.dispose(); }
   const u = e.mesh.userData;
   if (u.free) for (const o of [...u.mirages, u.shadow]) { en.G.scene.remove(o); disposeTree(o); } // they live in the scene
+  if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
 }
 function clearBlobs(en, e) {
   for (let i = en.shots.length - 1; i >= 0; i--) if (en.shots[i].owner === e) { en.G.scene.remove(en.shots[i].mesh); en.shots.splice(i, 1); }
@@ -1085,6 +1100,143 @@ export const MOVES = {
       u.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * f; });
     },
     hide(e) { for (const x of e.mesh.userData.mirages) x.visible = false; },
+  },
+
+  // Lady Hootrude (orbit): circles you lobbing acorns; every 3rd attack she hovers and rears up, then beats a band of
+  // leaves at you that shoves you off course (see GUST). Attacks wait from the rear-up until the gust is gone.
+  gust: {
+    step(en, e, c) {
+      const m = e.mv ||= { tell: 0, gusts: 0, hits: 0, shoves: 0, beat: 0 };
+      if (!(m.tell > 0)) return false; // the plain orbit
+      park(e, c.dt, 4); // she hovers while she rears up
+      return true;
+    },
+    hold: (e) => e.mv?.tell > 0 || !!e.mv?.band,
+    attack(en, e, n) {
+      const m = e.mv ||= { tell: 0, gusts: 0, hits: 0, shoves: 0, beat: 0 };
+      const G = en.G, p = G.player;
+      if (m.tell > 0 || m.band) return;
+      if (n % (e.enraged ? 2 : 3) === 0) {
+        m.tell = m.tell0 = !e.gustTip ? GUST.first : e.enraged ? GUST.tellRage : GUST.tell;
+        if (!e.gustTip) { e.gustTip = true; G.ui.notify('Gust incoming! Wings wide means a leaf storm: dodge sideways, over or under it.', 'warn', 4, 1); }
+        G.audio.tone(260, m.tell, { type: 'sine', vol: 0.05, slide: 420 }); // a rising whoosh
+        return;
+      }
+      const from = e.pos, dist = from.distanceTo(p.pos);
+      const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / GUST.acornSpeed) * 0.6);
+      for (let j = 0; j < GUST.acorns; j++) {
+        const d = _b.copy(at).sub(from).normalize().add(_c.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(GUST.acornSpread));
+        en.fireOrb(from, d, GUST.acornSpeed, GUST.acornDmg, GUST.acornColor, 1).src = e;
+      }
+      G.audio.tone(320, 0.18, { type: 'triangle', vol: 0.06, slide: -150 });
+    },
+    // The beat: a band of leaves from her toward where you'll be, its size and shove set by her tufts and rage.
+    blow(en, e) {
+      const m = e.mv, p = en.G.player, k = Math.min(2, e.broken?.tuft || 0), speed = e.enraged ? GUST.speedRage : GUST.speed;
+      const d0 = e.pos.distanceTo(p.pos);
+      const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (d0 / speed) * GUST.lead);
+      const dir = at.sub(e.pos).normalize();
+      const side = new THREE.Vector3().crossVectors(dir, Y);
+      if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+      side.normalize();
+      const flat = dir.clone().setY(0);
+      if (flat.lengthSq() < 1e-4) flat.copy(side).cross(Y);
+      m.band = {
+        at: e.pos.clone(), dir: dir.clone(), side, up: new THREE.Vector3().crossVectors(side, dir).normalize(), flat: flat.normalize(),
+        dist: 0, prev: Infinity, speed, range: Math.max(GUST.range, d0 + 80), hit: false,
+        w: k ? GUST.widthTuft[k - 1] : GUST.width, push: k ? GUST.pushTuft[k - 1] : GUST.push, slow: k >= 2 ? 0 : GUST.slow,
+      };
+      m.gusts++;
+      m.beat = 0.45;
+      en.G.audio.noise(0.7, { vol: 0.12, freq: 700 });
+      en.G.fx.emit(e.pos, 20, { colors: LEAF_COLORS, speed: 35, life: 1, size: 5 });
+    },
+    // The band caught you: the shove (flat, along its travel, capped), a little speed, a puff of leaves.
+    shove(en, e, b) {
+      const G = en.G, p = G.player, m = e.mv;
+      m.hits++;
+      G.fx.emit(p.pos, 16, { colors: LEAF_COLORS, speed: 20, life: 0.9, size: 4 });
+      const ground = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y), waterLine());
+      let ok = !p.landed && !(p.invuln > 0) && p.pos.y - ground >= GUST.clear;
+      if (ok) {
+        _c.copy(p.pos).addScaledVector(b.flat, GUST.probe);
+        const g2 = Math.max(G.terrain.surfaceHeight(_c.x, _c.z, p.pos.y), waterLine());
+        if (g2 > p.pos.y - 6 || G.terrain.ceilingHeight(_c.x, _c.z, p.pos.y) < p.pos.y + 6) ok = false;
+      }
+      if (!ok) return;
+      m.shoves++;
+      const ff = flatFwd(p, new THREE.Vector3()), shove = _c.copy(b.flat).multiplyScalar(b.push), back = shove.dot(ff);
+      if (back < 0) shove.addScaledVector(ff, -back * 0.5);
+      p.gust.add(shove).clampLength(0, GUST.push);
+      p.gust.y = 0;
+      p.gustDecay = GUST.decay;
+      if (b.slow) p.speed = Math.max(p.baseSpeed * 0.5, p.speed - b.slow);
+      G.shake?.(0.3, 0.25);
+      G.audio.noise(0.4, { vol: 0.1, freq: 500 });
+      if (!(en.gustNews > G.time)) { en.gustNews = G.time + 6; G.ui.notify('Blown away! Leaves in your propeller.', 'bad', 2); }
+    },
+    // Every frame (animate): the rear-up and the beat, the band's flight and its leaves, her wings and glowing chest.
+    pose(en, e, dt) {
+      const u = e.mesh.userData, m = e.mv, G = en.G, p = G.player;
+      if (m?.tell > 0) {
+        if (Math.random() < dt * 25) G.fx.emit(_a.copy(e.pos).add(_b.set(rand(-1, 1), rand(-0.6, 1), rand(-1, 1)).multiplyScalar(e.radius * 1.4)), 1, { colors: LEAF_COLORS, speed: 14, life: 1, size: 4 });
+        if ((m.tell -= dt) <= 0) { m.tell = 0; MOVES.gust.blow(en, e); }
+      }
+      const b = m?.band;
+      if (b) {
+        b.dist += b.speed * dt;
+        const w = b.w * (0.5 + 0.5 * Math.min(1, b.dist / GUST.grow));
+        _a.copy(b.at).addScaledVector(b.dir, b.dist); // the band's middle
+        _b.copy(p.pos).sub(_a);
+        const along = _b.dot(b.dir), lat = _b.dot(b.side), vert = _b.dot(b.up);
+        if (!b.hit && !p.dead && Math.abs(lat) < w / 2 && Math.abs(vert) < GUST.height / 2 && (Math.abs(along) < GUST.depth / 2 || (b.prev > 0 && along <= 0))) {
+          b.hit = true;
+          MOVES.gust.shove(en, e, b);
+        }
+        b.prev = along;
+        const leaves = MOVES.gust.leaves(en, e), seeds = leaves.userData.seeds, fade = Math.min(1, (b.range - b.dist) / 60);
+        leaves.visible = true;
+        leaves.material.opacity = 0.9 * Math.max(0, fade);
+        for (let k = 0; k < seeds.length; k++) {
+          const [sx, sy, sz, ph, spin] = seeds[k];
+          _o.position.copy(_a).addScaledVector(b.side, sx * w).addScaledVector(b.up, sy * GUST.height + Math.sin(e.t * 3 + ph) * 2).addScaledVector(b.dir, sz * GUST.depth);
+          _o.rotation.set(e.t * spin + ph, e.t * spin * 0.7, ph);
+          _o.updateMatrix();
+          leaves.setMatrixAt(k, _o.matrix);
+        }
+        leaves.instanceMatrix.needsUpdate = true;
+        if (b.dist >= b.range) { m.band = null; leaves.visible = false; }
+      }
+      // Wings: folded with a slow flap, spread wide while she rears up, swept down in the beat.
+      if (m) m.beat = Math.max(0, (m.beat || 0) - dt);
+      const spread = m?.tell > 0 ? 1 - Math.max(0, m.tell - (m.tell0 - 0.4)) / 0.4 : 0;
+      u.wings.forEach((wg, k) => {
+        const sd = k ? 1 : -1, folded = -sd * (1.15 + 0.12 * Math.sin(e.t * 2.5));
+        const aim = m?.beat > 0 ? -sd * 1.4 : folded + (sd * 0.35 - folded) * spread;
+        wg.rotation.z += (aim - wg.rotation.z) * (1 - Math.exp(-dt * (m?.beat > 0 ? 16 : 7)));
+      });
+      u.chest.color.copy(m?.tell > 0 ? CHEST_HOT : CHEST);
+    },
+    // The leaves of a band: one instanced mesh per boss, made on the first gust and kept in the scene (dropBoss).
+    leaves(en, e) {
+      const u = e.mesh.userData;
+      if (u.leaves) return u.leaves;
+      const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false });
+      const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(3.2, 2), mat, GUST.leaves), col = new THREE.Color();
+      mesh.userData.seeds = [];
+      for (let k = 0; k < GUST.leaves; k++) {
+        mesh.setColorAt(k, col.set(pick(LEAF_COLORS)));
+        // Half of them trace the band's outline, so its edges read from a distance.
+        const edge = k % 2, onSide = Math.random() < 0.5, out = () => (Math.random() < 0.5 ? -0.5 : 0.5);
+        const sx = edge && onSide ? out() : rand(-0.5, 0.5), sy = edge && !onSide ? out() : rand(-0.5, 0.5);
+        mesh.userData.seeds.push([sx, sy, rand(-0.5, 0.5), rand(0, TAU), rand(3, 7)]);
+      }
+      mesh.frustumCulled = false;
+      mesh.visible = false;
+      en.G.scene.add(mesh);
+      return (u.leaves = mesh);
+    },
+    hide(e) { if (e.mesh.userData.leaves) e.mesh.userData.leaves.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.
