@@ -1910,7 +1910,8 @@ try {
         const done = G.objectives.completed;
         let maxAlt = 0;
         reason = null;
-        fly(run.x, run.y, run.z, Math.PI, 30 * 9, () => { maxAlt = Math.max(maxAlt, p.pos.y - G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y)); }); // heading +z
+        // (Height counted over the 500 m stretch checked above: past its end the ground may drop away under you.)
+        fly(run.x, run.y, run.z, Math.PI, 30 * 9, () => { if (p.pos.z - run.z <= 500) maxAlt = Math.max(maxAlt, p.pos.y - G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y)); }); // heading +z
         city.avenue = { dead: p.dead, reason, maxAlt: Math.round(maxAlt), lowflyDone: G.objectives.completed > done };
         p.crash = crash;
         p.health = hp;
