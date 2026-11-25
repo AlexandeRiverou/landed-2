@@ -1485,6 +1485,94 @@ export function makeHarvestOak() {
   return g;
 }
 
+// Baron Ribbiton (mushroom lands): a plump teal toad with glowing purple spots, a cream belly, gold eyes with slit
+// pupils (a monocle on one), a glowing pink throat sac (the soft spot, swelling before a tongue lash) and two green spore
+// crests on his back (breakable: fewer spores a volley). Rigged for MOVES.leap: userData.jaw opens, userData.hind and
+// userData.fore legs fold when he sits and stretch out in a hop, lids blink, the sac breathes; userData.mouth is where
+// his spores and tongue come from. Feet at y -2.6 (TOAD_FEET).
+export const TOAD_FEET = 2.6;
+export function makeToadBaron(hat) {
+  const g = new THREE.Group();
+  const skin = lam('#2e8f86', { emissive: '#06201c' }), dark = lam('#1f5f5a'), belly = lam('#efe6c4'), gold = lam('#e8b030');
+  const glow = basic('#c66cff'), lip = lam('#3aa396');
+  add(g, Sph(3, 16, 10), skin, { s: [1.25, 0.85, 1.1] }); // the body
+  add(g, Sph(2.5, 12, 8), belly, { y: -0.75, z: 1.2, s: [1.1, 0.72, 0.78] }); // cream belly
+  for (const [x, y, z, r] of [[-1.6, 1.6, -0.6, 0.45], [1.7, 1.4, -1.4, 0.5], [0.2, 2.2, -1.9, 0.38], [-2.6, 0.6, -1.4, 0.42], [2.8, 0.4, 0.2, 0.35], [-0.9, 2.2, 0.4, 0.3], [1.0, 2.1, 0.7, 0.32]]) {
+    add(g, Sph(r, 6, 4), glow, { x, y, z, s: [1, 0.5, 1] }); // glowing spots on his back
+  }
+  const sac = add(g, Sph(1.15, 12, 8), basic('#ff9ad6'), { y: -1.05, z: 2.75, s: [1.15, 0.85, 0.75] }); // throat sac
+  weak(g, sac, 1.4, 3);
+  // Eyes on top, in bumps, gold with a black slit; lids for a blink; a gold monocle on his left eye.
+  const lids = [];
+  for (const sd of [-1, 1]) {
+    add(g, Sph(0.95, 10, 8), skin, { x: sd * 1.35, y: 1.85, z: 1.65 });
+    add(g, Sph(0.78, 12, 8), basic('#ffd23a'), { x: sd * 1.35, y: 2.0, z: 2.0 });
+    add(g, Box(0.95, 0.22, 0.12), basic('#140c06'), { x: sd * 1.35, y: 2.0, z: 2.75 });
+    add(g, Sph(0.1, 4, 3), basic('#ffffff'), { x: sd * 1.35 + 0.25, y: 2.3, z: 2.7 });
+    const lid = add(g, Sph(0.84, 10, 6), dark, { x: sd * 1.35, y: 2.0, z: 2.05 });
+    lid.visible = false;
+    lids.push(lid);
+  }
+  add(g, Tor(0.66, 0.08, 5, 18), gold, { x: 1.35, y: 2.0, z: 2.78 }); // the monocle
+  add(g, Cyl(0.03, 0.03, 1.6, 3), gold, { x: 1.95, y: 1.25, z: 2.5, rz: 0.4 }); // its chain
+  // The jaw: a wide lower lip on a hinge; open, it shows a dark mouth. userData.mouth: where spores and tongue leave.
+  const jaw = new THREE.Group();
+  jaw.position.set(0, 0.35, 1.1);
+  g.add(jaw);
+  add(jaw, Sph(2.7, 14, 6), lip, { y: -0.35, z: 1.15, s: [1.2, 0.3, 0.95] });
+  add(g, Sph(2.3, 12, 6), basic('#6a1a36'), { y: 0.4, z: 2.0, s: [1.1, 0.35, 0.65] }); // inside his mouth
+  add(g, Tor(2.45, 0.09, 4, 20, PI), dark, { y: 0.55, z: 1.55, rx: PI / 2, s: [1.25, 1.05, 1] }); // the line of his mouth
+  const mouth = new THREE.Object3D();
+  mouth.position.set(0, 0.45, 3.2);
+  g.add(mouth);
+  // Spore crests on his back: a glowing green puffball with little spikes each.
+  for (const sd of [-1, 1]) {
+    const c = add(g, Sph(0.75, 8, 6), basic('#9dff6a'), { x: sd * 1.25, y: 2.35, z: -1.3 });
+    for (let k = 0; k < 4; k++) add(c, Cone(0.18, 0.6, 4), lam('#4fbf3a'), { x: Math.cos(k * 1.57) * 0.55, y: 0.45, z: Math.sin(k * 1.57) * 0.55, rx: Math.sin(k * 1.57) * 0.6, rz: -Math.cos(k * 1.57) * 0.6 });
+    breakable(g, c, 0.9, 'crest', 2);
+  }
+  // Legs. Front: arms down to splayed webbed hands. Hind: a big thigh, a shin and a long webbed foot from the hip;
+  // folded beside him when he sits, swung back and stretched in a hop (MOVES.leap.pose).
+  const fore = [-1, 1].map((sd) => {
+    const l = new THREE.Group();
+    l.position.set(sd * 1.95, -0.9, 1.7);
+    add(l, Cyl(0.35, 0.3, 1.5, 5), skin, { y: -0.7, rz: sd * 0.15 });
+    add(l, Sph(0.7, 8, 4), dark, { x: sd * 0.15, y: -1.55, z: 0.35, s: [1.2, 0.25, 1] });
+    g.add(l);
+    return l;
+  });
+  const hind = [-1, 1].map((sd) => {
+    const l = new THREE.Group();
+    l.position.set(sd * 2.55, -0.9, -1.1);
+    add(l, Sph(1.35, 10, 6), skin, { s: [0.8, 0.85, 1.35] }); // thigh
+    add(l, Sph(0.6, 6, 4), glow, { x: sd * 0.95, y: 0.35, z: 0.1, s: [0.5, 1, 1] });
+    add(l, Cyl(0.4, 0.3, 2.2, 5), skin, { x: sd * 0.2, y: -0.9, z: 0.6, rx: 0.9 }); // shin
+    add(l, Sph(0.9, 8, 4), dark, { x: sd * 0.25, y: -1.6, z: 1.3, s: [1, 0.22, 1.7] }); // webbed foot
+    g.add(l);
+    return l;
+  });
+  Object.assign(g.userData, { toad: true, sac, sacMat: sac.material, lids, jaw, mouth, fore, hind });
+  if (hat) partyHat(g, 2.9);
+  return g;
+}
+
+// Baron Ribbiton's giant toadstool: a pale stalk with a glowing ring, a wide purple cap with glowing spots and dark gills
+// under it. userData.topY: the cap's top, where he sits (MOVES.leap.spawn). Decoration only, like the world's trees.
+export function makeGiantToadstool() {
+  const g = new THREE.Group(), stalk = lam('#e8e0d0', { emissive: '#1a1812' }), cap = lam('#7a3aa8', { emissive: '#1c0830' });
+  add(g, Cyl(4.2, 6.5, 46, 8), stalk, { y: 21 });
+  add(g, Cyl(7, 7.5, 2.5, 10), stalk, { y: 1 }); // its foot
+  add(g, Tor(4.6, 0.8, 5, 14), basic('#c66cff'), { y: 32, rx: PI / 2 }); // the glowing ring
+  add(g, Cyl(19, 5, 3, 14), lam('#3a1a4a'), { y: 43.5 }); // gills
+  add(g, Sph(21, 18, 8), cap, { y: 44, s: [1, 0.42, 1] }); // the cap
+  for (let k = 0; k < 9; k++) {
+    const a = k * 2.4, r = k < 6 ? 14 : 6, y = 44 + Math.sqrt(Math.max(0, 1 - (r / 21) ** 2)) * 21 * 0.42;
+    add(g, Sph(k < 6 ? 2.4 : 1.8, 6, 4), basic('#f0b8ff'), { x: Math.cos(a) * r, y, z: Math.sin(a) * r, s: [1, 0.4, 1] });
+  }
+  g.userData.topY = 44 + 21 * 0.42;
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {

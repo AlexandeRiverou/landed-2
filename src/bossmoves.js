@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -52,6 +52,47 @@ export const GUST = { tell: 1.2, first: 1.8, tellRage: 1, width: 70, widthTuft: 
 // In flight (MOVES.gust.fly): a few wingbeats at `flap` Hz (`flapUp` taking off or climbing), then a glide of `glide` s;
 // she banks up to `bank` rad into turns and pitches up to `pitch` rad.
 export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 1.1, flapUp: 1.6, beats: 3, glide: [1, 1.8], bank: 0.6, pitch: 0.35 };
+// Count Ribbiton's hops and tongue (enemy-time s, m, enemy-unit m/s). He starts on his giant toadstool (scaled `stool`)
+// and hops off when you come within `near` m, when hit, or after `perch` s. A hop: a `crouch`, then an arc to dry, gentle,
+// roofless ground on a ring `ring` m round a point `ahead` m in front of you, `turn` rad further round you, at most `reach`
+// m away; airtime `air` (+ distance/`airK`), apex `apexK` x the distance (within `apex`, raised to clear the hills on the
+// way by `clear` m). He lands with a squash (`settle` s, no attacks), sits `sit` s (`sitRage` enraged; once he's attacked,
+// or `restless` s at most), and stops following beyond `follow` m. Attacks (only sitting): `spores` puffs (4 / 3 / 2 with
+// 0 / 1 / 2 crests shot off), `sporeDmg` each; every 3rd (2nd enraged), within `lashRange` m and in clear line, a tongue
+// lash: a `tell` s tell (`first` the first time, with a tip; `tellRage` enraged), aimed at where you'll be at the strike,
+// locked for the last `lock` s; then the tongue shoots `reach` m out in `out` s, stays `hold` s and goes back in `back` s.
+// It hits within `width` m (+ the plane's size): `dmg`, and `slow` m/s of speed.
+export const LEAP = {
+  stool: 1, perch: 1.7, near: 260, crouch: 0.35, ring: 140, ahead: 80, turn: 0.8, reach: 220, air: [1.1, 1.6], airK: 400,
+  apex: [30, 70], apexK: 0.3, clear: 15, settle: 0.3, sit: [1.2, 2], sitRage: [0.9, 1.4], restless: 3.5, follow: 700,
+  spores: [4, 3, 2], sporeSpeed: 62, sporeDmg: 9, spread: 0.12, sporeColor: '#c66cff', sporeColor2: '#3fd6c6',
+  lashRange: 200, tell: 1.2, first: 1.6, tellRage: 1, lock: 0.35, out: 0.2, hold: 0.15, back: 0.3, width: 6, dmg: 18, slow: 10,
+  dust: ['#c66cff', '#3fd6c6', '#e8e0d0', '#9dff6a'],
+};
+const SAC = new THREE.Color('#ff9ad6'), SAC_HOT = new THREE.Color('#fff0a0');
+const BEAM_LINE = new THREE.CylinderGeometry(0.5, 0.5, 1, 6, 1, true);
+// A world mesh of height 1 along +Y stretched from `from` along unit `dir` for `len` m (an aim line, a tongue).
+function place(mesh, from, dir, len) {
+  mesh.position.copy(from).addScaledVector(dir, len / 2);
+  mesh.quaternion.setFromUnitVectors(Y, dir);
+  mesh.scale.set(1, len, 1);
+}
+// A boss's shadow on the ground under it (`R` m across at the ground, bigger and softer as it climbs), none over water
+// or above ~200 m. One flat disc per boss, in the scene (dropBoss).
+function shade(en, e, R) {
+  const u = e.mesh.userData, G = en.G;
+  if (!u.groundShadow) {
+    u.groundShadow = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));
+    u.groundShadow.rotation.x = -Math.PI / 2;
+    G.scene.add(u.groundShadow);
+  }
+  const sh = u.groundShadow, land = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), h = e.pos.y - land, k = 1 - h / 200;
+  sh.visible = Number.isFinite(land) && land > waterLine() && k > 0.02;
+  if (!sh.visible) return;
+  sh.position.set(e.pos.x, land + 0.6, e.pos.z);
+  sh.scale.setScalar(R * (1 + h / 600));
+  sh.material.opacity = 0.4 * Math.min(1, k * 1.5);
+}
 const LEAF_COLORS = ['#d2691e', '#e8a33a', '#b8452a', '#f2c14e', '#8a5a2b'];
 const _o = new THREE.Object3D(), CHEST = new THREE.Color('#ffa040'), CHEST_HOT = new THREE.Color('#ffe08a');
 
@@ -303,6 +344,7 @@ export function endMoves(en, e) {
   popGuards(en, e);
   if (e.mesh.userData.mirages) MOVES.mirage.hide(e);
   if (e.mesh.userData.owl) MOVES.gust.hide(e);
+  if (e.mesh.userData.toad) MOVES.leap.hide(e);
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -314,7 +356,9 @@ export function dropBoss(en, e) {
   const u = e.mesh.userData;
   if (u.free) for (const o of [...u.mirages, u.shadow]) { en.G.scene.remove(o); disposeTree(o); } // they live in the scene
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
-  if (u.owl) { MOVES.gust.fell(en, e); if (u.owlShadow) { en.G.scene.remove(u.owlShadow); disposeTree(u.owlShadow); u.owlShadow = null; } } // her oak and shadow
+  if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool
+  if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
+  if (u.tongueFx) { for (const x of Object.values(u.tongueFx)) { en.G.scene.remove(x); x.material.dispose(); if (x.geometry !== BEAM_LINE) x.geometry.dispose(); } u.tongueFx = null; }
 }
 function clearBlobs(en, e) {
   for (let i = en.shots.length - 1; i >= 0; i--) if (en.shots[i].owner === e) { en.G.scene.remove(en.shots[i].mesh); en.shots.splice(i, 1); }
@@ -1250,7 +1294,7 @@ export const MOVES = {
       }
       if (m) m.beat = Math.max(0, (m.beat || 0) - dt);
       if (u.perch && e.chase) MOVES.gust.launch(en, e); // a break pulls her off her oak too
-      if (!e.dead) { MOVES.gust.fly(en, e, dt); MOVES.gust.shade(en, e); } // (a dead one's shadow is gone: dropBoss)
+      if (!e.dead) { MOVES.gust.fly(en, e, dt); shade(en, e, e.radius * 0.7); } // (a dead one's shadow is gone: dropBoss)
       if (u.tree && (!u.perch && u.tree.position.distanceToSquared(p.pos) > PERCH.gone ** 2)) MOVES.gust.fell(en, e);
       u.chest.color.copy(m?.tell > 0 ? CHEST_HOT : CHEST);
     },
@@ -1312,21 +1356,6 @@ export const MOVES = {
       u.tail.scale.x += (fan - u.tail.scale.x) * ease(6);
       u.tail.rotation.x += ((sit ? 0.45 : -o.pitch * 0.5 + 0.08 * S * o.w) - u.tail.rotation.x) * ease(6);
     },
-    // Her shadow on the ground under her, softer and bigger as she climbs, gone over water or above ~200 m.
-    shade(en, e) {
-      const u = e.mesh.userData, G = en.G;
-      if (!u.owlShadow) {
-        u.owlShadow = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));
-        u.owlShadow.rotation.x = -Math.PI / 2;
-        G.scene.add(u.owlShadow);
-      }
-      const sh = u.owlShadow, land = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), h = e.pos.y - land, k = 1 - h / 200;
-      sh.visible = Number.isFinite(land) && land > waterLine() && k > 0.02;
-      if (!sh.visible) return;
-      sh.position.set(e.pos.x, land + 0.6, e.pos.z);
-      sh.scale.setScalar(e.radius * 0.7 * (1 + h / 600));
-      sh.material.opacity = 0.4 * Math.min(1, k * 1.5);
-    },
     // Her oak goes (when she does, or once it's far behind you).
     fell(en, e) {
       const u = e.mesh.userData;
@@ -1352,6 +1381,209 @@ export const MOVES = {
       return (u.leaves = mesh);
     },
     hide(e) { if (e.mesh.userData.leaves) e.mesh.userData.leaves.visible = false; },
+  },
+
+  // Count Ribbiton (ground, hop): sits on his giant toadstool, then bounds after you across the ground, one big
+  // hop at a time (see LEAP), lobbing spore puffs between hops; every 3rd attack (2nd enraged) a tongue lash instead.
+  // He sets his own height: sitting on the ground (or his toadstool) or in the arc of a hop.
+  leap: {
+    spawn(en, e) {
+      const G = en.G, u = e.mesh.userData, { x, z } = e.pos, ground = G.terrain.surfaceHeight(x, z), feet = TOAD_FEET * e.mesh.scale.x;
+      const m = (e.mv = { phase: 'sit', t: 0, wait: LEAP.perch, hops: 0, sporeVolleys: 0, lashes: 0, hits: 0, tell: 0, settle: 0, at: e.pos.clone() });
+      m.at.y = ground + feet;
+      if (Number.isFinite(ground) && ground > waterLine() + 2 && !Number.isFinite(G.terrain.ceilingHeight(x, z, e.pos.y))) {
+        const stool = makeGiantToadstool(), k = LEAP.stool;
+        stool.scale.setScalar(k);
+        stool.position.set(x, ground - 1, z);
+        stool.rotation.y = rand(0, TAU);
+        G.scene.add(stool);
+        u.tree = stool;
+        m.at.y = ground - 1 + stool.userData.topY * k + feet;
+        u.perch = { hp: e.hp };
+      }
+      e.pos.copy(m.at);
+      e.yaw = Math.atan2(G.player.pos.x - x, G.player.pos.z - z);
+    },
+    step(en, e, c) {
+      const G = en.G, u = e.mesh.userData, p = c.p, dt = c.dt;
+      const m = e.mv ||= { phase: 'sit', t: 0, wait: 1, hops: 0, sporeVolleys: 0, lashes: 0, hits: 0, tell: 0, settle: 0, at: e.pos.clone() };
+      m.t += dt;
+      m.settle = Math.max(0, m.settle - dt);
+      e.vel.set(0, 0, 0);
+      MOVES.leap.tongue(en, e, c);
+      const feet = TOAD_FEET * e.mesh.scale.x;
+      if (m.phase === 'sit') {
+        e.pos.copy(m.at);
+        m.bodyS = m.settle > 0 ? [1.25, 0.72, 1.25] : [1, 1, 1];
+        const busy = m.tell > 0 || !!m.lash;
+        const ready = u.perch ? c.dist < LEAP.near || m.t >= LEAP.perch || e.hp < u.perch.hp : m.t >= m.wait && (m.attacked || m.t > LEAP.restless);
+        if (!busy && ready && c.dist < LEAP.follow) { m.phase = 'crouch'; m.t = 0; }
+      } else if (m.phase === 'crouch') {
+        e.pos.copy(m.at);
+        m.bodyS = [1.3, 0.68, 1.3];
+        if (m.t >= LEAP.crouch) {
+          const to = MOVES.leap.spot(en, e, p, feet);
+          if (!to) { m.phase = 'sit'; m.t = 0; m.wait = 1; m.attacked = false; return true; } // nowhere to land: stays put
+          const d = Math.hypot(to.x - m.at.x, to.z - m.at.z);
+          Object.assign(m, { phase: 'air', t: 0, k: 0, from: m.at.clone(), to, T: THREE.MathUtils.clamp(LEAP.air[0] + d / LEAP.airK, LEAP.air[0], LEAP.air[1]), apex: to.apex });
+          u.perch = null;
+          G.audio.tone(180, 0.25, { type: 'sine', vol: 0.07, slide: 220 }); // boing
+        }
+      } else if (m.phase === 'air') {
+        const k = Math.min(1, m.t / m.T);
+        e.pos.lerpVectors(m.from, m.to, k);
+        e.pos.y += 4 * m.apex * k * (1 - k);
+        m.bodyS = [0.88, 1.18, 0.88];
+        m.k = k;
+        if (k >= 1) {
+          e.pos.copy(m.to);
+          Object.assign(m, { phase: 'sit', t: 0, at: m.to.clone(), settle: LEAP.settle, attacked: false, wait: rand(...(e.enraged ? LEAP.sitRage : LEAP.sit)) });
+          m.hops++;
+          _a.copy(e.pos).setY(e.pos.y - feet + 1);
+          G.fx.emit(_a, 22, { colors: LEAP.dust, speed: 30, life: 0.9, size: 5 });
+          G.audio.tone(110, 0.3, { type: 'sine', vol: 0.12, slide: -40 }); // thud
+          G.audio.tone(300, 0.12, { type: 'square', vol: 0.04, slide: -120, delay: 0.12 }); // rib-
+          G.audio.tone(240, 0.16, { type: 'square', vol: 0.04, slide: -100, delay: 0.26 }); // -bit
+          if (e.pos.distanceTo(p.pos) < 200) G.shake?.(0.25, 0.2);
+        }
+      }
+      return true;
+    },
+    // Where to land: on a ring LEAP.ring m round where you're heading, a little further round you than he is now, at most
+    // LEAP.reach away. Dry, gentle, roofless ground only, and an arc that clears the hills on the way; else a shorter hop,
+    // the other way round, or none (null).
+    spot(en, e, p, feet) {
+      const G = en.G, from = e.mv.at;
+      _b.set(p.forward.x, 0, p.forward.z);
+      if (_b.lengthSq() < 0.01) _b.set(0, 0, -1);
+      const cx = p.pos.x + _b.normalize().x * LEAP.ahead, cz = p.pos.z + _b.z * LEAP.ahead;
+      const a0 = Math.atan2(from.z - cz, from.x - cx), side = (e.mv.hops % 2 ? 1 : -1) * (Math.random() < 0.7 ? 1 : -1);
+      for (const [turn, short] of [[side, 1], [-side, 1], [side, 0.5], [-side, 0.5], [0, 0.35]]) {
+        const a = a0 + turn * LEAP.turn;
+        _c.set(cx + Math.cos(a) * LEAP.ring - from.x, 0, cz + Math.sin(a) * LEAP.ring - from.z);
+        _c.clampLength(0, LEAP.reach * short);
+        const x = from.x + _c.x, z = from.z + _c.z, g = G.terrain.surfaceHeight(x, z);
+        if (!Number.isFinite(g) || g < waterLine() + 2 || !en.isGentleGround(x, z) || Number.isFinite(G.terrain.ceilingHeight(x, z, g + 5))) continue;
+        const d = _c.length(), to = new THREE.Vector3(x, g + feet, z);
+        let apex = THREE.MathUtils.clamp(d * LEAP.apexK, LEAP.apex[0], LEAP.apex[1]), ok = true;
+        for (let s = 1; s < 8 && ok; s++) { // the arc must clear the ground under it by LEAP.clear m
+          const k = s / 8, hx = from.x + _c.x * k, hz = from.z + _c.z * k, top = from.y + (to.y - from.y) * k - feet;
+          const need = G.terrain.surfaceHeight(hx, hz) + LEAP.clear - top;
+          if (need > 4 * apex * k * (1 - k)) apex = need / (4 * k * (1 - k));
+          if (apex > LEAP.apex[1] * 1.6) ok = false;
+        }
+        if (ok) return Object.assign(to, { apex });
+      }
+      return null;
+    },
+    hold: (e) => e.mv?.phase !== 'sit' || e.mv.tell > 0 || !!e.mv.lash || e.mv.settle > 0 || !!e.mesh.userData.perch,
+    attack(en, e, n) {
+      const m = e.mv, G = en.G, p = G.player;
+      if (!m || m.phase !== 'sit' || m.tell > 0 || m.lash) return;
+      m.attacked = true;
+      const mouth = e.mesh.userData.mouth.getWorldPosition(new THREE.Vector3()), dist = mouth.distanceTo(p.pos);
+      if (n % (e.enraged ? 2 : 3) === 0 && dist < LEAP.lashRange && MOVES.leap.clearLine(en, mouth, p.pos)) {
+        m.tell = m.tell0 = !e.tongueTip ? LEAP.first : e.enraged ? LEAP.tellRage : LEAP.tell;
+        if (!e.tongueTip) { e.tongueTip = true; G.ui.notify('Tongue lash! When his throat swells, turn or climb off the pink line.', 'warn', 4, 1); }
+        G.audio.tone(140, m.tell, { type: 'sawtooth', vol: 0.035, slide: 160 }); // a swelling croak
+        m.aim = p.pos.clone();
+        return;
+      }
+      const k = Math.min(2, e.broken?.crest || 0), count = LEAP.spores[k];
+      const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / LEAP.sporeSpeed) * 0.6);
+      for (let j = 0; j < count; j++) {
+        const d = _b.copy(at).sub(mouth).normalize().add(_c.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(LEAP.spread));
+        en.fireOrb(mouth, d, LEAP.sporeSpeed, LEAP.sporeDmg, j % 2 ? LEAP.sporeColor : LEAP.sporeColor2, 1.2).src = e;
+      }
+      m.sporeVolleys++;
+      G.audio.tone(420, 0.15, { type: 'triangle', vol: 0.06, slide: -200 }); // puff
+    },
+    clearLine(en, a, b) {
+      for (let s = 1; s < 8; s++) { _c.lerpVectors(a, b, s / 8); if (en.G.terrain.surfaceHeight(_c.x, _c.z, _c.y) > _c.y - 2) return false; }
+      return true;
+    },
+    // The tell (aim leads you to where you'll be at the strike, then locks), the lash out and back, the hit.
+    tongue(en, e, c) {
+      const m = e.mv, G = en.G, p = c.p, dt = c.dt;
+      if (m.tell > 0) {
+        if (m.tell > LEAP.lock) m.aim.copy(p.pos).addScaledVector(p.forward, p.speed * (m.tell / c.pace + LEAP.out));
+        if ((m.tell -= dt) <= 0) {
+          m.tell = 0;
+          const from = e.mesh.userData.mouth.getWorldPosition(new THREE.Vector3());
+          m.lash = { t: 0, from, dir: m.aim.clone().sub(from).normalize(), len: 0, hit: false };
+          m.lashes++;
+          G.audio.tone(900, 0.12, { type: 'sine', vol: 0.06, slide: -600 }); // thwip
+        }
+      }
+      const L = m.lash;
+      if (!L) return;
+      L.t += dt;
+      const T = LEAP.out + LEAP.hold, out = L.t < LEAP.out ? L.t / LEAP.out : L.t < T ? 1 : Math.max(0, 1 - (L.t - T) / LEAP.back);
+      L.len = LEAP.reach * out;
+      if (!L.hit && L.t < T && !p.dead && !p.landed) {
+        _a.subVectors(p.pos, L.from);
+        const along = THREE.MathUtils.clamp(_a.dot(L.dir), 0, L.len), off = _b.copy(L.from).addScaledVector(L.dir, along).distanceTo(p.pos);
+        if (off < LEAP.width + 3 * (p.sizeScale || 1) && !(p.invuln > 0) && !p.dodging) {
+          L.hit = true;
+          m.hits++;
+          p.damage(LEAP.dmg);
+          p.speed = Math.max(p.baseSpeed * 0.5, p.speed - LEAP.slow);
+          if (!(en.tongueNews > G.time)) { en.tongueNews = G.time + 6; G.ui.notify('Tongued! Sticky.', 'bad', 2); }
+        }
+      }
+      if (L.t >= T + LEAP.back) m.lash = null;
+    },
+    // Every frame (animate): he faces you sitting, his hop's way in the air (nose up, then down); sac, jaw, legs, lids,
+    // the aim line and the tongue, his shadow.
+    pose(en, e, dt) {
+      if (e.dead) return MOVES.leap.hide(e);
+      const u = e.mesh.userData, m = e.mv, G = en.G, p = G.player, ease = (r) => 1 - Math.exp(-dt * r);
+      const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a)), air = m?.phase === 'air', o = (e.toad ||= { blink: rand(2, 5), pitch: 0 });
+      const toYaw = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z);
+      const aim = air ? Math.atan2(m.to.x - m.from.x, m.to.z - m.from.z) : m?.tell > 0 || m?.lash ? Math.atan2((m.lash?.dir.x ?? m.aim.x - e.pos.x), (m.lash?.dir.z ?? m.aim.z - e.pos.z)) : toYaw;
+      e.yaw = (e.yaw ?? aim) + wrap(aim - (e.yaw ?? aim)) * ease(air ? 6 : 3);
+      o.pitch += ((air ? -0.35 * (1 - 2 * m.k) : 0) - o.pitch) * ease(8);
+      e.mesh.rotation.order = 'YXZ';
+      e.mesh.rotation.set(o.pitch, e.yaw, 0);
+      const tell = m?.tell > 0, sit = !air && m?.phase !== 'crouch';
+      const swell = tell ? 1.25 + 0.5 * (1 - m.tell / m.tell0) : m?.lash ? 1.2 : 1 + 0.12 * Math.sin(e.t * 3);
+      u.sac.scale.setScalar(u.sac.scale.x + (swell - u.sac.scale.x) * ease(10));
+      u.sacMat.color.copy(tell || m?.lash ? SAC_HOT : SAC);
+      u.jaw.rotation.x += ((tell ? 0.35 : m?.lash ? 0.6 : 0) - u.jaw.rotation.x) * ease(10);
+      if ((o.blink -= dt) <= 0) o.blink = rand(2, 5);
+      u.lids.forEach((l) => { l.visible = o.blink < 0.12; });
+      u.hind.forEach((l) => { l.rotation.x += ((air ? 1.25 : m?.phase === 'crouch' ? -0.2 : 0) - l.rotation.x) * ease(air ? 10 : 8); l.scale.y += ((air ? 1.3 : 1) - l.scale.y) * ease(8); });
+      u.fore.forEach((l) => { l.rotation.x += ((air ? -0.9 : 0) - l.rotation.x) * ease(8); });
+      // The aim line (faint, then brighter once it locks) and the tongue: world meshes from his mouth.
+      const fx = MOVES.leap.tongueMesh(en, e);
+      const from = u.mouth.getWorldPosition(_c);
+      fx.line.visible = tell;
+      if (tell) {
+        _a.copy(m.aim).sub(from);
+        const len = Math.min(LEAP.reach, _a.length() + 30);
+        place(fx.line, from, _a.normalize(), len);
+        fx.line.material.opacity = m.tell <= LEAP.lock ? 0.55 : 0.2;
+      }
+      const L = m?.lash;
+      fx.tongue.visible = fx.tip.visible = !!L && L.len > 1;
+      if (fx.tongue.visible) {
+        place(fx.tongue, L.from, L.dir, L.len);
+        fx.tip.position.copy(L.from).addScaledVector(L.dir, L.len);
+      }
+      shade(en, e, e.radius * (sit ? 0.75 : 0.6));
+      if (u.tree && !u.perch && u.tree.position.distanceTo(p.pos) > PERCH.gone) MOVES.gust.fell(en, e); // his toadstool, far behind you
+    },
+    tongueMesh(en, e) {
+      const u = e.mesh.userData;
+      if (u.tongueFx) return u.tongueFx;
+      const pink = new THREE.MeshBasicMaterial({ color: '#ff6fae' });
+      const line = new THREE.Mesh(BEAM_LINE, new THREE.MeshBasicMaterial({ color: '#ff6fae', transparent: true, opacity: 0.2, depthWrite: false }));
+      const tongue = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 1, 8, 1), pink);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(3, 10, 8), pink);
+      for (const x of [line, tongue, tip]) { x.visible = false; x.frustumCulled = false; en.G.scene.add(x); }
+      return (u.tongueFx = { line, tongue, tip });
+    },
+    hide(e) { const f = e.mesh.userData.tongueFx; if (f) for (const x of [f.line, f.tongue, f.tip]) x.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.

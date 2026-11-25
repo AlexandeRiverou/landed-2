@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -364,6 +364,18 @@ export const BOSSES = {
     taunts: ['Lady Hootrude: "Who? WHO? You. Obviously you."', 'Lady Hootrude: "I have read every book in this forest. You are not in any of them."', 'Lady Hootrude: "Leaf me alone. No, wait. Leaf THIS."'],
     rage: ['Lady Hootrude is in a fowl mood.', 'Her feathers are ruffled. All of them. Toward you.'],
   },
+  // Land boss for the mushroom lands: starts on his giant toadstool, then hops after you across the ground (see LEAP),
+  // puffing spores between hops; every 3rd attack (2nd enraged) his throat swells and a tongue lash follows the pink line.
+  // He sets his own height (hop). His glowing crests are breakable (fewer spores), his throat sac is soft.
+  toadBaron: {
+    make: makeToadBaron, scale: 4, crownY: 2.9, crownZ: 0.9, crownS: 0.55, radius: 20, hp: 95, speed: 0, orbit: 0, dmg: 20, face: 'toad', ground: true, hop: true, markerUp: 30, // 'toad': MOVES.leap.pose turns him
+    lands: ['Mushroom Forest', 'Alien World'],
+    name: 'Count Ribbiton, the Toadstool Toad', short: 'Count Ribbiton', noun: 'Count Ribbiton',
+    move: 'leap',
+    desc: 'A huge, very proper toad with a monocle and glowing crests, who holds court from the top of a giant toadstool. He bounds after you across the ground in great hops, puffing spores; when his throat swells pink, a tongue lash is coming down the pink line: turn or climb off it. Shoot his crests for fewer spores; his throat sac is soft.',
+    taunts: ['Count Ribbiton: "One does not simply fly over a Count."', 'Count Ribbiton: "Ribbit. That is French for you are doomed."', 'Count Ribbiton: "My tongue is faster than your propeller. I have measured."'],
+    rage: ['Count Ribbiton has lost his monocle. And his temper.', 'The Count is hopping mad. Literally.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -448,6 +460,7 @@ const BOSS_BREAK_TEXT = {
   crystal: 'Wingtip crystal shattered! Her shard fans are thinner now.',
   horn: 'Horn snapped off! Pharaoh Scarabus fires smaller volleys now.',
   tuft: 'Ear tuft plucked! Her gusts are narrower now.',
+  crest: 'Crest popped! Count Ribbiton puffs fewer spores now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -899,6 +912,10 @@ export class Enemies {
         cd = 2.6; // volleys; every 3rd attack calls up the mirages instead (see the mirage move)
         BOSS_MOVES.mirage.attack(this, e, n);
         break;
+      case 'toadBaron':
+        cd = 2.8; // spore puffs, only while he sits; every 3rd attack (2nd enraged) a tongue lash instead (see the leap move)
+        BOSS_MOVES.leap.attack(this, e, n);
+        break;
       case 'harvestOwl':
         cd = 2.8; // acorn volleys; every 3rd attack (2nd enraged) a rear-up and a gust instead (see the gust move)
         BOSS_MOVES.gust.attack(this, e, n);
@@ -1234,6 +1251,7 @@ export class Enemies {
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.swim) { /* its move sets its whole path, in and out of the lava */ }
       else if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
+      else if (e.def.hop) {} // Count Ribbiton: his move sets his height (sitting, or in a hop)
       else if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else if (e.def.vent) e.pos.y = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) - 0.5; // in the lava (or rock)
       else {
@@ -1407,6 +1425,7 @@ export class Enemies {
       case 'crystal': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'horn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'tuft': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'crest': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -2001,6 +2020,7 @@ export class Enemies {
     }
     if (u.webs) BOSS_MOVES.fans.pose(this, e, dt); // Glacierra rolls her wings into her next fan's plane
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
+    if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }

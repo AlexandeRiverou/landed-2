@@ -370,6 +370,19 @@ doesn't by itself, but flying on from where it put you does.
   out of it. Once a gust, never up or down, never while you're landed or under 15 m off the ground, and never toward a
   hill or a wall. Her two ear tufts are breakable: a gust is 56 m wide and shoves 32 m/s with one gone, 42 m and 22 m/s
   (and no speed lost) with both (each costs her 4%). The glowing chest is the weak spot. 95 hp.
+- Count Ribbiton, the Toadstool Toad (a ground boss of the mushroom lands: Mushroom Forest and Alien World; the deck
+  brings him only there, and first there once the two openers are done): a huge teal toad with a monocle, glowing purple
+  spots and two glowing green crests. He starts on top of a giant glowing toadstool (none over water or under a roof)
+  and hops off when you come within 260 m, when you hit him, or after about 2 s. Then he bounds after you across the
+  ground: a crouch (0.35 s), then a hop of up to 220 m onto dry, gentle, roofless ground on a ring round where you're
+  heading, its arc 30-70 m high (higher only to clear a hill on the way), with a squash, a thud and a puff of spores as
+  he lands; he sits 1.2-2 s between hops (0.9-1.4 s enraged) and stops following beyond 700 m. He only attacks sitting:
+  most attacks are a volley of 4 spores (9 each) at where you're heading. Every 3rd attack (every 2nd enraged), when
+  you're within 200 m and in clear line, his throat swells pink for 1.2 s (1.6 s the first time, with a tip; 1 s
+  enraged) and a faint pink line shows where the tongue will go (aimed at where you'll be, locked for the last 0.35 s);
+  then the tongue lashes 230 m out along it: 18 hull and 10 m/s of speed if you're on it. His shadow follows him on the
+  ground. Each crest he loses (2 hp, 4% of his hp) takes a spore off his volleys (3, then 2); his throat sac is the
+  weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
