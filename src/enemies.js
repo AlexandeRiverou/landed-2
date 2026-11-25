@@ -353,14 +353,14 @@ export const BOSSES = {
     taunts: ['Pharaoh Scarabus: "I roll the sun across the sky. You are a much smaller job."', 'Pharaoh Scarabus: "Is that me? Is THAT me? Guess."', 'Pharaoh Scarabus: "Sand in your engine. Sand everywhere. Forever."'],
     rage: ['Pharaoh Scarabus is seeing double. So are you.', 'The heat haze is getting personal.'],
   },
-  // Land boss for the woods lands: circles you lobbing acorns; every 3rd attack she rears up and beats a band of leaves
+  // Land boss for the woods lands: starts on the top of her giant oak (see PERCH), then circles you lobbing acorns; every 3rd attack she rears up and beats a band of leaves
   // at you that shoves you off course (see GUST). Her ear tufts are breakable (weaker gusts), her chest is soft.
   harvestOwl: {
-    make: makeHarvestOwl, scale: 4, crownY: 4.3, crownZ: 0.3, crownS: 0.55, radius: 18, hp: 95, speed: 30, orbit: 150, orbitRate: 0.3, dmg: 20, face: 'player',
+    make: makeHarvestOwl, scale: 4, crownY: 2.4, crownS: 0.55, radius: 18, hp: 95, speed: 30, orbit: 150, orbitRate: 0.3, dmg: 20, face: 'owl', // 'owl': MOVES.gust.fly turns her
     lands: ['Autumn Woods', 'Giant\'s Garden'],
     name: 'Lady Hootrude, the Harvest Owl', short: 'Lady Hootrude', noun: 'Lady Hootrude',
     move: 'gust',
-    desc: 'A grand old owl in harvest colours. She circles you lobbing acorns; when she rears up with her wings wide, a storm of leaves is coming: slip aside or over it, or get blown off course. Pluck her ear tufts for weaker gusts; her puffed-out chest is soft.',
+    desc: 'A grand old owl in harvest colours who keeps watch from the top of a giant oak. She circles you lobbing acorns; when she rears up with her wings raised high, a storm of leaves is coming: slip aside or over it, or get blown off course. Pluck her ear tufts for weaker gusts; her puffed-out chest is soft.',
     taunts: ['Lady Hootrude: "Who? WHO? You. Obviously you."', 'Lady Hootrude: "I have read every book in this forest. You are not in any of them."', 'Lady Hootrude: "Leaf me alone. No, wait. Leaf THIS."'],
     rage: ['Lady Hootrude is in a fowl mood.', 'Her feathers are ruffled. All of them. Toward you.'],
   },
@@ -512,6 +512,7 @@ export class Enemies {
       looseMax: LOOSE_T, breaks: 0, lastHp: hp, chaseT: 0, waitT: 0, home: new THREE.Vector3(), fresh: false,
     };
     this.list.push(e);
+    BOSS_MOVES[def.move]?.spawn?.(this, e); // a boss that starts somewhere of its own (Lady Hootrude on her oak)
     return e;
   }
 

@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP, disposeTree, makeCrown } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -37,7 +37,7 @@ export const SHARDS = { wind: 1.1, first: 1.8, shards: 7, min: 3, spread: 0.9, s
 export const MIRAGE = { last: 8, lastRage: 10, turn: 0.6, dy: 14, fadeIn: 0.5, fadeOut: 0.6, opacity: 0.75, orbs: 5, orbsHorn: 3, speed: 70, dmg: 8, spread: 0.1, color: '#ffb03a' };
 
 // Lady Hootrude's gusts (enemy-time s, m, enemy-unit m/s): every 3rd attack (every 2nd enraged) she stops and rears up,
-// wings spread wide, for `tell` s (`first` the first time, with a tip; `tellRage` enraged), then beats a band of
+// wings raised high in a V, for `tell` s (`first` the first time, with a tip; `tellRage` enraged), then beats a band of
 // leaves at where you'll be when it gets there (`lead` ≈ 1/PACE: its speed is enemy units): `width` m wide (`widthTuft` with one or two ear tufts shot off), `height` m tall,
 // `depth` m deep, at `speed` (`speedRage` enraged). It starts at half width and is full width by `grow` m, and is gone
 // after `range` m (or 80 m past where you were). It doesn't hurt: it shoves you `push` m/s (real) along its flat travel
@@ -46,6 +46,12 @@ export const MIRAGE = { last: 8, lastRage: 10, turn: 0.6, dy: 14, fadeIn: 0.5, f
 // gust, and never while you're landed, under `clear` m off the ground, or `probe` m from a hill or wall along the shove.
 // Other attacks: `acorns` acorns, `acornDmg` each.
 export const GUST = { tell: 1.2, first: 1.8, tellRage: 1, width: 70, widthTuft: [56, 42], height: 30, depth: 12, speed: 90, speedRage: 100, grow: 120, range: 260, lead: 1.15, push: 45, pushTuft: [32, 22], decay: 2.2, slow: 8, clear: 15, probe: 25, acorns: 5, acornSpeed: 70, acornDmg: 9, acornSpread: 0.1, acornColor: '#8a5a2b', leaves: 120 };
+// Her oak (enemy-time s, m, enemy-unit m/s): she spawns sitting on its top and takes off with a hoot when you come within
+// `near` m, when she's hit, or after `wait` s at most (≈2 real s); no attacks while she sits. The tree's height is scaled
+// (`scale`) to meet her; none over water or under a roof (she just flies). It goes when she does, or `gone` m behind you.
+// In flight (MOVES.gust.fly): a few wingbeats at `flap` Hz (`flapUp` taking off or climbing), then a glide of `glide` s;
+// she banks up to `bank` rad into turns and pitches up to `pitch` rad.
+export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 1.7, flapUp: 2.6, beats: 3, glide: [1, 1.8], bank: 0.6, pitch: 0.35 };
 const LEAF_COLORS = ['#d2691e', '#e8a33a', '#b8452a', '#f2c14e', '#8a5a2b'];
 const _o = new THREE.Object3D(), CHEST = new THREE.Color('#ffa040'), CHEST_HOT = new THREE.Color('#ffe08a');
 
@@ -308,6 +314,7 @@ export function dropBoss(en, e) {
   const u = e.mesh.userData;
   if (u.free) for (const o of [...u.mirages, u.shadow]) { en.G.scene.remove(o); disposeTree(o); } // they live in the scene
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
+  if (u.owl) { MOVES.gust.fell(en, e); if (u.owlShadow) { en.G.scene.remove(u.owlShadow); disposeTree(u.owlShadow); u.owlShadow = null; } } // her oak and shadow
 }
 function clearBlobs(en, e) {
   for (let i = en.shots.length - 1; i >= 0; i--) if (en.shots[i].owner === e) { en.G.scene.remove(en.shots[i].mesh); en.shots.splice(i, 1); }
@@ -1106,19 +1113,52 @@ export const MOVES = {
   // leaves at you that shoves you off course (see GUST). Attacks wait from the rear-up until the gust is gone.
   gust: {
     step(en, e, c) {
-      const m = e.mv ||= { tell: 0, gusts: 0, hits: 0, shoves: 0, beat: 0 };
+      const m = e.mv ||= { tell: 0, gusts: 0, hits: 0, shoves: 0, beat: 0 }, P = e.mesh.userData.perch;
+      if (P) { // on her oak, till you come near, hit her, or she tires of waiting
+        P.t += c.dt;
+        if (c.dist > PERCH.near && P.t < PERCH.wait && e.hp >= P.hp) { e.vel.set(0, 0, 0); e.pos.copy(P.at); return true; }
+        MOVES.gust.launch(en, e);
+        return true;
+      }
       if (!(m.tell > 0)) return false; // the plain orbit
       park(e, c.dt, 4); // she hovers while she rears up
       return true;
     },
-    hold: (e) => e.mv?.tell > 0 || !!e.mv?.band,
+    hold: (e) => e.mv?.tell > 0 || !!e.mv?.band || !!e.mesh.userData.perch,
+    // At spawn (Enemies.spawnBoss): a giant oak grows under her and she sits on its top, a little lower if need be.
+    spawn(en, e) {
+      const G = en.G, u = e.mesh.userData, { x, z } = e.pos, ground = G.terrain.surfaceHeight(x, z);
+      if (!Number.isFinite(ground) || ground < waterLine() + 2 || Number.isFinite(G.terrain.ceilingHeight(x, z, e.pos.y))) return;
+      const tree = makeHarvestOak(), feet = 3.3 * e.mesh.scale.x, top = tree.userData.perchY;
+      const k = THREE.MathUtils.clamp((e.pos.y - feet - ground) / top, PERCH.scale[0], PERCH.scale[1]);
+      tree.scale.setScalar(k);
+      tree.position.set(x, ground - 1, z);
+      tree.rotation.y = rand(0, TAU);
+      G.scene.add(tree);
+      u.tree = tree;
+      e.pos.y = ground - 1 + top * k + feet;
+      u.perch = { at: e.pos.clone(), t: 0, hp: e.hp, leaves: ground - 1 + tree.userData.canopyY * k };
+    },
+    // Off her perch: a hop up and toward you, a burst of leaves from the canopy, a hoot, wings beating hard.
+    launch(en, e) {
+      const G = en.G, u = e.mesh.userData, P = u.perch;
+      if (!P) return;
+      u.perch = null;
+      _a.copy(G.player.pos).sub(e.pos).setY(0);
+      if (_a.lengthSq() > 1) _a.normalize();
+      e.vel.set(0, PERCH.hop, 0).addScaledVector(_a, PERCH.hop * 0.6);
+      G.fx.emit(_b.set(e.pos.x, P.leaves, e.pos.z), 26, { colors: LEAF_COLORS, speed: 30, life: 1.4, size: 5 });
+      G.audio.tone(392, 0.22, { type: 'sine', vol: 0.07, slide: -40 }); // hoo
+      G.audio.tone(330, 0.45, { type: 'sine', vol: 0.07, slide: -50, delay: 0.3 }); // hooo
+      (e.owl ||= {}).launch = 0.9;
+    },
     attack(en, e, n) {
       const m = e.mv ||= { tell: 0, gusts: 0, hits: 0, shoves: 0, beat: 0 };
       const G = en.G, p = G.player;
       if (m.tell > 0 || m.band) return;
       if (n % (e.enraged ? 2 : 3) === 0) {
         m.tell = m.tell0 = !e.gustTip ? GUST.first : e.enraged ? GUST.tellRage : GUST.tell;
-        if (!e.gustTip) { e.gustTip = true; G.ui.notify('Gust incoming! Wings wide means a leaf storm: dodge sideways, over or under it.', 'warn', 4, 1); }
+        if (!e.gustTip) { e.gustTip = true; G.ui.notify('Gust incoming! Wings raised high means a leaf storm: dodge sideways, over or under it.', 'warn', 4, 1); }
         G.audio.tone(260, m.tell, { type: 'sine', vol: 0.05, slide: 420 }); // a rising whoosh
         return;
       }
@@ -1207,15 +1247,84 @@ export const MOVES = {
         leaves.instanceMatrix.needsUpdate = true;
         if (b.dist >= b.range) { m.band = null; leaves.visible = false; }
       }
-      // Wings: folded with a slow flap, spread wide while she rears up, swept down in the beat.
       if (m) m.beat = Math.max(0, (m.beat || 0) - dt);
-      const spread = m?.tell > 0 ? 1 - Math.max(0, m.tell - (m.tell0 - 0.4)) / 0.4 : 0;
-      u.wings.forEach((wg, k) => {
-        const sd = k ? 1 : -1, folded = -sd * (1.15 + 0.12 * Math.sin(e.t * 2.5));
-        const aim = m?.beat > 0 ? -sd * 1.4 : folded + (sd * 0.35 - folded) * spread;
-        wg.rotation.z += (aim - wg.rotation.z) * (1 - Math.exp(-dt * (m?.beat > 0 ? 16 : 7)));
-      });
+      if (u.perch && e.chase) MOVES.gust.launch(en, e); // a break pulls her off her oak too
+      MOVES.gust.fly(en, e, dt);
+      MOVES.gust.shade(en, e);
+      if (u.tree && (!u.perch && u.tree.position.distanceToSquared(p.pos) > PERCH.gone ** 2)) MOVES.gust.fell(en, e);
       u.chest.color.copy(m?.tell > 0 ? CHEST_HOT : CHEST);
+    },
+    // Her body language, every frame: she faces you (her chest stays in view), turning a little toward where she's going,
+    // banks into turns and pitches with her climb. Wings: perched folded; a few beats then a glide (flat, tips a touch
+    // up); in a rear-up raised high in a V, quivering, tail fanned, talons forward, leaning back; the beat sweeps down.
+    fly(en, e, dt) {
+      const u = e.mesh.userData, m = e.mv, o = (e.owl ||= {}), p = en.G.player, tell = m?.tell > 0, beat = m?.beat > 0, sit = !!u.perch;
+      const ease = (r) => 1 - Math.exp(-dt * r), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a)), clamp = THREE.MathUtils.clamp;
+      if (!o.init) Object.assign(o, { init: true, yaw: 0, roll: 0, pitch: 0, ph: 0, beats: 0, glide: 0, w: 1, acc: new THREE.Vector3(), v0: e.vel.clone(), blink: rand(2, 5), tilt: rand(6, 10), tiltK: 0, A: [-1.2, -1.2], H: [-0.5, -0.5], look: 0 });
+      e.mesh.rotation.order = 'YXZ';
+      const toYaw = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z), sp = Math.hypot(e.vel.x, e.vel.z);
+      if (dt > 0) { _a.subVectors(e.vel, o.v0).divideScalar(dt); o.acc.lerp(_a, ease(4)); o.v0.copy(e.vel); }
+      const lead = sit || tell || sp < 8 ? 0 : clamp(wrap(Math.atan2(e.vel.x, e.vel.z) - toYaw), -PERCH.bank, PERCH.bank) * Math.min(1, sp / 25);
+      o.yaw += wrap(toYaw + lead - o.yaw) * ease(sit ? 1.5 : 4);
+      const lat = o.acc.x * Math.cos(o.yaw) - o.acc.z * Math.sin(o.yaw); // toward her left (+X)
+      o.roll += ((sit || tell ? 0 : clamp(-lat / 28, -PERCH.bank, PERCH.bank)) - o.roll) * ease(3);
+      o.pitch += ((sit ? 0 : tell ? -PERCH.pitch : clamp(-e.vel.y / 70, -PERCH.pitch, PERCH.pitch)) - o.pitch) * ease(3);
+      e.mesh.rotation.set(o.pitch, o.yaw, o.roll);
+      // The wingbeat: 3 strokes, then a glide unless she needs the lift (taking off, climbing, slow).
+      o.launch = Math.max(0, (o.launch || 0) - dt);
+      const lift = o.launch > 0 || e.vel.y > 5 || e.vel.length() < 18;
+      if (o.glide > 0) { o.glide -= dt; if (lift) o.glide = 0; }
+      const flapping = !sit && !tell && !beat && o.glide <= 0;
+      if (flapping) {
+        const ph = o.ph + dt * TAU * (lift ? PERCH.flapUp : PERCH.flap);
+        if (Math.floor(ph / TAU) > Math.floor(o.ph / TAU) && ++o.beats >= PERCH.beats && !lift) { o.beats = 0; o.glide = rand(...PERCH.glide); }
+        o.ph = ph;
+      }
+      o.w += ((flapping ? 1 : 0) - o.w) * ease(6); // flap <-> glide eases over ~0.2 s
+      const S = Math.sin(o.ph), quiver = Math.sin(e.t * 40) * 0.04;
+      const [A, H, rate] = sit ? [-1.2, -0.5, 6]
+        : beat ? [-0.9, -0.2, 16]
+        : tell ? [1.05 + quiver, 0.25, 8]
+        : [0.1 * (1 - o.w) + (0.05 + 0.55 * S) * o.w, 0.06 * (1 - o.w) + 0.35 * Math.sin(o.ph - 0.9) * o.w, 20];
+      u.wings.forEach((wg, k) => {
+        const sd = k ? 1 : -1;
+        wg.rotation.z += (sd * A - wg.rotation.z) * ease(rate);
+        u.hands[k].rotation.z += (sd * H - u.hands[k].rotation.z) * ease(rate);
+      });
+      u.rig.position.y = flapping ? -0.22 * S * o.w : sit ? 0 : 0.08 * Math.sin(e.t * 1.3);
+      // Head: on you, level through her banks; perched she looks about while you're far. Now and then a curious tilt.
+      if (sit && e.pos.distanceTo(p.pos) > 500) o.look = Math.sin(e.t * 0.6) * 1.3; else o.look *= 1 - ease(3);
+      if ((o.tilt -= dt) <= 0) { o.tilt = rand(6, 10); o.tiltT = 0.9; }
+      o.tiltT = Math.max(0, (o.tiltT || 0) - dt);
+      o.tiltK += ((o.tiltT > 0 && !tell ? 0.35 : 0) - o.tiltK) * ease(5);
+      const hy = clamp(wrap(toYaw - o.yaw) + o.look, -1.9, 1.9);
+      u.head.rotation.set(-o.pitch * 0.6, u.head.rotation.y + (hy - u.head.rotation.y) * ease(6), -o.roll * 0.8 + o.tiltK);
+      if ((o.blink -= dt) <= 0) o.blink = rand(2, 5);
+      u.lids.forEach((l) => { l.visible = o.blink < 0.12; });
+      u.talons.rotation.x += ((sit ? 0 : tell ? -0.7 : 0.9) - u.talons.rotation.x) * ease(6);
+      const fan = tell ? 1.45 : sit ? 0.8 : 1 + 0.15 * (1 - o.w);
+      u.tail.scale.x += (fan - u.tail.scale.x) * ease(6);
+      u.tail.rotation.x += ((sit ? 0.45 : -o.pitch * 0.5 + 0.08 * S * o.w) - u.tail.rotation.x) * ease(6);
+    },
+    // Her shadow on the ground under her, softer and bigger as she climbs, gone over water or above ~200 m.
+    shade(en, e) {
+      const u = e.mesh.userData, G = en.G;
+      if (!u.owlShadow) {
+        u.owlShadow = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false }));
+        u.owlShadow.rotation.x = -Math.PI / 2;
+        G.scene.add(u.owlShadow);
+      }
+      const sh = u.owlShadow, land = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), h = e.pos.y - land, k = 1 - h / 200;
+      sh.visible = Number.isFinite(land) && land > waterLine() && k > 0.02;
+      if (!sh.visible) return;
+      sh.position.set(e.pos.x, land + 0.6, e.pos.z);
+      sh.scale.setScalar(e.radius * 0.7 * (1 + h / 600));
+      sh.material.opacity = 0.4 * Math.min(1, k * 1.5);
+    },
+    // Her oak goes (when she does, or once it's far behind you).
+    fell(en, e) {
+      const u = e.mesh.userData;
+      if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; }
     },
     // The leaves of a band: one instanced mesh per boss, made on the first gust and kept in the scene (dropBoss).
     leaves(en, e) {
