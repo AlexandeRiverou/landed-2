@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -29,6 +29,12 @@ const LAVA_FX = ['#ff6a1a', '#ffd23a', '#ff3a0a', '#3a1a10'];
 // where you'll be. Level wings = a flat fan (climb or dive out of it); wings on edge = an upright fan (turn out of it).
 // Each shard costs `dmg` and frosts `frost` of your boost tank. Enraged, a second fan in the other plane follows.
 export const SHARDS = { wind: 1.1, first: 1.8, shards: 7, min: 3, spread: 0.9, speed: 80, dmg: 14, frost: 0.35, color: '#4fc8ff' };
+
+// Pharaoh Scarabus's mirages (enemy-time s, rad, m): every 3rd attack two mirage copies shimmer in for `last` s
+// (`lastRage` enraged), at the boss's spot turned `turn` rad either way around you (up to `dy` m higher or lower); the real one takes any of the three spots. They copy its
+// volleys with harmless fake orbs; only the real one casts a shadow, and a hit on the real one pops them. A volley:
+// `orbs` orbs (`orbsHorn` once its horn is shot off), `dmg` each.
+export const MIRAGE = { last: 8, lastRage: 10, turn: 0.6, dy: 14, fadeIn: 0.5, fadeOut: 0.6, opacity: 0.75, orbs: 5, orbsHorn: 3, speed: 70, dmg: 8, spread: 0.1, color: '#ffb03a' };
 
 // ---------- small helpers ----------
 
@@ -276,6 +282,7 @@ export function endMoves(en, e) {
   en.hazards.clear(e);
   clearBlobs(en, e);
   popGuards(en, e);
+  if (e.mesh.userData.mirages) MOVES.mirage.hide(e);
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -284,6 +291,8 @@ export function dropBoss(en, e) {
   clearBlobs(en, e);
   if (e.stars) en.G.scene.remove(e.stars);
   if (e.beam) { en.G.scene.remove(e.beam); e.beam.material.dispose(); }
+  const u = e.mesh.userData;
+  if (u.free) for (const o of [...u.mirages, u.shadow]) { en.G.scene.remove(o); disposeTree(o); } // they live in the scene
 }
 function clearBlobs(en, e) {
   for (let i = en.shots.length - 1; i >= 0; i--) if (en.shots[i].owner === e) { en.G.scene.remove(en.shots[i].mesh); en.shots.splice(i, 1); }
@@ -976,6 +985,106 @@ export const MOVES = {
       const glow = m.wind > 0 ? 0.75 : 0.35;
       for (const mat of u.webs) mat.opacity += (glow - mat.opacity) * (1 - Math.exp(-dt * 5));
     },
+  },
+
+  // Pharaoh Scarabus (orbit): circles you like the classic bosses; every 3rd attack two mirage copies of it shimmer in
+  // (see MIRAGE). They fire fake orbs with its volleys; only the real one casts a shadow on the ground.
+  mirage: {
+    step(en, e, c) {
+      const m = e.mv ||= { mir: 0, hp0: 0, peak: 0, shown: 0 };
+      if (m.mir > 0) {
+        m.mir -= c.dt;
+        m.shown += c.dt;
+        m.peak = Math.max(m.peak, e.mesh.userData.mirages.filter((x) => x.visible).length);
+        if (e.hp < m.hp0 - 0.5) { // you hit the real one: the mirages pop
+          m.mir = 0;
+          for (const x of e.mesh.userData.mirages) if (x.visible) en.G.fx.emit(x.position, 18, { colors: ['#ffe8a0', '#ffd66a', '#bfefff'], speed: 25, life: 0.7, size: 6 });
+          en.G.ui.notify('Found the real one! The mirages pop.', 'good', 2, 0);
+          en.G.audio.tone(1600, 0.3, { type: 'sine', vol: 0.05, slide: -900 });
+        }
+      }
+      return false; // it keeps the plain orbit
+    },
+    // The attack: every 3rd one calls up the mirages (a shimmer, no shots); the others are volleys, copied by any mirages.
+    attack(en, e, n) {
+      const m = e.mv ||= { mir: 0, hp0: 0, peak: 0, shown: 0 };
+      if (n % 3 === 0 && !(m.mir > 0)) {
+        m.mir = e.enraged ? MIRAGE.lastRage : MIRAGE.last;
+        m.hp0 = e.hp;
+        m.shown = 0;
+        // Three spots: where it is, and that turned either way around you. A puff of sand on each, and the real one takes
+        // any of them (its orbit turns with it), the mirages the other two. So keeping your aim on it isn't enough.
+        const p = en.G.player, slots = [-MIRAGE.turn, 0, MIRAGE.turn], mine = slots[Math.floor(Math.random() * 3)];
+        for (const t of slots) en.G.fx.emit(_a.copy(e.pos).sub(p.pos).applyAxisAngle(Y, t).add(p.pos), 24, { colors: ['#e8c98a', '#d9b070', '#fff2c8'], speed: 30, life: 1, size: 9 });
+        if (mine) { e.pos.sub(p.pos).applyAxisAngle(Y, mine).add(p.pos); e.mesh.position.copy(e.pos); e.orbitPhase -= mine; }
+        m.offs = slots.filter((t) => t !== mine).map((t) => t - mine); // the mirages' turns from the real one
+        m.dy = [rand(-1, 1), rand(-1, 1)].map((k) => k * MIRAGE.dy); // and heights, so the real one isn't always in the middle
+        en.G.audio.tone(500, 0.7, { type: 'sine', vol: 0.05, slide: 700 });
+        if (!e.mirageTip) { e.mirageTip = true; en.G.ui.notify('Mirages! Only the real Sun Beetle casts a shadow.', 'warn', 4, 1); }
+        return;
+      }
+      const p = en.G.player, k = Math.max(0, e.broken?.horn || 0);
+      const orbs = k ? MIRAGE.orbsHorn : MIRAGE.orbs;
+      const volley = (from, fake) => {
+        const dist = from.distanceTo(p.pos);
+        const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / MIRAGE.speed) * 0.6);
+        for (let j = 0; j < orbs; j++) {
+          const d = _b.copy(at).sub(from).normalize().add(_c.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(MIRAGE.spread));
+          const shot = en.fireOrb(from, d, MIRAGE.speed, MIRAGE.dmg, MIRAGE.color, 1);
+          shot.src = e;
+          if (fake) { shot.fake = true; shot.owner = e; } // (owned: they go with the mirages on a breakaway)
+        }
+      };
+      volley(e.pos, false);
+      if (m.mir > 0) for (const x of e.mesh.userData.mirages) if (x.visible) volley(x.position, true);
+      en.G.audio.tone(420, 0.2, { type: 'triangle', vol: 0.06, slide: -200 });
+    },
+    // Where the mirages sit, how see-through they are, and the real one's shadow. Called every frame (animate).
+    pose(en, e, dt) {
+      const u = e.mesh.userData, p = en.G.player, m = e.mv;
+      if (!u.free) { // world-placed from now on, each mirage with a copy of its crown
+        const crown = u.parts.find((x) => x.name === 'crown')?.obj;
+        for (const x of u.mirages) {
+          if (crown) {
+            const c = makeCrown(e.def.crownS);
+            c.position.copy(crown.position);
+            c.traverse((o) => { const mt = o.material; if (mt && !x.userData.mats.includes(mt)) { mt.transparent = true; x.userData.mats.push(mt); } });
+            x.add(c);
+            x.userData.crown = c;
+          }
+          en.G.scene.add(x);
+        }
+        en.G.scene.add(u.shadow);
+        u.free = true;
+      }
+      const crownOn = !!u.parts.find((x) => x.name === 'crown' && !x.broken && x.obj.visible);
+      // The shadow: flat on the ground (or sea) under the real one, softer the higher it flies.
+      const ground = Math.max(en.G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), waterLine());
+      const h = Math.max(0, e.pos.y - ground), R = e.radius * 0.8;
+      u.shadow.visible = e.pos.y > ground;
+      u.shadow.position.set(e.pos.x, ground + 0.6, e.pos.z);
+      u.shadow.scale.setScalar(R * (1 + h / 600));
+      u.shadow.material.opacity = 0.42 * Math.max(0.6, 1 - h / 500);
+      // The mirages: its own spot turned around you, facing you like it does, fading in and out with a shimmer.
+      const left = m?.mir || 0, a = left <= 0 ? 0 : Math.min(1, (m.shown || 0) / MIRAGE.fadeIn, left / MIRAGE.fadeOut);
+      u.mirages.forEach((x, k) => {
+        x.visible = a > 0.01;
+        if (!x.visible) return;
+        _a.copy(e.pos).sub(p.pos).applyAxisAngle(Y, m.offs?.[k] ?? (k ? 1 : -1) * MIRAGE.turn);
+        x.position.copy(p.pos).add(_a);
+        x.position.y += m.dy?.[k] ?? 0;
+        x.scale.setScalar(e.mesh.scale.x * (1 + 0.03 * Math.sin(e.t * 7 + k * 2)));
+        x.lookAt(p.pos.x, x.position.y, p.pos.z);
+        const o = a * MIRAGE.opacity * (0.85 + 0.15 * Math.sin(e.t * 9 + k * 3));
+        for (const mat of x.userData.mats) mat.opacity = o;
+        x.userData.halo.material.opacity = 0.14 * a;
+        if (x.userData.crown) x.userData.crown.visible = crownOn; // knocked off the real one: gone from the mirages too
+      });
+      // Its wing cases hum, half open.
+      const f = Math.sin(e.t * 9) * 0.12;
+      u.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * f; });
+    },
+    hide(e) { for (const x of e.mesh.userData.mirages) x.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.

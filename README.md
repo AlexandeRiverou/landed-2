@@ -347,6 +347,14 @@ doesn't by itself, but flying on from where it put you does.
   over 0.9 rad, 14 a shard, and each shard that hits also frosts a third of your boost tank. Enraged, a second fan in
   the other plane follows. The crystals on her wingtips are weak spots: each one shot off means two shards fewer a fan
   (3 at least); the green core on her back is the other. 95 hp.
+- Pharaoh Scarabus, the Sun Beetle (an orbiting boss of the desert lands: Canyon Country, the Dune Sea, the Salt Mirror
+  and Mars; the deck brings it only there, and first there once the two openers are done): a giant golden scarab
+  carrying a sun-disc. Most attacks are a volley of 5 orbs (8 each) at where you're heading. Every 3rd attack two mirage
+  copies shimmer in instead (for 8 s, 10 enraged): sand puffs on its spot and that spot turned 0.6 rad either way around
+  you, and the real one takes any of the three. The mirages copy its volleys with fake orbs that do nothing, and the
+  boss arrow and marker hide while they're up. Only the real one casts a shadow on the ground (a tip says so the first
+  time), and one hit on the real one pops the mirages. Its horn is breakable (a volley is 3 orbs without it, and it costs it
+  4%); the sun-disc is the weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
@@ -582,7 +590,7 @@ Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, s
 card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 18, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
+- **Bosses:** start any of the 19, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
   (where there is none, King Drone comes instead and you get a notice). HMS Overkill always comes: the menu finds open
   sea round you (up to 6 km out) and puts you 600 m off it, or, in a zone with none, flies you to the Tropical
   Archipelago first. Magmadora always comes too: the menu flies you to Volcano Land and puts you 300 m off a lava sea.

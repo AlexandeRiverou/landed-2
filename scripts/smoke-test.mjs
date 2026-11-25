@@ -944,6 +944,43 @@ try {
       r.noCrystals = fan()?.shards ?? 0;
       return r;
     };
+    // Pharaoh Scarabus: every 3rd attack two mirages shimmer in, well apart from it; only the real one has a shadow, flat on
+    // the ground under it; a mirage's orb is harmless, a real one hurts; a hit on the real one pops the mirages; with its
+    // horn shot off a volley is 3 orbs.
+    const beetleChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, r = {};
+      const fly = (n, until = () => false) => { for (let i = 0; i < n; i++) { p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1); if (until()) return true; } return false; };
+      const volley = () => { const shots0 = new Set(G.enemies.shots); let fresh = []; fly(30 * 10, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).some((x) => !x.fake)); return fresh; };
+      r.up = fly(30 * 15, () => u.mirages.every((x) => x.visible));
+      if (!r.up) return r;
+      fly(15); // past the fade-in
+      r.mirages = u.mirages.filter((x) => x.visible).length;
+      r.gap = Math.round(Math.min(...u.mirages.map((x) => x.position.distanceTo(e.pos))));
+      r.away = Math.round(e.pos.distanceTo(p.pos));
+      const ground = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y), G.world.underwater ? -Infinity : G.world.seaLevel);
+      r.shadow = { on: u.shadow.visible, off: +Math.hypot(u.shadow.position.x - e.pos.x, u.shadow.position.z - e.pos.z).toFixed(1), above: +(u.shadow.position.y - ground).toFixed(1) };
+      const v = volley();
+      r.fake = v.filter((x) => x.fake).length; r.real = v.filter((x) => !x.fake).length;
+      const onYou = (shot) => {
+        if (!shot || !G.enemies.shots.includes(shot)) return null;
+        p.health = p.maxHealth; p.invuln = 0; p.dodging = false;
+        shot.pos.copy(p.pos);
+        G.enemies.updateShots(0);
+        const lost = +(p.maxHealth - p.health).toFixed(1);
+        p.health = p.maxHealth; p.invuln = 99;
+        return lost;
+      };
+      r.fakeHurt = onYou(v.find((x) => x.fake));
+      r.realHurt = onYou(v.find((x) => !x.fake));
+      // A hit on the real one (its hull): the mirages pop.
+      if (!u.mirages.some((x) => x.visible)) fly(30 * 15, () => u.mirages.every((x) => x.visible));
+      r.before = u.mirages.filter((x) => x.visible).length;
+      e.hp = e.maxHp - 3; p.grace = 1; step(2);
+      r.after = u.mirages.filter((x) => x.visible).length;
+      for (const h of u.parts.filter((x) => x.name === 'horn')) { let n = 0; while (!h.broken && n < 60) { G.enemies.damagePart(e, h, 1, h.obj.getWorldPosition(new V())); n++; } r.hornHits = n; }
+      r.noHorn = volley().filter((x) => !x.fake).length;
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -964,7 +1001,7 @@ try {
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = kind === 'auroraRay' && place();
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -977,6 +1014,7 @@ try {
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
       if (kind === 'auroraRay' && e.kind === kind) out.ray = rayChecks(e);
+      if (kind === 'sunBeetle' && e.kind === kind) out.beetle = beetleChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1012,6 +1050,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'auroraRay'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Frozen Peaks');
       L.rayHome = draw();
+      // Pharaoh Scarabus in the desert lands.
+      O.bossDeck = ['sunBeetle', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.beetleElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'sunBeetle'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Dune Sea');
+      L.beetleHome = draw();
       G.zones.index = saved.zone;
       Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
       Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
@@ -1135,6 +1180,7 @@ try {
           S.hazards = M.hazards.length - h0;
           S.attacks = e.attacks; // context when a signature is missing
           if (e.mv?.fired !== undefined) S.fans = e.mv.fired;
+          if (e.mv?.peak !== undefined) S.mirage = e.mv.peak;
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -4780,6 +4826,8 @@ try {
       const h = r?.fans?.find((f) => f.plane === 'h'), v = r?.fans?.find((f) => f.plane === 'v');
       return h && v && [h, v].every((f) => f.shards === 7 && f.wound >= 1 && f.wound <= 2.5 && f.frost > 0) && h.spreadY < 0.3 && v.spreadY > 0.7 && h.roll < 0.3 && v.roll > 1.3 && r.hit && r.hit.hull > 0 && r.hit.boost <= 0.7 && r.crystalHits >= 1 && r.crystalHits <= 12 && r.noCrystals === 3;
     })(report), `Glacierra: a shard fan comes 1-2.5 s after she lines her wings up, 7 shards; wings level = a flat fan, wings on edge = an upright one; a shard hurts and frosts a third of the boost; with both wingtip crystals gone a fan is 3 shards (${JSON.stringify(report.ray)})`],
+    [(({ beetle: b }) => b?.up && b.mirages === 2 && b.gap >= 10 && b.gap >= b.away * 0.4 && b.shadow.on && b.shadow.off < 1 && b.shadow.above >= 0 && b.shadow.above < 2 && b.real === 5 && b.fake >= 5 && b.fakeHurt === 0 && b.realHurt > 0 && b.before === 2 && b.after === 0 && b.hornHits >= 1 && b.hornHits <= 12 && b.noHorn === 3)(report), `Pharaoh Scarabus: two mirages shimmer in well apart from it; only it casts a shadow, flat on the ground under it; mirages copy its 5-orb volleys with fake orbs that don't hurt (real ones do); a hit on it pops the mirages; with its horn shot off a volley is 3 orbs (${JSON.stringify(report.beetle)})`],
+    [(({ lands: l }) => l && l.beetleElsewhere === 'gooseQueen' && l.beetleHome === 'sunBeetle')(report.serpent || {}), `Pharaoh Scarabus only comes in the desert lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.rayElsewhere === 'gooseQueen' && l.rayHome === 'auroraRay')(report.serpent || {}), `Glacierra only comes in the cold lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.elsewhere === 'gooseQueen' && l.waits && l.topUp !== 'lavaSerpent' && l.home === 'lavaSerpent')(report.serpent || {}), `Magmadora only comes in Volcano Land (another boss comes elsewhere, she waits in the deck, a deck of only her tops up), and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
@@ -4791,7 +4839,7 @@ try {
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
-        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans),
+        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2,
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);

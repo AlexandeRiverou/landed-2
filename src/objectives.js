@@ -727,7 +727,11 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
     hints: ['Keep shooting (Space or click). Bosses are big, aim is optional.', 'Weave left and right to dodge the orbs.', 'Break away to patch up: fly off and your hull mends faster while the boss can\'t reach you.', 'Glowing parts are weak spots. Knock the crown off for extra damage.'],
     target() {
       let best = null, bd = Infinity;
-      for (const e of alive()) { const d = e.pos.distanceToSquared(G.player.pos); if (d < bd) { bd = d; best = e; } }
+      for (const e of alive()) {
+        if (e.mv?.mir > 0) continue; // Pharaoh Scarabus's mirages are up: no arrow to give the real one away
+        const d = e.pos.distanceToSquared(G.player.pos);
+        if (d < bd) { bd = d; best = e; }
+      }
       return best ? best.pos : null;
     },
     onUpdate(dt, G) {

@@ -1321,6 +1321,60 @@ export function makeAuroraRay(hat) {
   return g;
 }
 
+// Pharaoh Scarabus (desert lands): a giant flying scarab, gold shell over teal, a carved horn and a sun-disc between its
+// horns. Two mirage copies ride along hidden (userData.mirages: see MOVES.mirage), made of the same parts in see-through
+// shimmer; only the real one casts the shadow disc on the ground (userData.shadow).
+function scarabBody(g, mat, real) {
+  const { shell, shell2, belly, dark, gold, sun, eye } = mat;
+  add(g, Sph(2.2, 10, 7), belly, { y: -0.2, s: [1, 0.55, 1.25] }); // underside
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    w.position.set(sd * 0.05, 0.35, 0.2);
+    add(w, Sph(2.1, 10, 7), sd < 0 ? shell : shell2, { x: sd * 1.05, s: [0.55, 0.42, 1.25] }); // the elytra halves
+    add(w, Box(0.12, 0.1, 4.6), gold, { x: sd * 0.08, y: 0.85 }); // gold seam
+    g.add(w);
+    return w;
+  });
+  add(g, Sph(1.15, 8, 6), dark, { z: 2.7, y: 0.1, s: [1.1, 0.7, 0.8] }); // head
+  const horn = add(g, Cone(0.45, 2.4, 6), gold, { z: 3.6, y: 0.9, rx: -0.5 });
+  const disc = add(g, Cyl(1, 1, 0.25, 12), sun, { z: 3.3, y: 2.3, rx: PI / 2 }); // the sun-disc it carries
+  for (const sd of [-1, 1]) {
+    add(g, Sph(0.28, 6, 4), eye, { x: sd * 0.55, y: 0.35, z: 3.45 }); // eyes
+    for (let k = 0; k < 3; k++) add(g, Cyl(0.12, 0.08, 2, 4), dark, { x: sd * 1.9, y: -0.7, z: 1.3 - k * 1.3, rz: sd * 1.1, rx: (k - 1) * 0.3 }); // legs
+  }
+  return { wings, horn, disc, real };
+}
+export function makeSunBeetle(hat) {
+  const g = new THREE.Group();
+  const look = () => ({ shell: lam('#e0a42a', { emissive: '#3a2200' }), shell2: lam('#d08e1a', { emissive: '#331c00' }), belly: lam('#1f6f6a'), dark: lam('#24333a'), gold: lam('#ffd66a', { emissive: '#4a3200' }), sun: basic('#ffb03a'), eye: basic('#ffe066') });
+  const real = scarabBody(g, look(), true);
+  weak(g, real.disc, 1.4, 3); // the sun-disc is the soft spot
+  breakable(g, real.horn, 1.1, 'horn', 2); // a horn shot off: smaller volleys
+  // Mirages: same body, see-through and a little washed out (they shimmer, see MOVES.mirage.pose).
+  const mirages = [0, 1].map(() => {
+    const m = new THREE.Group(), mats = look();
+    for (const mat of Object.values(mats)) Object.assign(mat, { transparent: true, opacity: 0.75 });
+    const body = scarabBody(m, mats, false);
+    // The same faint halo as the real one's soft spot (no part: shots go straight through a mirage).
+    const halo = new THREE.Mesh(Sph(1, 12, 8), new THREE.MeshBasicMaterial({ color: '#ffc070', transparent: true, opacity: 0.14, depthWrite: false }));
+    halo.scale.setScalar(1.4 * 1.15);
+    body.disc.add(halo);
+    m.visible = false;
+    Object.assign(m.userData, { mats: Object.values(mats), halo });
+    g.add(m);
+    return m;
+  });
+  // The real one's shadow on the ground: a soft dark disc, kept flat and under it (see MOVES.mirage.pose).
+  const shadowGeo = new THREE.CircleGeometry(1, 20);
+  shadowGeo.rotateX(-PI / 2);
+  const shadow = new THREE.Mesh(shadowGeo, basic('#000000', { transparent: true, opacity: 0.35, depthWrite: false }));
+  shadow.visible = false;
+  g.add(shadow);
+  Object.assign(g.userData, { wings: real.wings, scarab: true, mirages, shadow, crownOn: g });
+  if (hat) partyHat(g, 1.6);
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {
