@@ -968,7 +968,11 @@ try {
       const volley = () => { const shots0 = new Set(G.enemies.shots); let fresh = []; fly(30 * 10, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).some((x) => !x.fake)); return fresh; };
       r.up = fly(30 * 15, () => u.mirages.every((x) => x.visible));
       if (!r.up) return r;
-      fly(15); // past the fade-in
+      fly(14); // past the fade-in
+      // Measured from a fair range: the loop flies you straight at it, and from right on top of it its mirages (its spot
+      // turned round you) can't be far from it either.
+      { const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z); if (d.lengthSq() < 1) d.set(1, 0, 0); p.pos.copy(e.pos).addScaledVector(d.normalize(), 150); p.prevPos.copy(p.pos); }
+      fly(1);
       r.mirages = u.mirages.filter((x) => x.visible).length;
       r.gap = Math.round(Math.min(...u.mirages.map((x) => x.position.distanceTo(e.pos))));
       r.away = Math.round(e.pos.distanceTo(p.pos));
@@ -1027,10 +1031,12 @@ try {
         p.pos.y = p.prevPos.y = ground + lift;
         p.gust.set(0, 0, 0); p.wind.set(1, 0, 2); p.invuln = 0;
         const put = () => b.at.copy(p.pos).addScaledVector(b.dir, -(b.dist + 3)); // the band's middle 3 m behind them
+        g.pre = b.hit; b.hit = false; b.prev = Infinity; // a fresh band (it may have brushed the plane as it came out)
         put();
         const speed0 = p.speed;
         p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable, and a gust leaves an invulnerable plane alone
         g.hit = e.mv.hits - hits;
+        g.dead = p.dead;
         g.push = +p.gust.length().toFixed(1);
         g.flatY = +Math.abs(p.gust.y).toFixed(2);
         g.slowed = +(speed0 - p.speed).toFixed(1);
@@ -1115,6 +1121,10 @@ try {
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
+      // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him): give him open sky for his
+      // turn, whatever land the loop has reached by now.
+      const roof = kind === 'toadBaron' && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
+      if (roof) Object.assign(G.world, { cave: 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl') && place();
@@ -1127,14 +1137,14 @@ try {
       const owlFly = kind === 'harvestOwl' && e.kind === kind && (() => {
         const u = e.mesh.userData, a = e.anchor, T = u.tree, sea = G.world.underwater ? -Infinity : G.world.seaLevel;
         const dry = G.terrain.surfaceHeight(a.x, a.z) > sea + 2 && !Number.isFinite(G.terrain.ceilingHeight(a.x, a.z, a.y));
-        return { tree: !!T, dry, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, launch: -1, wing: [9, -9], bank: 0, shadow: null, crab: 0, backward: 0 };
+        return { tree: !!T, dry, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, launch: -1, wing: [9, -9], bank: 0, shadow: null, crab: 0, backward: 0, bumped: 0 };
       })();
       // Count Ribbiton starts on top of his giant toadstool (rooted in the ground), then hops: each hop clears the ground
       // (apex 30-70 m over a straight line, higher only to clear a hill), lands him on dry ground (feet on it), never
       // attacks in the air, and his shadow lies on the ground under him.
       const toadHop = kind === 'toadBaron' && e.kind === kind && (() => {
         const u = e.mesh.userData, T = u.tree;
-        return { tree: !!T, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, hops: 0, apex: [Infinity, -Infinity], feet: 0, wet: 0, airAttacks: 0, shadow: null };
+        return { zone: roof.zone, tree: !!T, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, hops: 0, apex: [Infinity, -Infinity], feet: 0, wet: 0, airAttacks: 0, shadow: null };
       })();
       for (let i = 0; i < 30 * 10; i++) {
         G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(swim ? e.pos.clone().setY(G.world.seaLevel + 90) : e.pos, 2, 1 / 30); step(1);
@@ -1145,7 +1155,9 @@ try {
           if (!u.perch) { owlFly.wing[0] = Math.min(owlFly.wing[0], +w.toFixed(2)); owlFly.wing[1] = Math.max(owlFly.wing[1], +w.toFixed(2)); }
           owlFly.bank = Math.max(owlFly.bank, +Math.abs(e.mesh.rotation.z).toFixed(3));
           // Flying at speed (not rearing up), her body points within ~80° of where she's going: never tail first.
-          if (!u.perch && !(e.mv?.tell > 0) && Math.hypot(e.vel.x, e.vel.z) > 24) {
+          // (Not just after you bumped into her: the bump knocks her back, tail first.)
+          if ((e.contactCd || 0) > 0.8) owlFly.bumped++;
+          else if (!u.perch && !(e.mv?.tell > 0) && Math.hypot(e.vel.x, e.vel.z) > 24) {
             const d = Math.abs(Math.atan2(Math.sin(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z)), Math.cos(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z))));
             owlFly.crab = Math.max(owlFly.crab, Math.round((d * 180) / Math.PI));
             if (d > 1.4) owlFly.backward++;
@@ -1181,6 +1193,7 @@ try {
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
       if (spot0) putBack(spot0);
+      if (roof) { const { zone, ...flags } = roof; Object.assign(G.world, flags); }
       if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
@@ -4840,11 +4853,12 @@ try {
       // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
       // back into the leg after the shove.
       const v0 = p.speed, w0 = p.wind.clone();
-      p.speed = 0.001; p.wind.set(0, 0, 0);
+      const gust0 = p.gust.length();
+      p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
       put(a.R, a.spring * 0.5, 0); // inside a leg
       G.step(1 / 30);
       const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2) };
+      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead };
       p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
@@ -4865,6 +4879,7 @@ try {
       hits.length = 0;
       const s4 = G.score, w = SP.spawnWhale(t.x, t.z, 1.2), side = new t.constructor(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
       jump(w, () => p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8));
+      out.whaleWhy = { zone: G.zones.current.name, kind: SP.kind, dead: p.dead, stale: !!G.terrain.stale, sea: G.world.seaLevel };
       out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length, downed: out.whaleDead };
       hits.length = 0;
       const w2 = SP.spawnWhale(t.x, t.z, 1.2);
@@ -5351,7 +5366,7 @@ try {
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
     [(({ setPieces: q }) => q.mill && !q.shroomMill && !q.beltMill && q.millGrounded && q.sails?.threaded && q.sails.score >= 25 && q.sails.score < 50 && q.sails.hits === 0 && q.sail?.hits === 1 && q.sail.off)(report), `set pieces: the Autumn Woods has its great windmill (no other land does), sunk into the ground; slipping between its turning sails is +25 once with no bump, a sail is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { mill: report.setPieces.mill, shroom: report.setPieces.shroomMill, belt: report.setPieces.beltMill, grounded: report.setPieces.millGrounded, sails: report.setPieces.sails, sail: report.setPieces.sail })})`],
     [(({ setPieces: q }) => q.shrooms >= 1 && q.tropicShrooms === 0 && q.beltShrooms === 0 && q.boing?.lifted && q.boing.score >= 15 && q.boing.score < 30 && q.boing.again === q.boing.score && q.boing.rise > 10 && q.boing.nose > 0.1 && q.boing.hits === 0)(report), `set pieces: the Mushroom Forest has giant bounce mushrooms (no other land does); touching a cap boings you up with the nose lifted, +15 once per mushroom, and never hurts (${JSON.stringify(report.setPieces && { shrooms: report.setPieces.shrooms, tropic: report.setPieces.tropicShrooms, belt: report.setPieces.beltShrooms, boing: report.setPieces.boing })})`],
-    [(({ setPieces: q }) => q.whales >= 1 && q.frozenWhales === 0 && q.beltWhales === 0 && q.pass?.passed && q.pass.splashed && q.pass.gone && q.pass.score >= 25 && q.pass.score < 50 && q.pass.hits === 0 && q.ram?.hits === 1 && q.ram.off)(report), `set pieces: the Tropical Archipelago has breaching whales (no other land does); skimming past one in the air is +25 once, it splashes back down and goes; flying into one is one knock per jump and you're shoved clear (${JSON.stringify(report.setPieces && { whales: report.setPieces.whales, frozen: report.setPieces.frozenWhales, belt: report.setPieces.beltWhales, pass: report.setPieces.pass, ram: report.setPieces.ram })})`],
+    [(({ setPieces: q }) => q.whales >= 1 && q.frozenWhales === 0 && q.beltWhales === 0 && q.pass?.passed && q.pass.splashed && q.pass.gone && q.pass.score >= 25 && q.pass.score < 50 && q.pass.hits === 0 && q.ram?.hits === 1 && q.ram.off)(report), `set pieces: the Tropical Archipelago has breaching whales (no other land does); skimming past one in the air is +25 once, it splashes back down and goes; flying into one is one knock per jump and you're shoved clear (${JSON.stringify(report.setPieces && { whales: report.setPieces.whales, frozen: report.setPieces.frozenWhales, belt: report.setPieces.beltWhales, pass: report.setPieces.pass, ram: report.setPieces.ram, why: report.setPieces.whaleWhy })})`],
     [(({ setPieces: q }) => q.arches >= 1 && q.moonArches === 0 && q.beltArches === 0 && q.thread?.threaded && q.thread.score >= 30 && q.thread.score < 60 && q.thread.hits === 0 && q.leg?.hits === 1 && q.leg.off)(report), `set pieces: Frozen Peaks has ice arches (no other land does); threading one is +30 once with no bump, a leg is solid: one knock and you're shoved off (${JSON.stringify(report.setPieces && { arches: report.setPieces.arches, moon: report.setPieces.moonArches, belt: report.setPieces.beltArches, thread: report.setPieces.thread, leg: report.setPieces.leg })})`],
     [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
     [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore >= 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
