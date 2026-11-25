@@ -131,9 +131,12 @@ try {
       try { return update(...args); } finally { if (had) Object.defineProperty(performance, 'now', had); else delete performance.now; }
     };
     window.__smokeAside(window.G.audio, 'update'); // the music rolls its notes when the audio clock says it's time
-    // The Autumn Woods' windmill (land 2, flown through by many early checks) rolls its spot and its leaves aside, so it
-    // can't shift the rolls those checks were tuned on.
-    for (const k of ['placeMill', 'updateMill']) window.__smokeAside(window.G.zones.setPieces, k);
+    // The Autumn Woods' windmill (land 2, flown through by many early checks) stays out of them until its own check sets
+    // __smokeMill, like the hidden finds above: no tower in the way of a boss fight, no rolls taken from the stream those
+    // checks were tuned on. Once on, it rolls its spot and its leaves aside.
+    const SP = window.G.zones.setPieces, updateMill = SP.updateMill;
+    SP.updateMill = function (dt) { if (window.__smokeMill) return updateMill.call(this, dt); };
+    for (const k of ['placeMill', 'updateMill']) window.__smokeAside(SP, k);
   });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
@@ -4815,6 +4818,7 @@ try {
     // one knock, and you're shoved clear.
     const { MILL } = await import('./src/setpieces.js');
     out.shroomMill = !!SP.millInfo;
+    window.__smokeMill = true;
     into('Autumn Woods');
     for (let k = 0; k < 40 && !SP.millInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
     const mill = SP.millInfo;
