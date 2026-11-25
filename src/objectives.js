@@ -190,7 +190,7 @@ export function mkChain(G, style = 'slalom') {
   const side = new THREE.Vector3(-dir.z, 0, dir.x);
   const axis = p.clone();
   for (let k = 0; k < n; k++) {
-    const r = makeRing(15, k === 0 ? '#ffc23a' : '#7ad8ff');
+    const r = dressRing(makeRing(15, k === 0 ? '#ffc23a' : '#7ad8ff'), style, k * 0.37);
     r.position.copy(p);
     G.scene.add(r);
     rings.push(r);

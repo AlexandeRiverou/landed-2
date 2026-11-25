@@ -1559,7 +1559,11 @@ export function setRingColor(ring, color) {
 //   timed:  a clock, twelve ticks and an outer arc that drains clockwise as time runs out (u.timeFrac, 0..1)
 //   moving: a pair of feathered wings that flap
 //   shrink: eight chevrons that keep sliding inward
-export function dressRing(ring, style) {
+// Ring chains (they keep gold = next, blue = later; the extras are neutral so they suit both colours):
+//   slalom: a fluttering pennant   trial: two crossed chequered flags   spiral: swirl arcs chasing round the rim
+//   stairs / dive: soft chevrons above / below that drift the way to fly
+// phase0 offsets the animation so the rings of one chain don't move in lockstep.
+export function dressRing(ring, style, phase0 = 0) {
   const u = ring.userData, R = u.R, color = u.mat.color;
   const rim = R + Math.max(1, R * 0.09); // outer edge of the tube
   const soft = (opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -1622,6 +1626,52 @@ export function dressRing(ring, style) {
         c.position.set(Math.cos(c.userData.a) * r, Math.sin(c.userData.a) * r, 0);
       }
       chevMat.opacity = 0.6 * Math.sin(phase * PI);
+    };
+  } else if (style === 'slalom') {
+    // A slalom gate: a pennant on a short pole above the rim, fluttering.
+    const pole = new THREE.Group();
+    pole.position.y = rim;
+    add(pole, Cyl(0.25, 0.25, R * 0.45), basic('#ffffff'), { y: R * 0.22 });
+    const flagGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -R * 0.2, 0), new THREE.Vector3(R * 0.38, -R * 0.1, 0)]);
+    flagGeo.computeVertexNormals();
+    const flag = add(pole, flagGeo, lam('#ff5a4a', { side: THREE.DoubleSide, emissive: '#801808' }), { x: 0.2, y: R * 0.44 });
+    dress.add(pole);
+    u.dress = (dt, t) => { flag.rotation.y = Math.sin(t * 5 + phase0) * 0.45; };
+  } else if (style === 'trial') {
+    // A race: two small chequered flags crossed above the rim.
+    const flags = [-1, 1].map((side) => {
+      const f = new THREE.Group();
+      f.position.set(side * R * 0.12, rim, 0);
+      f.rotation.z = side * -0.4;
+      add(f, Cyl(0.22, 0.22, R * 0.5), basic('#ffffff'), { y: R * 0.25 });
+      const sq = R * 0.09, black = basic('#202020'), white = basic('#f4f4f4');
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+        add(f, Box(sq, sq, 0.2), (i + j) % 2 ? black : white, { x: side * (0.3 + sq * (i + 0.5)), y: R * 0.5 - sq * (j + 0.5) });
+      }
+      dress.add(f);
+      return f;
+    });
+    u.dress = (dt, t) => { flags.forEach((f, k) => { f.rotation.y = Math.sin(t * 4 + k + phase0) * 0.25; }); };
+  } else if (style === 'spiral') {
+    // A corkscrew: three soft swirl arcs that chase each other round the rim.
+    u.studs.visible = false;
+    const swirl = new THREE.Group(), swirlMat = soft(0.45);
+    for (let k = 0; k < 3; k++) add(swirl, Tor(rim + 2.5, 0.4, 4, 10, PI * 0.38), swirlMat, { rz: (k / 3) * PI * 2 });
+    dress.add(swirl);
+    u.dress = (dt, t) => { swirl.rotation.z -= dt * 1.6; swirlMat.opacity = 0.35 + Math.sin(t * 2 + phase0) * 0.1; };
+  } else if (style === 'stairs' || style === 'dive') {
+    // A climb or a dive: three soft chevrons above (or below) the rim that keep drifting the way to fly.
+    u.studs.visible = false;
+    const up = style === 'stairs' ? 1 : -1, arrowMat = soft(0.55), arrows = [];
+    for (let k = 0; k < 3; k++) {
+      const c = add(dress, Cone(R * 0.16, R * 0.16, 4), arrowMat, { rz: up > 0 ? 0 : PI });
+      c.scale.set(1, 1, 0.25);
+      arrows.push(c);
+    }
+    u.dress = (dt, t) => {
+      const phase = (t * 0.7 + phase0) % 1;
+      arrows.forEach((c, k) => { c.position.y = up * (rim + R * (0.2 + 0.22 * (k + phase))); });
+      arrowMat.opacity = 0.55 * Math.sin(phase * PI);
     };
   }
   return ring;
