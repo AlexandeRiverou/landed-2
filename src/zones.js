@@ -65,7 +65,7 @@ export const ZONES = [
   {
     name: 'Tropical Archipelago', blurb: 'A thousand islands, palm trees, and suspiciously calm whales.',
     world: { palette: 'Deep Jungle', seaLevel: 70, propTheme: 'tropical', tempBias: -0.1 },
-    sky: 'sunset', weather: 'clear', clouds: ['#ffd8c0', 35], mood: 'day', lock: LOCK,
+    sky: 'sunset', weather: 'clear', clouds: ['#ffd8c0', 35], mood: 'day', setPiece: 'whales', lock: LOCK,
   },
   {
     name: 'Metropolis', blurb: 'Skyscrapers at golden hour. The avenues are wide, the alleys are a dare, and the windows are very clean. Keep them that way.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
