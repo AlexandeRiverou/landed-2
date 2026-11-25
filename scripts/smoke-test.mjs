@@ -948,8 +948,16 @@ try {
     // the ground under it; a mirage's orb is harmless, a real one hurts; a hit on the real one pops the mirages; with its
     // horn shot off a volley is 3 orbs.
     const beetleChecks = (e) => {
-      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, r = {};
-      const fly = (n, until = () => false) => { for (let i = 0; i < n; i++) { p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1); if (until()) return true; } return false; };
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, r = { deaths: 0 };
+      // Kept near it (as the boss loop flies), and back in the air if the plane crashed: a dead plane draws no attacks.
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          if (p.dead) { r.deaths++; p.spawn(e.pos.x + 150, e.pos.z); p.invuln = 99; }
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; p.nudgeToward(e.pos, 2, 1 / 30); step(1);
+          if (until()) return true;
+        }
+        return false;
+      };
       const volley = () => { const shots0 = new Set(G.enemies.shots); let fresh = []; fly(30 * 10, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).some((x) => !x.fake)); return fresh; };
       r.up = fly(30 * 15, () => u.mirages.every((x) => x.visible));
       if (!r.up) return r;
