@@ -153,12 +153,12 @@ export const ZONES = [
   {
     name: 'The Moon', blurb: 'Craters, dust and a great view of home. Mind the boulders.',
     world: { palette: 'lunar', craters: 1, seaLevel: -400, amp: 0.7, terrace: 0, canyon: 0, mesa: 0, spikes: 0.3, propTheme: 'lunar', propDensity: 0.5, floatingIslands: 0, tempBias: -1 },
-    sky: 'space', weather: 'clear', clouds: ['#ffffff', 0], mood: 'space', decor: 'earthrise', asteroids: 6, lock: SPACE_LOCK,
+    sky: 'space', weather: 'clear', clouds: ['#ffffff', 0], mood: 'space', decor: 'earthrise', asteroids: 6, setPiece: 'meteors', lock: SPACE_LOCK,
   },
   {
     name: 'Mars', blurb: 'Red dust, deep canyons, two tiny moons and zero Wi-Fi.',
     world: { palette: 'Mars Vacation', craters: 0.6, amp: 1.1, canyon: 1.2, mesa: 1.2, seaLevel: -60, propTheme: 'lunar', propDensity: 0.4, floatingIslands: 0, balloons: 0, tempBias: 0.6 },
-    sky: 'mars', weather: 'dust', clouds: ['#f0c8a0', 8], fog: 0.8, mood: 'dusk', decor: 'marsMoons', lock: [...LOCK, 'weather', 'sea', 'islands'],
+    sky: 'mars', weather: 'dust', clouds: ['#f0c8a0', 8], fog: 0.8, mood: 'dusk', decor: 'marsMoons', setPiece: 'meteors', lock: [...LOCK, 'weather', 'sea', 'islands'],
   },
   {
     name: 'Planet Pebble', blurb: 'A planet so small you can watch it curve away. Try not to fall off.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })

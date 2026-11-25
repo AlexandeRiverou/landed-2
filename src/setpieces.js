@@ -1,4 +1,5 @@
-// Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, and Princess Kingdom's castle.
+// Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle, and
+// meteors falling onto the Moon and Mars.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -35,6 +36,24 @@ export const CASTLE = {
   gateScore: 50,
 };
 
+// Meteors (The Moon, Mars): every few seconds a burning rock streaks down at the ground somewhere ahead. A faint ring
+// marks where it will land. Shoot it on the way down for points; left alone it digs a crater, and the blast hurts if
+// you're close. Flying into one hurts too.
+export const METEOR = {
+  first: [3, 6],         // s before the first one in a land
+  every: [5, 9],         // s between meteors
+  max: 3,                // in the air at once
+  ahead: [320, 700],     // where it lands, ahead of the player
+  height: 420,           // starts this high above its landing spot
+  speed: 95,             // m/s on the way down
+  size: [5, 8],
+  hp: 2,
+  score: 20,             // shot down
+  crater: [20, 7],       // radius, depth
+  blast: 34,             // the impact hurts within this
+  dmg: 8,                // x1.5 enemy damage = 12 hull (impact blast or ramming one)
+};
+
 const _local = new THREE.Vector3();
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
 const SMOKE = ['#3a3030', '#4a4040', '#5a504c'];
@@ -44,6 +63,13 @@ export class SetPieces {
     this.G = G;
     this.kind = null;
     this.list = [];
+    this.meteors = [];
+    this.meteorT = 0;
+    this.meteorGeo = new THREE.DodecahedronGeometry(1, 0);
+    this.meteorRock = new THREE.MeshLambertMaterial({ color: '#4a3a34', flatShading: true });
+    this.meteorCore = new THREE.MeshBasicMaterial({ color: '#ff7a2a', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.ringGeo = new THREE.RingGeometry(0.82, 1, 32);
+    this.ringGeo.rotateX(-Math.PI / 2);
     this.tip = false;
     this.rock = new THREE.MeshLambertMaterial({ color: '#2e2426', flatShading: true });
     this.rock2 = new THREE.MeshLambertMaterial({ color: '#3c2e2c', flatShading: true });
@@ -62,6 +88,8 @@ export class SetPieces {
     while (this.list.length) this.remove(this.list.length - 1);
     this.dropCastle();
     this.siteT = 0;
+    while (this.meteors.length) this.dropMeteor(0);
+    this.meteorT = rand(...METEOR.first);
   }
 
   get geysers() { return this.kind === 'geysers' ? this.list : []; }
@@ -138,6 +166,7 @@ export class SetPieces {
 
   update(dt) {
     if (this.kind === 'castle') { this.updateCastle(dt); return; }
+    if (this.kind === 'meteors') { this.updateMeteors(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -338,5 +367,110 @@ export class SetPieces {
     G.player.damage(CASTLE.dmg);
     G.fx.emit(G.player.pos, 18, { colors: ['#f2d8e4', '#e6c2d4', '#ffffff'], speed: 20, life: 0.8, size: 4 });
     if (!this.castleTip) { this.castleTip = true; G.ui.notify('Castle walls are solid! Try the front gate instead.', 'warn', 4, 1); }
+  }
+
+  // ---- The Moon and Mars: meteors ---------------------------------------------------------------------------------
+  get meteorList() { return this.meteors; }
+
+  // target: where it will land (world x, z); defaults to a spot ahead of the player.
+  spawnMeteor(tx, tz) {
+    const G = this.G, p = G.player;
+    if (tx === undefined) {
+      const f = p.forward.clone().setY(0);
+      if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+      f.normalize();
+      const d = rand(...METEOR.ahead), s = rand(-0.4, 0.4) * d;
+      tx = p.pos.x + f.x * d - f.z * s; tz = p.pos.z + f.z * d + f.x * s;
+    }
+    const ty = G.terrain.surfaceHeight(tx, tz), target = new THREE.Vector3(tx, ty, tz);
+    // It comes in at a slant from a random side, so the streak reads against the sky.
+    const a = rand(0, Math.PI * 2), slant = 0.55;
+    const from = target.clone().add(new THREE.Vector3(Math.cos(a) * METEOR.height * slant, METEOR.height, Math.sin(a) * METEOR.height * slant));
+    const vel = target.clone().sub(from).normalize().multiplyScalar(METEOR.speed);
+    const size = rand(...METEOR.size);
+    const g = new THREE.Group();
+    const rock = new THREE.Mesh(this.meteorGeo, this.meteorRock);
+    rock.scale.set(size, size * 0.85, size * 1.1);
+    g.add(rock);
+    const core = new THREE.Mesh(this.meteorGeo, this.meteorCore); // a soft hot glow around it
+    core.scale.setScalar(size * 1.35);
+    g.add(core);
+    g.position.copy(from);
+    G.scene.add(g);
+    const ringMat = new THREE.MeshBasicMaterial({ color: '#ff9a4a', transparent: true, opacity: 0, depthWrite: false });
+    const ring = new THREE.Mesh(this.ringGeo, ringMat);
+    ring.position.set(tx, ty + 0.6, tz);
+    ring.scale.setScalar(METEOR.blast);
+    G.scene.add(ring);
+    const total = from.distanceTo(target) / METEOR.speed;
+    this.meteors.push({ group: g, rock, pos: g.position, vel, target, size, hp: METEOR.hp, ring, ringMat, t: 0, total, trailAcc: 0 });
+    return this.meteors.at(-1);
+  }
+
+  dropMeteor(i) {
+    const m = this.meteors[i];
+    this.G.scene.remove(m.group);
+    this.G.scene.remove(m.ring);
+    m.ringMat.dispose();
+    this.meteors.splice(i, 1);
+  }
+
+  updateMeteors(dt) {
+    const G = this.G, p = G.player;
+    if (!G.terrain.stale && (this.meteorT -= dt) <= 0) {
+      this.meteorT = rand(...METEOR.every);
+      if (this.meteors.length < METEOR.max && !p.dead) this.spawnMeteor();
+    }
+    for (let i = this.meteors.length - 1; i >= 0; i--) {
+      const m = this.meteors[i];
+      m.t += dt;
+      m.pos.addScaledVector(m.vel, dt);
+      m.rock.rotation.x += 2.1 * dt; m.rock.rotation.z += 1.3 * dt;
+      // The landing ring fades in as it comes down (faint, a hint rather than a siren).
+      m.ringMat.opacity = 0.35 * Math.min(1, m.t / m.total);
+      // A short warm trail, emitted per second.
+      G.fx.emit(m.pos, 24 * dt, { colors: ['#ffd23a', '#ff8a1f', '#a05a3a'], speed: 3, life: 0.7, size: m.size * 0.7, drag: 1.5 });
+      G.fx.emit(m.pos, 6 * dt, { colors: ['#5a4a44', '#6a5a50'], speed: 2, life: 1.4, size: m.size, drag: 1 });
+      if (!p.dead && m.pos.distanceTo(p.pos) < m.size + 3 * (p.sizeScale || 1)) { // rammed
+        p.damage(METEOR.dmg);
+        G.fx.explosion(m.pos);
+        this.dropMeteor(i);
+        continue;
+      }
+      let shot = false;
+      for (let b = p.bullets.length - 1; b >= 0; b--) {
+        if (p.bullets[b].pos.distanceToSquared(m.pos) < (m.size + 2) ** 2) {
+          m.hp -= p.bullets[b].dmg || 1;
+          p.removeBullet(b);
+          G.fx.sparkle(m.pos, '#ffb070');
+          if (m.hp <= 0) { shot = true; break; }
+        }
+      }
+      if (shot) {
+        G.score += METEOR.score;
+        G.fx.explosion(m.pos);
+        G.fx.emit(m.pos, 30, { colors: ['#5a4a44', '#7a6a58', '#ff8a1f'], speed: 35, life: 1.4, size: 4, gravity: -20 });
+        G.fx.popText(m.pos.clone(), `+${METEOR.score} Meteor smashed!`);
+        G.audio.explode?.();
+        if (!this.meteorTip) { this.meteorTip = true; G.ui.notify('Nice shot! Meteors are worth points if you hit them before they land.', 'info', 4, 1); }
+        this.dropMeteor(i);
+        continue;
+      }
+      if (m.pos.y <= m.target.y + m.size * 0.3 || m.t >= m.total) this.impact(i);
+    }
+  }
+
+  impact(i) {
+    const G = this.G, p = G.player, m = this.meteors[i], at = m.target;
+    G.terrain.deform(at.x, at.z, ...METEOR.crater);
+    G.fx.explosion(at);
+    G.fx.emit(at, 60, { colors: ['#8a7a6a', '#6a5a50', '#a89888'], speed: 40, life: 2, size: 9, up: 20, gravity: -15 });
+    const d = p.pos.distanceTo(at);
+    if (d < 260) { G.shake?.(0.6 * (1 - d / 260), 0.35); G.audio.explode?.(); }
+    if (!p.dead && d < METEOR.blast) {
+      p.damage(METEOR.dmg);
+      if (!this.meteorHitTip) { this.meteorHitTip = true; G.ui.notify('Meteors leave craters! Shoot them down, or steer clear of the glowing rings.', 'warn', 4, 1); }
+    }
+    this.dropMeteor(i);
   }
 }
