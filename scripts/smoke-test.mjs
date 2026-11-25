@@ -27,9 +27,78 @@ const browser = await chromium.launch({
 });
 const errors = [];
 let failed = false;
+
+// Repeatable randomness. The game rolls Math.random for everything: the world seed at boot, every zone's new landscape,
+// enemy spawns, objective picks, power-ups. With real randomness each run flew a different world, so a check that
+// needs, say, a cave dome ahead or dry land under the X failed now and then, a different one each run. In the test,
+// Math.random is a seeded generator instead, and it is seeded again at the start of every page.evaluate (a different
+// seed each call, worked out from the run's seed, the page and the call's number), so frames that run between two
+// calls in real time can't shift the rolls the next check sees. SMOKE_SEED=<n> flies another world; SMOKE_SEED=random
+// picks one and prints it, so a failure it finds can be replayed.
+const SEED = process.env.SMOKE_SEED === 'random' ? (Math.random() * 2 ** 32) >>> 0 : (Number(process.env.SMOKE_SEED) || 20261124) >>> 0;
+console.log(`Smoke test seed: ${SEED} (replay with SMOKE_SEED=${SEED})`);
+const mix = (...xs) => { let h = 0x811c9dc5; for (const x of xs) { h = Math.imul(h ^ (x >>> 0), 0x01000193); h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; } return h >>> 0; };
+let pages = 0;
+const seedRandom = async (page) => {
+  const pageNo = ++pages;
+  await page.addInitScript((s) => {
+    let a = s >>> 0;
+    const rand = () => { // mulberry32
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
+    Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+    // A second stream for code whose rolls are paced by a real clock (the music picks its next notes by the audio
+    // clock): wrapped with __smokeAside, it rolls from this one, so how fast the machine ran can't shift the main stream.
+    let b = (s ^ 0x9e3779b9) >>> 0;
+    const aside = () => {
+      b = (b + 0x6d2b79f5) | 0;
+      let t = Math.imul(b ^ (b >>> 15), 1 | b);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const asideCall = (f, self, args) => { const main = Math.random; Math.random = aside; try { return f.apply(self, args); } finally { Math.random = main; } };
+    Object.defineProperty(window, '__smokeAside', {
+      value: (obj, name) => { const f = obj[name]; obj[name] = function (...args) { return asideCall(f, this, args); }; },
+    });
+    // Timers fire on real time too (a boss's follow-up orbs, firework bursts, the opening tips): they roll aside.
+    const setT = window.setTimeout.bind(window);
+    window.setTimeout = (cb, ms, ...rest) => (typeof cb === 'function' ? setT((...x) => asideCall(cb, window, x), ms, ...rest) : setT(cb, ms, ...rest));
+    // Held frames: while F.hold is set, the game's requestAnimationFrame callbacks wait (no real-time step or render),
+    // so only the test's own G.step calls move the world. F.onStart (a seed) holds them from the Fly click on, and
+    // reseeds just before the game's own click handler rolls the first flight.
+    const F = { hold: false, onStart: null };
+    Object.defineProperty(window, '__smokeFrames', { value: F });
+    const raf = window.requestAnimationFrame.bind(window);
+    // Real-time frames step the game by however much time passed, so whatever they roll comes from the side stream.
+    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else asideCall(cb, window, [t]); });
+    document.addEventListener('click', (e) => {
+      if (F.onStart === null || !e.target?.closest?.('#start')) return;
+      a = F.onStart >>> 0;
+      F.onStart = null;
+      F.hold = true;
+    }, true);
+  }, mix(SEED, pageNo, 0));
+  // page.evaluate(fn, arg) runs `async (arg) => { reseed; return fn(arg) }` instead: one call, so no frame can come
+  // between the reseed and the check. Playwright sends String(fn) to the page, so the wrapper only needs its text.
+  const evaluate = page.evaluate.bind(page);
+  let call = 0;
+  page.evaluate = (fn, arg) => {
+    if (typeof fn !== 'function') return evaluate(fn, arg);
+    const src = `async (arg) => { window.__smokeSeed?.(${mix(SEED, pageNo, ++call)}); return (${fn.toString()})(arg); }`;
+    const wrapped = () => {};
+    wrapped.toString = () => src;
+    return evaluate(wrapped, arg);
+  };
+};
+
 try {
   // Every page records page and console errors, and gets no network beyond the local server.
   const guard = async (page) => {
+    await seedRandom(page);
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
@@ -46,6 +115,23 @@ try {
   await page.goto(origin + '/');
   await page.waitForFunction(() => window.G && window.G.terrain.chunks.size > 20, null, { timeout: 30000 });
   await page.evaluate(() => { window.G.finds.off = true; }); // no surprise hidden finds while other systems are measured
+  // Crater and runway-pad rebuilds stop once DIRTY_MS of wall-clock time is spent in a pass (terrain.js update), and the
+  // ground height checks read comes from the rebuilt chunks. So a slow or busy CI machine rebuilt fewer chunks per step
+  // and the same simulated flight met different ground ("runways that end flatten no ground for good" and anything
+  // that shot the ground first). In the test, the clock stands still during terrain.update, so each pass rebuilds its
+  // full DIRTY_MAX chunks whatever the machine's speed; the cap on chunks per pass is the game's own. Likewise the
+  // music, which rolls Math.random whenever the audio clock (real time) says the next note is due, rolls from a side
+  // stream, so it can't shift the rolls the simulation sees.
+  await page.evaluate(() => {
+    const T = window.G.terrain, update = T.update.bind(T);
+    T.update = (...args) => {
+      // Whatever performance.now is right now (Playwright's fake clock replaces it later on), put back afterwards.
+      const had = Object.getOwnPropertyDescriptor(performance, 'now'), t = performance.now();
+      try { Object.defineProperty(performance, 'now', { value: () => t, configurable: true, writable: true }); } catch { return update(...args); }
+      try { return update(...args); } finally { if (had) Object.defineProperty(performance, 'now', had); else delete performance.now; }
+    };
+    window.__smokeAside(window.G.audio, 'update'); // the music rolls its notes when the audio clock says it's time
+  });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
     const t = window.G.powerups.timer;
@@ -75,6 +161,10 @@ try {
     toast: document.getElementById('secret-toast').classList.contains('show') && document.getElementById('secret-toast').textContent,
     count: document.getElementById('secrets-count').textContent,
   }));
+  // From the Fly click until the long simulated report below is done, real-time frames are held: how many ran between
+  // the click and the report changed where the plane was, and so what ground lay under each check (a drone placed
+  // 120 m ahead sometimes sat inside a hill). The report steps the simulation itself.
+  await page.evaluate((s) => { window.__smokeFrames.onStart = s; }, mix(SEED, 0xf1, 0));
   await page.click('#start');
   await page.evaluate(async () => {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
@@ -1857,6 +1947,7 @@ try {
     out.chunks = G.terrain.chunks.size;
     return out;
   });
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // real-time frames again, for the checks below
   // Loops under a cave roof (Crystal Caverns): a loop or upside-down objective finds a tall chamber ahead (the dome)
   // and targets it; from there, holding W (boosting or not) loops without touching the roof, thanks to the tuck; the
   // hints fit a cave; easier() tightens the tuck. Outside caves loops are as before. No safety net: a crash is only
@@ -3058,6 +3149,8 @@ try {
           p.invuln = 0; p.grace = 99;
           G.step(1 / 30);
           const t = (i + 1) / 30;
+          // What the pair and the sky were doing 3 s in, kept in the report so a failure says why the pair fell behind.
+          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
           if (kp.phase === 'park' && !kp.back && t > 2 && r.windAt === null) {
             const a = Math.round(kp.centre.clone().sub(p.pos).dot(p.forward));
             r.ahead = [Math.min(r.ahead[0], a), Math.max(r.ahead[1], a)];
@@ -3073,7 +3166,22 @@ try {
         r.lead = r.hitAt !== null && r.windAt !== null ? +(r.hitAt - r.windAt).toFixed(2) : null;
         return r;
       };
-      out.kiteHunt = { straight: kiteRun(false), rolled: kiteRun(true) };
+      // Over flat, drained ground (as the stunts are): the pair stays KITE_FLOOR m over the ground, so a mountain in the
+      // way had it climb out of reach and fall behind, and the check failed or passed with whatever world was rolled.
+      {
+        const FLAT = { amp: 0, roughness: 0, hillBase: 0, terrace: 0, mesa: 0, canyon: 0, spikes: 0, seaLevel: -400 };
+        const land = Object.fromEntries(Object.keys(FLAT).map((k) => [k, G.world[k]]));
+        Object.assign(G.world, FLAT);
+        G.terrain.rebuildAll();
+        G.terrain.update(p.pos, 999); // every chunk around rebuilt now: heights are read from built chunks
+        try {
+          out.kiteHunt = { straight: kiteRun(false), rolled: kiteRun(true) };
+        } finally {
+          Object.assign(G.world, land);
+          G.terrain.rebuildAll();
+          G.terrain.update(p.pos, 999);
+        }
+      }
       // Clingy Moth: latches on, drains boost (and hull) while there; a stunt shakes it off, for its points (once).
       fresh();
       const moth = E.spawn('moth', ahead(6));
@@ -4074,7 +4182,11 @@ try {
     into('Volcano Land');
     p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 120;
     const s = E.spawn('magmaSpitter', ahead(150));
-    const S = { states: [], shotsMax: 0, hpUnder: null };
+    const S = { states: [], shotsMax: 0, fired: 0, hpUnder: null };
+    // Count the fireballs as they're launched: one that spawns inside a slope 150 m ahead bursts on the ground in the
+    // same step, so the live shot list alone can miss a fan that was fired.
+    const fireOrb = E.fireOrb;
+    E.fireOrb = function (...a) { S.fired++; return fireOrb.apply(this, a); };
     step(1);
     s.state = 'under'; s.stateT = 0; s.hold = 0.5;
     // Pinned 150 m ahead of the plane so it's always in range.
@@ -4087,9 +4199,11 @@ try {
       G.step(1 / 30);
       if (S.states.at(-1) !== s.state) S.states.push(s.state);
       S.shotsMax = Math.max(S.shotsMax, E.shots.length);
+      if (S.fired && S.firedIn == null) S.firedIn = s.state; // the fan goes out while it's up
       if (s.state === 'up') S.shieldUp = s.shield;
       if (S.states.length >= 5) break;
     }
+    E.fireOrb = fireOrb;
     S.hp = [hp0, s.hp];
     out.spitter = S;
     clear();
@@ -4555,7 +4669,7 @@ try {
     [(({ fresh: f }) => f && f.other && f.intact && f.moonHp === 14 && f.eyeHp === 25.2 && f.hp === 100 && f.w >= 0.149 && f.w <= 0.151 && f.burst && f.easier.cap[0] === 8 && f.easier.cap[1] === 6 && f.easier.eyeHp === 17.64 && f.shieldPores.pores === 0 && f.shieldPores.moons === 0 && f.shieldPores.shieldDown && f.shieldPores.phase === 2)(GLOBE), `Grumbleglobe: a fresh run continued from its zone gets a fresh planet; lap 2 gadgets have 1.4× hp, its moons orbit 1.25× faster with two-shot bursts, 8 Grumblings at once (6 after "easier"); with every pore plugged first the last moon still drops the shield into phase 2 (${JSON.stringify(GLOBE.fresh)})`],
     [(({ disposed: q }) => q && q.before > 0 && q.after === 0 && !q.inList)(GLOBE), `Grumbleglobe: calling the fight off takes its Grumblings with it (${JSON.stringify(GLOBE.disposed)})`],
     [(({ landEnemies: q }) => q.meadow.length === 0 && q.volcano.includes('emberBat') && q.volcano.includes('magmaSpitter') && !q.volcano.includes('cometCharger') && q.belt.length === 1 && q.belt[0] === 'cometCharger' && q.moon.includes('cometCharger'))(report), `land enemies: Ember Bats and Magma Spitters only in Volcano Land, Comet Chargers only in space lands (${JSON.stringify(report.landEnemies && { meadow: report.landEnemies.meadow, volcano: report.landEnemies.volcano, belt: report.landEnemies.belt, moon: report.landEnemies.moon })})`],
-    [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.shotsMax >= k.shots)(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
+    [(({ landEnemies: { spitter: s, consts: k } }) => s.shieldUnder === 0 && s.shieldUp === 1 && s.states.join() === 'under,rise,up,sink,under' && s.fired >= k.shots && s.firedIn === 'up')(report), `land enemies: a Magma Spitter is out of reach under the lava, rises, spits a fan of fireballs and sinks again (${JSON.stringify(report.landEnemies?.spitter)})`],
     [(({ landEnemies: { bats: b } }) => b.states.includes('flare') && b.states.includes('swoop') && b.popped >= 1 && b.hits.length >= 1 && b.hits.every((n) => n === 12))(report), `land enemies: an Ember Bat flares, swoops into you for 12 hull and pops (${JSON.stringify(report.landEnemies?.bats)})`],
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
