@@ -1251,7 +1251,7 @@ export class Enemies {
       e.pos.addScaledVector(e.vel, dt);
       if (e.def.swim) { /* its move sets its whole path, in and out of the lava */ }
       else if (e.def.sea) e.pos.y = waterLine(); // afloat (its move keeps it on open water)
-      else if (e.def.hop) {} // Count Ribbiton: his move sets his height (sitting, or in a hop)
+      else if (e.def.hop) e.vel.set(0, 0, 0); // Count Ribbiton: his move sets his height (sitting, or in a hop), and nothing else moves him
       else if (e.def.ground) e.pos.y = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5;
       else if (e.def.vent) e.pos.y = Math.max(G.terrain.surfaceHeight(e.pos.x, e.pos.z), waterLine()) - 0.5; // in the lava (or rock)
       else {

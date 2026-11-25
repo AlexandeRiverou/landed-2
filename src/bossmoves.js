@@ -358,7 +358,12 @@ export function dropBoss(en, e) {
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
-  if (u.tongueFx) { for (const x of Object.values(u.tongueFx)) { en.G.scene.remove(x); x.material.dispose(); if (x.geometry !== BEAM_LINE) x.geometry.dispose(); } u.tongueFx = null; }
+  if (u.tongueFx) { // Count Ribbiton's aim line and tongue (the tongue and its tip share a material)
+    const fx = Object.values(u.tongueFx);
+    for (const x of fx) { en.G.scene.remove(x); if (x.geometry !== BEAM_LINE) x.geometry.dispose(); }
+    new Set(fx.map((x) => x.material)).forEach((m) => m.dispose());
+    u.tongueFx = null;
+  }
 }
 function clearBlobs(en, e) {
   for (let i = en.shots.length - 1; i >= 0; i--) if (en.shots[i].owner === e) { en.G.scene.remove(en.shots[i].mesh); en.shots.splice(i, 1); }
