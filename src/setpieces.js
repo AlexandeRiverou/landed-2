@@ -1,5 +1,6 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
-// meteors falling onto the Moon and Mars, Frozen Peaks' ice arches and the Tropical Archipelago's breaching whales.
+// meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
+// the Mushroom Forest's giant bounce mushrooms.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -90,6 +91,27 @@ export const WHALE = {
   dmg: 7,                // x1.5 enemy damage = 10.5 hull, once per jump
 };
 
+// Bounce mushrooms (Mushroom Forest): a few giant glowing toadstools tower over the forest ahead. Their caps are
+// springy: touch one and it boings you up into the sky, nose lifted ("+15 Boing!", once per mushroom; more bounces
+// are just for fun). Nothing here hurts: the stalks are soft and only nudge you aside.
+export const SHROOM = {
+  count: 3,              // around at once
+  near: 380, far: 850,   // a new one appears this far ahead
+  drop: 1300,
+  apart: 260,            // they keep at least this far from each other
+  stem: [45, 75],        // stalk height
+  cap: [28, 38],         // cap radius
+  capH: 0.55,            // cap height, x its radius
+  lift: 0.8,             // s the bounce lifts you
+  rise: 70,              // m/s up at the start of a bounce
+  nose: 1.4,             // rad/s the nose is lifted, up to noseMax
+  noseMax: 0.45,         // forward.y
+  every: 2,              // s before the same cap bounces you again (so circling low over one isn't a pogo)
+  score: 15,
+};
+const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
+const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
+
 const _local = new THREE.Vector3();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Vector3();
 const SPRAY = ['#ffffff', '#e8f6ff', '#bfe4ff'];
@@ -116,9 +138,23 @@ export class SetPieces {
     this.whaleTail = new THREE.ConeGeometry(1, 1, 8);
     this.whaleTail.rotateX(-Math.PI / 2); // points back along -z
     this.whaleFluke = new THREE.BoxGeometry(1, 1, 1);
+    this.shrooms = [];
+    this.shroomT = 0;
+    this.liftT = 0;
+    this.stemGeo = new THREE.CylinderGeometry(0.75, 1, 1, 10);
+    this.stemGeo.translate(0, 0.5, 0);
+    this.capGeo = new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    this.gillGeo = new THREE.CircleGeometry(1, 18);
+    this.gillGeo.rotateX(Math.PI / 2); // faces down
+    this.spotGeo = new THREE.SphereGeometry(1, 6, 4);
+    this.stemMat = new THREE.MeshLambertMaterial({ color: '#efe6d6', flatShading: true });
+    this.gillMat = new THREE.MeshLambertMaterial({ color: '#c9b8c8', side: THREE.DoubleSide });
+    this.spotMat = new THREE.MeshBasicMaterial({ color: '#fff6e8' });
+    this.capMats = CAPS.map((c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true, emissive: c, emissiveIntensity: 0.25 }));
     this.frothGeo = new THREE.CircleGeometry(0.85, 24);
     this.frothGeo.rotateX(-Math.PI / 2);
     this.whaleTip = false;
+    this.shroomTip = false;
     this.meteorT = 0;
     this.meteorGeo = new THREE.DodecahedronGeometry(1, 0);
     this.meteorRock = new THREE.MeshLambertMaterial({ color: '#4a3a34', flatShading: true });
@@ -149,6 +185,9 @@ export class SetPieces {
     this.archT = 0;
     while (this.whales.length) this.dropWhale(0);
     this.whaleT = rand(...WHALE.first);
+    while (this.shrooms.length) this.dropShroom(0);
+    this.shroomT = 0;
+    this.liftT = 0;
   }
 
   get geysers() { return this.kind === 'geysers' ? this.list : []; }
@@ -228,6 +267,7 @@ export class SetPieces {
     if (this.kind === 'meteors') { this.updateMeteors(dt); return; }
     if (this.kind === 'arches') { this.updateArches(dt); return; }
     if (this.kind === 'whales') { this.updateWhales(dt); return; }
+    if (this.kind === 'mushrooms') { this.updateShrooms(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -766,6 +806,103 @@ export class SetPieces {
         G.score += WHALE.score;
         G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${WHALE.score} Whale watcher!`);
         G.fx.emit(p.pos, 20, { colors: SPRAY, speed: 10, life: 1, size: 3, gravity: -10 });
+      }
+    }
+  }
+  // ---- Mushroom Forest: giant bounce mushrooms --------------------------------------------------------------------
+  get shroomList() { return this.shrooms; }
+
+  placeShroom() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 4; tries++) {
+      const d = rand(SHROOM.near, SHROOM.far), s = rand(-0.6, 0.6) * d;
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      if (this.shrooms.some((m) => Math.hypot(m.pos.x - x, m.pos.z - z) < SHROOM.apart)) continue;
+      const y = G.terrain.surfaceHeight(x, z);
+      if (y < G.world.seaLevel + 2) continue; // never out of a pond
+      return this.buildShroom(x, y, z, rand(...SHROOM.stem), rand(...SHROOM.cap));
+    }
+    return null;
+  }
+
+  // A mushroom standing at (x, y, z): its stalk `stem` m tall, a domed cap of radius R on top.
+  buildShroom(x, y, z, stem, R) {
+    const G = this.G, g = new THREE.Group(), H = R * SHROOM.capH, sr = R * 0.2;
+    const add = (geo, mat, px, py, pz, sx, sy, sz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.scale.set(sx, sy, sz); g.add(m); return m; };
+    add(this.stemGeo, this.stemMat, 0, -4, 0, sr, stem + 6, sr); // sunk a little, so a slope never shows its foot
+    const capMat = this.capMats[Math.floor(Math.random() * this.capMats.length)];
+    const cap = add(this.capGeo, capMat, 0, stem, 0, R, H, R);
+    add(this.gillGeo, this.gillMat, 0, stem + 0.2, 0, R * 0.97, 1, R * 0.97);
+    for (let k = 0; k < 9; k++) { // pale spots on the dome
+      const a = rand(0, Math.PI * 2), r = rand(0.15, 0.8), sz = R * rand(0.07, 0.12);
+      add(this.spotGeo, this.spotMat, Math.cos(a) * r * R, stem + H * Math.sqrt(1 - r * r) - sz * 0.2, Math.sin(a) * r * R, sz, sz * 0.35, sz);
+    }
+    const haloMat = new THREE.MeshBasicMaterial({ color: capMat.color, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false });
+    add(this.capGeo, haloMat, 0, stem - 0.5, 0, R * 1.12, H * 1.25, R * 1.12); // a faint glow round the cap
+    g.position.set(x, y, z);
+    G.scene.add(g);
+    this.shrooms.push({ group: g, pos: g.position, stem, R, H, sr, cap, haloMat, glow: 0, t0: rand(0, 6), bumpT: 0, scored: false });
+    return this.shrooms.at(-1);
+  }
+
+  dropShroom(i) {
+    const m = this.shrooms[i];
+    this.G.scene.remove(m.group);
+    m.haloMat.dispose();
+    this.shrooms.splice(i, 1);
+  }
+
+  // How high the cap's dome is at horizontal distance d from the stalk (null outside the cap).
+  capTop(m, d) {
+    return d < m.R ? m.pos.y + m.stem + m.H * Math.sqrt(1 - (d / m.R) ** 2) : null;
+  }
+
+  updateShrooms(dt) {
+    const G = this.G, p = G.player;
+    for (let i = this.shrooms.length - 1; i >= 0; i--) {
+      if (Math.hypot(this.shrooms[i].pos.x - p.pos.x, this.shrooms[i].pos.z - p.pos.z) > SHROOM.drop) this.dropShroom(i);
+    }
+    if (this.shrooms.length < SHROOM.count && !G.terrain.stale && (this.shroomT -= dt) <= 0) { this.shroomT = 0.5; this.placeShroom(); }
+    // A bounce in progress: up, and the nose lifted (not while landed or mid-stunt).
+    if (this.liftT > 0) {
+      this.liftT -= dt;
+      if (!p.dead && !p.landed) {
+        const k = Math.max(0, this.liftT / SHROOM.lift);
+        p.pos.y += SHROOM.rise * k * dt;
+        if (!p.maneuver && p.forward.y < SHROOM.noseMax) {
+          _local.crossVectors(p.forward, _Y);
+          if (_local.lengthSq() > 1e-4) { p.quat.premultiply(_qb.setFromAxisAngle(_local.normalize(), SHROOM.nose * dt)).normalize(); p.updateAxes(); }
+        }
+      }
+    }
+    const r = 2.5 * (p.sizeScale || 1);
+    for (const m of this.shrooms) {
+      m.bumpT = Math.max(0, m.bumpT - dt);
+      m.glow = Math.max(0, m.glow - dt * 1.5);
+      m.haloMat.opacity = 0.1 + 0.04 * Math.sin(G.time * 1.1 + m.t0) + 0.35 * m.glow; // a slow breathing glow, brighter after a boing
+      m.cap.scale.y = m.H * (1 - 0.18 * m.glow * Math.sin(m.glow * 18)); // a wobble after a boing
+      if (p.dead || p.landed) continue;
+      const dx = p.pos.x - m.pos.x, dz = p.pos.z - m.pos.z, d = Math.hypot(dx, dz);
+      if (d > m.R + r) continue;
+      const top = this.capTop(m, Math.min(d, m.R - 0.01)), under = m.pos.y + m.stem;
+      if (p.pos.y > under - r && p.pos.y < top + r) { // on (or in) the cap: boing
+        p.pos.y = Math.max(p.pos.y, top + r);
+        if (m.bumpT > 0) continue;
+        m.bumpT = SHROOM.every;
+        m.glow = 1;
+        this.liftT = SHROOM.lift;
+        G.fx.emit(p.pos, 26, { colors: ['#ffffff', '#c8ffd8', '#ff9ae0'], speed: 16, up: 10, life: 1, size: 4, gravity: -12 });
+        if (!m.scored) {
+          m.scored = true;
+          G.score += SHROOM.score;
+          G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${SHROOM.score} Boing!`);
+          if (!this.shroomTip) { this.shroomTip = true; G.ui.notify('Bouncy caps! Touch the giant mushrooms to boing up into the sky.', 'info', 4, 1); }
+        }
+      } else if (p.pos.y <= under - r && d < m.sr + r && d > 1e-3) { // the stalk: soft, it only nudges you aside
+        const push = (m.sr + r - d) / d;
+        p.pos.x += dx * push; p.pos.z += dz * push;
       }
     }
   }

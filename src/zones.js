@@ -87,7 +87,7 @@ export const ZONES = [
   {
     name: 'Mushroom Forest', blurb: 'Glowing toxic jungle. The mushrooms are bigger than your plane.',
     world: { palette: 'Toxic Neon', propTheme: 'mushroom', propScale: 2, propDensity: 1.4 },
-    sky: 'alien', weather: 'bubbles', clouds: ['#c8ffd8', 30], mood: 'wonder', lock: [...LOCK, 'weather'],
+    sky: 'alien', weather: 'bubbles', clouds: ['#c8ffd8', 30], mood: 'wonder', setPiece: 'mushrooms', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Neon Grid', blurb: 'Synthwave country. The mountains are pointy, the sun is striped, the year is 1986.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })

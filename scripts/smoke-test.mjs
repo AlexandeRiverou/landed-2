@@ -4700,7 +4700,15 @@ try {
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m); k++) { p.pos.copy(far); G.step(1 / 30); }
       out.landedFar = { gone: !SP.meteorList.includes(m), hits: hits.filter((n) => n === METEOR.dmg).length }; // the Moon's asteroids hit harder, they don't count
       hits.length = 0;
-      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), near = new far.constructor(t2.x + 25, m2.target.y + 12, t2.z); // in the blast, out of its path
+      // In the blast but out of its path: 18 m from where it lands, on the side away from where it comes in, at the
+      // spot whose ground keeps you closest (a crater rim or a boulder hill could otherwise lift you out of the blast).
+      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), inA = Math.atan2(-m2.vel.z, -m2.vel.x);
+      let near = null;
+      for (let k = 0; k < 8; k++) {
+        const a = inA + Math.PI * (0.5 + k / 7), x = m2.target.x + Math.cos(a) * 18, z = m2.target.z + Math.sin(a) * 18;
+        const spot = new far.constructor(x, Math.max(m2.target.y + 10, G.terrain.surfaceHeight(x, z) + 4), z);
+        if (!near || spot.distanceTo(m2.target) < near.distanceTo(m2.target)) near = spot;
+      }
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m2); k++) { p.pos.copy(near); G.step(1 / 30); }
       out.landedNear = { gone: !SP.meteorList.includes(m2), hits: hits.filter((n) => n === METEOR.dmg) };
     }
@@ -4756,7 +4764,29 @@ try {
       jump(w2, () => { p.pos.copy(w2.pos); if (off === null) { G.step(1 / 30); off = p.pos.distanceTo(w2.pos) >= WHALE.radius * w2.s; } });
       out.ram = { hits: hits.filter((n) => n === WHALE.dmg).length, off };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length;
+    // Mushroom Forest: giant bounce mushrooms ahead. Touching a cap boings you up, nose lifted, +15 once per mushroom;
+    // nothing about them hurts.
+    out.tropicShrooms = SP.shroomList.length;
+    into('Mushroom Forest');
+    for (let k = 0; k < 40 && !SP.shroomList.length; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    out.shrooms = SP.shroomList.length;
+    const m = SP.shroomList[0];
+    if (m) {
+      hits.length = 0;
+      const s5 = G.score, top = SP.capTop(m, 0);
+      p.pos.set(m.pos.x, top - 1, m.pos.z);
+      const y0 = p.pos.y, f0 = p.forward.y;
+      clear(); G.step(1 / 30);
+      const lifted = SP.liftT > 0;
+      step(20, clear);
+      out.boing = { lifted, score: G.score - s5, rise: p.pos.y - y0, nose: p.forward.y - f0 };
+      m.bumpT = 0;
+      p.pos.set(m.pos.x, SP.capTop(m, 0) - 1, m.pos.z);
+      clear(); G.step(1 / 30);
+      out.boing.again = G.score - s5; // a second bounce is just for fun
+      out.boing.hits = hits.length;
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -5179,6 +5209,7 @@ try {
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
+    [(({ setPieces: q }) => q.shrooms >= 1 && q.tropicShrooms === 0 && q.beltShrooms === 0 && q.boing?.lifted && q.boing.score >= 15 && q.boing.score < 30 && q.boing.again === q.boing.score && q.boing.rise > 10 && q.boing.nose > 0.1 && q.boing.hits === 0)(report), `set pieces: the Mushroom Forest has giant bounce mushrooms (no other land does); touching a cap boings you up with the nose lifted, +15 once per mushroom, and never hurts (${JSON.stringify(report.setPieces && { shrooms: report.setPieces.shrooms, tropic: report.setPieces.tropicShrooms, belt: report.setPieces.beltShrooms, boing: report.setPieces.boing })})`],
     [(({ setPieces: q }) => q.whales >= 1 && q.frozenWhales === 0 && q.beltWhales === 0 && q.pass?.passed && q.pass.splashed && q.pass.gone && q.pass.score >= 25 && q.pass.score < 50 && q.pass.hits === 0 && q.ram?.hits === 1 && q.ram.off)(report), `set pieces: the Tropical Archipelago has breaching whales (no other land does); skimming past one in the air is +25 once, it splashes back down and goes; flying into one is one knock per jump and you're shoved clear (${JSON.stringify(report.setPieces && { whales: report.setPieces.whales, frozen: report.setPieces.frozenWhales, belt: report.setPieces.beltWhales, pass: report.setPieces.pass, ram: report.setPieces.ram })})`],
     [(({ setPieces: q }) => q.arches >= 1 && q.moonArches === 0 && q.beltArches === 0 && q.thread?.threaded && q.thread.score >= 30 && q.thread.score < 60 && q.thread.hits === 0 && q.leg?.hits === 1 && q.leg.off)(report), `set pieces: Frozen Peaks has ice arches (no other land does); threading one is +30 once with no bump, a leg is solid: one knock and you're shoved off (${JSON.stringify(report.setPieces && { arches: report.setPieces.arches, moon: report.setPieces.moonArches, belt: report.setPieces.beltArches, thread: report.setPieces.thread, leg: report.setPieces.leg })})`],
     [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
