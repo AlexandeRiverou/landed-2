@@ -24,6 +24,11 @@ export const STEAM = { probe: 120, depth: 4, turn: 0.3, flakDmg: 7 };
 // mouth at the top (`spitRage` enraged, one fewer per frill shot off), `windup` s after her jaw opens.
 export const SERPENT = { under: 3, underRage: 2, warn: 1.4, arc: 3, side: [50, 70, 85, 100], apex: 25, high: [40, 120], spit: 3, spitRage: 5, spitSpeed: 60, spitDmg: 18, windup: 0.5, clear: 80 };
 const LAVA_FX = ['#ff6a1a', '#ffd23a', '#ff3a0a', '#3a1a10'];
+// Glacierra's shard fans (enemy-time s, m/s, rad): she rolls her wings into the fan's plane and glows for `wind` s, then
+// fires `shards` ice shards (the first fan winds up for `first` s, so there's time to read the tip) (two fewer per wingtip crystal shot off, never under `min`) spread over `spread` rad around
+// where you'll be. Level wings = a flat fan (climb or dive out of it); wings on edge = an upright fan (turn out of it).
+// Each shard costs `dmg` and frosts `frost` of your boost tank. Enraged, a second fan in the other plane follows.
+export const SHARDS = { wind: 1.1, first: 1.8, shards: 7, min: 3, spread: 0.9, speed: 80, dmg: 14, frost: 0.35, color: '#4fc8ff' };
 
 // ---------- small helpers ----------
 
@@ -903,6 +908,73 @@ export const MOVES = {
       const u = e.mesh.userData, s = e.mesh.scale.x;
       if (u.head.visible && e.pos.distanceTo(pos) < e.radius + pad) return true;
       return u.segs.some((sg, k) => sg.visible && sg.getWorldPosition(_a).distanceTo(pos) < u.segR[k] * s * 1.1 + pad);
+    },
+  },
+
+  // Glacierra (lead): holds her slot ahead of you; each attack is a telegraphed shard fan (see SHARDS). The attack only
+  // starts the wind-up (fanStart); the fan fires from here when it ends, and attacks wait meanwhile.
+  fans: {
+    step(en, e, c) {
+      const m = e.mv ||= { wind: 0, after: 0, plane: 'h', queue: 0, fired: '', roll: 0 };
+      if (m.after > 0 && (m.after -= c.dt) <= 0 && m.next) { MOVES.fans.wind(en, e, m.next); m.next = null; }
+      m.gain = m.wind > 0 ? 1 : 1.6; // she steadies while she aims
+      if (m.wind > 0 && (m.wind -= c.dt) <= 0) {
+        MOVES.fans.fire(en, e, m.plane);
+        m.fired += m.plane;
+        m.after = 0.4; // her wings stay in the fan's plane a moment, so the fan reads as coming off them
+        if (m.queue > 0) { m.queue--; m.next = m.plane === 'h' ? 'v' : 'h'; } // enraged: the other plane, once she's done
+      }
+      return false;
+    },
+    hold: (e) => e.mv?.wind > 0 || !!e.mv?.next,
+    // The attack: a wind-up in the plane `plane` (a second one queued when enraged).
+    start(en, e, n) {
+      const m = e.mv;
+      if (!m || m.wind > 0 || m.next) return;
+      m.queue = e.enraged ? 1 : 0;
+      MOVES.fans.wind(en, e, n % 2 ? 'h' : 'v');
+      if (!e.fanTip) {
+        e.fanTip = true;
+        m.wind = SHARDS.first;
+        en.G.ui.notify('Watch her wings! Level: climb or dive. On edge: turn aside.', 'warn', 4, 1);
+      }
+    },
+    wind(en, e, plane) {
+      const m = e.mv;
+      m.plane = plane;
+      m.wind = SHARDS.wind;
+      en.G.audio.tone(plane === 'h' ? 700 : 1900, 0.5, { type: 'sine', vol: 0.05, slide: 500 });
+    },
+    // The fan: from her core, centred on where you'll be, spread in her wings' plane.
+    fire(en, e, plane) {
+      const p = en.G.player, from = e.pos, dist = from.distanceTo(p.pos);
+      const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / SHARDS.speed) * 0.5);
+      const dir = _b.copy(at).sub(from).normalize(), side = _c.crossVectors(dir, Y);
+      if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
+      side.normalize();
+      // Flat fan: turn the aim about the axis square to it and to your side (roughly up). Upright: about your side.
+      const axis = plane === 'h' ? new THREE.Vector3().crossVectors(side, dir).normalize() : side.clone();
+      const n = Math.max(SHARDS.min, SHARDS.shards - 2 * (e.broken?.crystal || 0));
+      for (let k = 0; k < n; k++) {
+        const d = dir.clone().applyAxisAngle(axis, (k / (n - 1) - 0.5) * SHARDS.spread);
+        const shot = en.fireOrb(from, d, SHARDS.speed, SHARDS.dmg, SHARDS.color, 0.9);
+        shot.owner = e;
+        shot.frost = SHARDS.frost;
+      }
+      en.G.audio.tone(2400, 0.25, { type: 'triangle', vol: 0.06, slide: -1600 });
+      en.G.fx.emit(from, 14, { colors: ['#e8fbff', '#bfefff', '#7affc8'], speed: 30, life: 0.8, size: 5 });
+    },
+    // Her look: wings flap slowly, then hold still and roll into the plane of the fan, the aurora brightening.
+    pose(en, e, dt) {
+      const m = e.mv, u = e.mesh.userData;
+      if (!m) return;
+      const aim = m.wind > 0 || m.after > 0 ? (m.plane === 'v' ? Math.PI / 2 : 0) : Math.sin(e.t * 0.5) * 0.12;
+      m.roll += (aim - m.roll) * (1 - Math.exp(-dt * 6));
+      u.tilt.rotation.z = m.roll;
+      const flap = m.wind > 0 ? 0.08 : Math.sin(e.t * 2.2) * 0.3;
+      u.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * flap; });
+      const glow = m.wind > 0 ? 0.75 : 0.35;
+      for (const mat of u.webs) mat.opacity += (glow - mat.opacity) * (1 - Math.exp(-dt * 5));
     },
   },
 

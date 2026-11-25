@@ -903,6 +903,41 @@ try {
       r.spatNoFrills = spat2;
       return r;
     };
+    // Glacierra: each shard fan comes 1 s+ after she starts lining her wings up, 7 shards wide; a flat fan when her wings
+    // are level (shards spread sideways), an upright fan when they're on edge (spread up and down); a shard that hits
+    // costs hull and frosts a third of the boost tank; with both wingtip crystals shot off, a fan is 3 shards.
+    const rayChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, r = { fans: [] };
+      const fly = (n, until = () => false) => { for (let i = 0; i < n; i++) { p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1); if (until()) return true; } return false; };
+      const fan = () => {
+        if (!fly(30 * 12, () => e.mv?.wind > 0)) return null;
+        const at = G.time, plane = e.mv.plane, shots0 = new Set(G.enemies.shots);
+        let fresh = [];
+        fly(30 * 4, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.owner === e)).length > 0);
+        if (!fresh.length) return { plane, shards: 0 };
+        const a = fresh[0].vel.clone().normalize(), b = fresh.at(-1).vel.clone().normalize(), spread = b.sub(a).normalize();
+        return { plane, shards: fresh.length, wound: +(G.time - at).toFixed(2), spreadY: +Math.abs(spread.y).toFixed(2), roll: +Math.abs(e.mv.roll).toFixed(2), frost: fresh[0].frost, shots: fresh };
+      };
+      for (let k = 0; k < 4 && !(r.fans.some((f) => f.plane === 'h') && r.fans.some((f) => f.plane === 'v')); k++) {
+        const f = fan();
+        if (!f) break;
+        r.fans.push(f);
+      }
+      // A shard on the player: hull and a chunk of boost.
+      const shard = r.fans.at(-1)?.shots?.find((x) => G.enemies.shots.includes(x));
+      if (shard) {
+        p.health = p.maxHealth; p.boost = 1; p.invuln = 0; p.dodging = false;
+        shard.pos.copy(p.pos);
+        G.enemies.updateShots(0);
+        r.hit = { hull: +(p.maxHealth - p.health).toFixed(1), boost: +p.boost.toFixed(2) };
+        p.health = p.maxHealth; p.invuln = 99;
+      }
+      for (const f of r.fans) delete f.shots;
+      for (const c of e.mesh.userData.parts.filter((x) => x.name === 'crystal')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.crystalHits = n; }
+      e.mv.queue = 0;
+      r.noCrystals = fan()?.shards ?? 0;
+      return r;
+    };
     const startBoss = (kind, opts) => {
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
@@ -932,6 +967,7 @@ try {
       if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
+      if (kind === 'auroraRay' && e.kind === kind) out.ray = rayChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -959,6 +995,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'lavaSerpent'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Volcano Land');
       L.home = draw();
+      // Glacierra the same way, in the cold lands.
+      O.bossDeck = ['auroraRay', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.rayElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'auroraRay'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Frozen Peaks');
+      L.rayHome = draw();
       G.zones.index = saved.zone;
       Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
       Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
@@ -1014,7 +1057,7 @@ try {
       const end = () => { if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; } tidy(); };
       const flat = (v) => v.set(G.player.forward.x, 0, G.player.forward.z).normalize();
       // Fly level at it (orbiters), or straight on (lead bosses and the Baron, who crosses in front of you).
-      const STRAIGHT = new Set(['octopus', 'crab', 'puffer', 'blimpBaron']);
+      const STRAIGHT = new Set(['octopus', 'crab', 'puffer', 'blimpBaron', 'auroraRay']);
       try {
         for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
           tidy();
@@ -1073,6 +1116,7 @@ try {
           S.angles = buckets.size;
           S.hazards = M.hazards.length - h0;
           S.attacks = e.attacks; // context when a signature is missing
+          if (e.mv?.fired !== undefined) S.fans = e.mv.fired;
           M.kinds[kind] = S;
           end();
           if (land) { Object.assign(G.world, land); G.terrain.rebuildAll(); step(30); }
@@ -4663,6 +4707,11 @@ try {
     [(({ fort: f }) => f?.spawned && f.towerDist >= 30 && f.hullHit && f.cannonHits >= 3 && f.cannonHits <= 8 && f.cannonCost === 0.03 && f.wreck && f.stages === 2 && f.breached && f.mortarDown >= 2 && f.fortStill)(report), `Fort Grumpington: its hull boxes take hits on a tower 30 m+ from its middle, a tower cannon takes only a few hits (3 to 8), costs it 3% and leaves a wreck, its damage shows in two stages (a wall top falls), and ducking sinks only its mortar (${JSON.stringify(report.fort)})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [(({ serpent: s }) => s.spawned && s.segs >= 12 && s.shieldUnder === 0 && s.hitUnder === 0 && s.rings === 2 && s.crossOff <= 40 && s.crossAhead > 0 && s.span >= 90 && s.up && s.up.warned >= 1.2 && s.up.fromRing <= 20 && s.mouthOff >= 0 && s.mouthOff <= 6 && s.spat === 3 && s.shieldUp === 1 && s.bodyHit && s.touches && s.frillHits >= 3 && s.frillHits <= 12 && s.spatNoFrills === 1)(report), `Magmadora: can't be hurt under the lava; two rings mark where she comes up 1.2 s+ before she breaks, and her head breaks the lava at the near one; her arc spans 90 m+ across your path, ahead of you; 3 fireballs come out of her mouth at the top; her body can be shot and hurts while it's up; a frill takes a few hits, and with both gone she spits one fireball (${JSON.stringify(report.serpent)})`],
+    [(({ ray: r }) => {
+      const h = r?.fans?.find((f) => f.plane === 'h'), v = r?.fans?.find((f) => f.plane === 'v');
+      return h && v && [h, v].every((f) => f.shards === 7 && f.wound >= 1 && f.wound <= 2.5 && f.frost > 0) && h.spreadY < 0.3 && v.spreadY > 0.7 && h.roll < 0.3 && v.roll > 1.3 && r.hit && r.hit.hull > 0 && r.hit.boost <= 0.7 && r.crystalHits >= 1 && r.crystalHits <= 12 && r.noCrystals === 3;
+    })(report), `Glacierra: a shard fan comes 1-2.5 s after she lines her wings up, 7 shards; wings level = a flat fan, wings on edge = an upright one; a shard hurts and frosts a third of the boost; with both wingtip crystals gone a fan is 3 shards (${JSON.stringify(report.ray)})`],
+    [(({ lands: l }) => l && l.rayElsewhere === 'gooseQueen' && l.rayHome === 'auroraRay')(report.serpent || {}), `Glacierra only comes in the cold lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.elsewhere === 'gooseQueen' && l.waits && l.topUp !== 'lavaSerpent' && l.home === 'lavaSerpent')(report.serpent || {}), `Magmadora only comes in Volcano Land (another boss comes elsewhere, she waits in the deck, a deck of only her tops up), and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).
@@ -4673,6 +4722,7 @@ try {
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
+        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans),
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);

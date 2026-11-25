@@ -1282,6 +1282,45 @@ export function makeLavaSerpent(hat) {
   return g;
 }
 
+// Glacierra, the Aurora Ray (the snowy peaks' boss): a giant manta of blue ice with an aurora shimmering in the webbing
+// of her wings. She rolls her wings into the plane of the shard fan she's about to fire (userData.tilt: level = a flat fan,
+// on edge = an upright one). Weak points: an ice crystal on each wingtip (they can be shot off, two fewer shards each)
+// and the aurora core on her back, all with the usual faint halo.
+export function makeAuroraRay(hat) {
+  const g = new THREE.Group(), tilt = new THREE.Group();
+  const ice = lam('#a8dcf0', { emissive: '#0a2433' }), ice2 = lam('#6aa8cc', { emissive: '#06182a' }), belly = lam('#e8f8ff');
+  const glint = basic('#e8fbff'), aurora = basic('#7affc8', { transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  const aurora2 = basic('#b48aff', { transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+  add(tilt, Sph(2.3, 12, 8), ice, { s: [1, 0.38, 1.3] }); // the body
+  add(tilt, Sph(2.1, 10, 6), belly, { y: -0.25, s: [0.95, 0.25, 1.2] }); // the pale belly
+  for (const x of [-0.85, 0.85]) {
+    add(tilt, Cone(0.45, 2, 4), ice2, { x, y: 0.1, z: 3.2, rx: PI / 2, s: [1, 1, 0.45] }); // the cephalic fins, curled forward
+    add(tilt, Sph(0.32, 6, 4), glint, { x: x * 1.05, y: 0.45, z: 2.2 }); // eyes
+    add(tilt, Sph(0.14, 4, 3), basic('#0a1a2a'), { x: x * 1.05, y: 0.55, z: 2.45 }); // pupils
+  }
+  for (const [x, c] of [[-0.45, aurora], [0, aurora2], [0.45, aurora]]) add(tilt, Box(0.16, 0.06, 3.4), c, { x, y: 0.82, z: -0.2 }); // aurora stripes down the back
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    w.position.set(sd * 1.7, 0, -0.2);
+    add(w, Cone(1.7, 6.2, 4), ice, { x: sd * 3, rz: -sd * PI / 2, s: [0.22, 1, 1] }); // the wing, thin and swept
+    add(w, Cone(1.2, 5, 4), aurora, { x: sd * 2.8, y: 0.05, z: -0.9, rz: -sd * PI / 2, s: [0.1, 1, 1] }); // the aurora webbing
+    add(w, Cone(0.9, 4, 4), aurora2, { x: sd * 2.4, y: -0.05, z: -1.4, rz: -sd * PI / 2, s: [0.1, 1, 1] });
+    for (const k of [1, 2, 3]) add(w, Cone(0.18, 1, 4), glint, { x: sd * k * 1.5, y: 0.25, z: 0.6 - k * 0.25, rx: -0.4 }); // frost spines on the leading edge
+    const crystal = add(w, Ico(0.7, 0), glint, { x: sd * 6.1, s: [1, 1.4, 1] }); // the wingtip crystal
+    weak(g, crystal, 0.9, 2, { name: 'crystal', hp: 1.5 });
+    tilt.add(w);
+    return w;
+  });
+  add(tilt, Cone(0.35, 7, 5), ice2, { z: -5.2, rx: -PI / 2 }); // the whip tail
+  for (const z of [-3.4, -4.6, -5.8]) add(tilt, Cone(0.16, 0.8, 4), glint, { y: 0.3, z, rx: -0.6 }); // icicles along it
+  const core = add(tilt, Ico(0.6, 0), basic('#7affc8'), { y: 0.95, z: 0.6 }); // the aurora core
+  weak(g, core, 0.8, 3);
+  g.add(tilt);
+  Object.assign(g.userData, { tilt, wings, webs: [aurora, aurora2], crownOn: tilt });
+  if (hat) partyHat(tilt, 1);
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {
