@@ -371,8 +371,8 @@ doesn't by itself, but flying on from where it put you does.
   hill or a wall. Her two ear tufts are breakable: a gust is 56 m wide and shoves 32 m/s with one gone, 42 m and 22 m/s
   (and no speed lost) with both (each costs her 4%). The glowing chest is the weak spot. 95 hp.
 - Count Ribbiton, the Toadstool Toad (a ground boss of the mushroom lands: Mushroom Forest and Alien World; the deck
-  brings him only there, and first there once the two openers are done): a huge teal toad with a monocle, glowing purple
-  spots and two glowing green crests. He starts on top of a giant glowing toadstool (none over water or under a roof)
+  brings him only there, and first there once the two openers are done): a huge, squat, warty old toad with heavy brows, a gold
+  monocle on a chain and two glowing toadstools growing out of his back (his crests). He starts on top of a giant glowing toadstool (none over water or under a roof)
   and hops off when you come within 260 m, when you hit him, or after about 2 s. Then he bounds after you across the
   ground: a crouch (0.35 s), then a hop of up to 220 m onto dry, gentle, roofless ground on a ring round where you're
   heading, its arc 30-70 m high (higher only to clear a hill on the way), with a squash, a thud and a puff of spores as
