@@ -1,6 +1,6 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
-// the Mushroom Forest's giant bounce mushrooms and the Autumn Woods' great windmill.
+// the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill and Canyon Country's railway trestle.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -130,6 +130,32 @@ export const MILL = {
   dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
 };
 
+// The trestle (Canyon Country): a tall timber railway trestle spans a gorge ahead, from a rocky bluff on one side to
+// another, each with a tunnel mouth. Every so often a little steam train puffs out of one tunnel, rattles across and
+// disappears into the other (its wheels turn, its chimney smokes, now and then it blows off steam). Flying under the
+// deck between two of its bents is "+25 Under the trestle!", and skimming close past the engine is "+25 Racing the
+// train!", each once per trestle. The deck, the bents, the bluffs and the train are solid: a bump costs a little hull
+// at most once a second and shoves you clear, never a wreck.
+export const TRESTLE = {
+  near: 550, far: 950,   // a new trestle appears this far ahead, across your way
+  drop: 1600,
+  len: 240,              // deck length, bluff to bluff
+  deep: 25,              // the gorge drops at least this far under the middle of the deck
+  tries: 40,             // spots tried every half second (gorges that fit are rare)
+  bentEvery: 24,
+  deckW: 9,
+  splay: 0.18,           // the bents widen this much per metre down
+  speed: 20,             // the train, m/s
+  wait: [3, 7],          // s before the next train comes out of the first tunnel
+  width: 5, gauge: 3.4, wheel: 1.1,
+  cars: [{ kind: 'loco', len: 16, h: 9 }, { kind: 'tender', len: 9, h: 6.5 }, { kind: 'coach', len: 15, h: 7.5 }, { kind: 'coach', len: 15, h: 7.5 }],
+  gap: 1.6,              // between cars
+  close: 16,             // m from the engine's middle: racing it
+  score: 25,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+  steamEvery: [5, 9],
+};
+
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
@@ -163,6 +189,10 @@ export class SetPieces {
     this.millT = 0;
     this.millTip = false;
     this.millMats = null; // made with the first mill, so a run that never meets one never builds them
+    this.trestle = null;
+    this.trestleT = 0;
+    this.trestleTip = false;
+    this.trestleMats = null; // made with the first trestle, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -212,6 +242,8 @@ export class SetPieces {
     this.whaleT = rand(...WHALE.first);
     this.dropMill();
     this.millT = 0;
+    this.dropTrestle();
+    this.trestleT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -296,6 +328,7 @@ export class SetPieces {
     if (this.kind === 'whales') { this.updateWhales(dt); return; }
     if (this.kind === 'mushrooms') { this.updateShrooms(dt); return; }
     if (this.kind === 'windmill') { this.updateMill(dt); return; }
+    if (this.kind === 'trestle') { this.updateTrestle(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -1084,6 +1117,260 @@ export class SetPieces {
       p.damage(MILL.dmg);
       G.fx.emit(p.pos, 18, { colors: ['#f3e6c8', '#6a4a30', '#e8902a'], speed: 18, life: 0.8, size: 4 });
       if (!this.millTip) { this.millTip = true; G.ui.notify('The windmill is solid! Slip between the turning sails for points.', 'warn', 4, 1); }
+    }
+  }
+  // ---- Canyon Country: the railway trestle -------------------------------------------------------------------------
+  get trestleInfo() { return this.trestle; }
+
+  dropTrestle() {
+    if (!this.trestle) return;
+    this.G.scene.remove(this.trestle.group);
+    for (const geo of this.trestle.geos) geo.dispose();
+    this.trestle = null;
+  }
+
+  // A gorge ahead, across your way: high ground at both ends of the deck, a deep drop under its middle, all dry.
+  placeTrestle() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0), L = TRESTLE.len, n = 12;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    const hs = [];
+    for (let tries = 0; tries < TRESTLE.tries; tries++) {
+      const d = rand(TRESTLE.near, TRESTLE.far), s = rand(-0.35, 0.35) * d, yaw = Math.atan2(-f.x, -f.z) + rand(-0.5, 0.5);
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s, cs = Math.cos(yaw), sn = Math.sin(yaw);
+      for (let i = 0; i <= n; i++) { const l = (i / n - 0.5) * L; hs[i] = G.terrain.surfaceHeight(x + cs * l, z - sn * l); }
+      if (Math.min(...hs) < G.world.seaLevel + 2) continue;
+      const deck = Math.min(hs[0], hs[n]) + 2;
+      if (Math.max(hs[0], hs[n]) > deck + 30 || Math.min(...hs) < deck - 70) continue; // the bents stay under ~70 m
+      // The bluffs' footprints: solid ground under every corner (they reach 76 m down).
+      let rock = true;
+      for (const sx of [-1, 1]) for (const ex of [L / 2 - 1, L / 2 + 19]) for (const ez of [-15, 15]) {
+        if (G.terrain.surfaceHeight(x + cs * sx * ex + sn * ez, z - sn * sx * ex + cs * ez) < deck - 70) rock = false;
+      }
+      if (!rock) continue;
+      let ok = true;
+      for (let i = 1; i < n && ok; i++) ok = hs[i] <= deck - (i >= 5 && i <= 7 ? TRESTLE.deep : 6);
+      if (!ok) continue;
+      return this.buildTrestle(x, deck, z, yaw);
+    }
+    return null;
+  }
+
+  // The ground under a point along the deck (local x, z), in the trestle's frame (y up from the deck top).
+  trestleGround(t, lx, lz = 0) {
+    const cs = Math.cos(t.yaw), sn = Math.sin(t.yaw);
+    return this.G.terrain.surfaceHeight(t.pos.x + lx * cs + lz * sn, t.pos.z - lx * sn + lz * cs) - t.pos.y;
+  }
+
+  buildTrestle(x, y, z, yaw) {
+    const M = (this.trestleMats ||= {
+      timber: new THREE.MeshLambertMaterial({ color: '#7a5636', flatShading: true }),
+      plank: new THREE.MeshLambertMaterial({ color: '#a8845a', flatShading: true }),
+      rock: new THREE.MeshLambertMaterial({ color: '#b0643a', flatShading: true }),
+      mouth: new THREE.MeshBasicMaterial({ color: '#120c08' }),
+      black: new THREE.MeshLambertMaterial({ color: '#2a2622', flatShading: true }),
+      red: new THREE.MeshLambertMaterial({ color: '#9a2a22', flatShading: true }),
+      green: new THREE.MeshLambertMaterial({ color: '#2e5a3a', flatShading: true }),
+      cream: new THREE.MeshLambertMaterial({ color: '#efe0bc', flatShading: true }),
+      brass: new THREE.MeshLambertMaterial({ color: '#d8a83a', flatShading: true }),
+      steel: new THREE.MeshLambertMaterial({ color: '#8a8e94', flatShading: true }),
+      roof: new THREE.MeshLambertMaterial({ color: '#4a5a6a', flatShading: true }),
+      glass: new THREE.MeshLambertMaterial({ color: '#2a3440' }),
+      coal: new THREE.MeshLambertMaterial({ color: '#141414', flatShading: true }),
+      lamp: new THREE.MeshBasicMaterial({ color: '#fff2a0' }),
+    });
+    const G = this.G, T = TRESTLE, L = T.len, g = new THREE.Group(), geos = [];
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    const t = { group: g, geos, pos: g.position, yaw, bents: [], cars: [], wheels: [] };
+    const mesh = (geo, mat, parent) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    const box = (w, h, l, mat, parent, bx = 0, by = 0, bz = 0) => { const o = mesh(new THREE.BoxGeometry(w, h, l), mat, parent); o.position.set(bx, by, bz); return o; };
+    // Timber: every post, brace and tie is one instance of a unit beam, stretched from end to end.
+    const beams = [], dummy = new THREE.Object3D();
+    const beam = (ax, ay, az, bx, by, bz, w = 0.9) => {
+      dummy.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+      dummy.lookAt(bx, by, bz);
+      dummy.scale.set(w, w, Math.hypot(bx - ax, by - ay, bz - az) + 0.3);
+      dummy.updateMatrix();
+      beams.push(dummy.matrix.clone());
+    };
+    // The bents: two splayed legs each, sunk into the ground, with an X brace and a tie every 14 m down.
+    for (let bx = -L / 2 + T.bentEvery / 2; bx < L / 2; bx += T.bentEvery) {
+      const w = (yy) => T.deckW / 2 + T.splay * -yy;
+      let gy = Math.min(this.trestleGround(t, bx, -6), this.trestleGround(t, bx, 6));
+      gy = Math.min(gy, this.trestleGround(t, bx, -w(gy - 3)), this.trestleGround(t, bx, w(gy - 3))); // where the splayed feet land
+      if (gy > -4) continue; // the bluff carries the deck here
+      const bottom = gy - 3;
+      t.bents.push({ x: bx, bottom });
+      for (const sz of [-1, 1]) beam(bx, -2.6, sz * w(-2.6), bx, bottom, sz * w(bottom), 1.2);
+      let prev = -2.6;
+      for (let yy = -2.6 - 14; yy > bottom + 2; yy -= 14) {
+        beam(bx, prev, -w(prev), bx, yy, w(yy), 0.6);
+        beam(bx, prev, w(prev), bx, yy, -w(yy), 0.6);
+        beam(bx, yy, -w(yy), bx, yy, w(yy), 0.7);
+        prev = yy;
+      }
+      beam(bx, -2.6, -w(-2.6) - 1, bx, -2.6, w(-2.6) + 1, 1); // the cap
+    }
+    // Stringers from bent to bent under the deck, and a handrail on posts along both sides.
+    for (const sz of [-1, 1]) {
+      beam(-L / 2, -2.2, sz * 3, L / 2, -2.2, sz * 3, 1.1);
+      beam(-L / 2, 2.6, sz * (T.deckW / 2 - 0.3), L / 2, 2.6, sz * (T.deckW / 2 - 0.3), 0.35);
+      for (let px = -L / 2 + 4; px < L / 2; px += 8) beam(px, 0, sz * (T.deckW / 2 - 0.3), px, 2.7, sz * (T.deckW / 2 - 0.3), 0.35);
+    }
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    geos.push(unit);
+    const timber = new THREE.InstancedMesh(unit, M.timber, beams.length);
+    beams.forEach((m, i) => timber.setMatrixAt(i, m));
+    g.add(timber);
+    // The deck: planks, sleepers and the two rails.
+    box(L, 1.2, T.deckW, M.plank, g, 0, -0.6, 0);
+    const sleeperGeo = new THREE.BoxGeometry(1.2, 0.4, T.gauge + 2);
+    geos.push(sleeperGeo);
+    const ns = Math.floor(L / 3), sleepers = new THREE.InstancedMesh(sleeperGeo, M.timber, ns);
+    for (let i = 0; i < ns; i++) { dummy.position.set(-L / 2 + 1.5 + i * 3, 0.2, 0); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); sleepers.setMatrixAt(i, dummy.matrix); }
+    g.add(sleepers);
+    for (const sz of [-1, 1]) box(L + 40, 0.4, 0.35, M.steel, g, 0, 0.6, sz * T.gauge / 2);
+    // A rocky bluff at each end, sunk deep into the ground, with a tunnel mouth facing the gorge.
+    for (const sx of [-1, 1]) {
+      const bl = box(20, 90, 30, M.rock, g, sx * (L / 2 + 9), -31, 0); // from 76 m down up to 14 m over the deck
+      bl.rotation.set(0, sx * 0.05, 0);
+      const cap = box(24, 4, 34, M.rock, g, sx * (L / 2 + 10), 15, 0);
+      cap.rotation.y = -sx * 0.08;
+      box(0.6, 10, 7, M.mouth, g, sx * (L / 2 - 1.2), 5, 0);
+      const arch = mesh(new THREE.CylinderGeometry(3.5, 3.5, 0.6, 12), M.mouth, g); // the round top of the mouth
+      arch.rotation.z = Math.PI / 2; arch.position.set(sx * (L / 2 - 1.2), 10, 0);
+    }
+    // The train: each car is a group built nose along +z, sitting on its wheels at y = 0.
+    let off = 0;
+    for (const c of T.cars) {
+      const cg = new THREE.Group(), CL = c.len, W = T.width, wr = T.wheel;
+      g.add(cg);
+      const wheel = (wz, r = wr) => {
+        for (const sx of [-1, 1]) {
+          const geo = new THREE.CylinderGeometry(r, r, 0.6, 10); geo.rotateZ(Math.PI / 2); geos.push(geo);
+          const w = new THREE.Mesh(geo, M.black); cg.add(w); w.position.set(sx * (T.gauge / 2), r, wz); t.wheels.push({ w, r });
+          box(0.8, r * 1.6, 0.35, M.red, w); // a spoke (sticking out of both faces), so you can see it turn
+        }
+      };
+      box(W, 1, CL, M.black, cg, 0, wr + 0.9, 0); // the frame
+      if (c.kind === 'loco') {
+        const boiler = mesh(new THREE.CylinderGeometry(2.1, 2.1, 10, 12), M.black, cg); boiler.rotation.x = Math.PI / 2; boiler.position.set(0, wr + 3.5, 2.5);
+        for (const bz of [-1, 2.5, 6]) { const b = mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.4, 12), M.brass, cg); b.rotation.x = Math.PI / 2; b.position.set(0, wr + 3.5, bz); }
+        const face = mesh(new THREE.CylinderGeometry(2.25, 2.25, 0.6, 12), M.steel, cg); face.rotation.x = Math.PI / 2; face.position.set(0, wr + 3.5, 7.6);
+        mesh(new THREE.CylinderGeometry(1.1, 0.7, 3.2, 10), M.black, cg).position.set(0, wr + 7, 5.4); // the chimney
+        mesh(new THREE.CylinderGeometry(1.4, 1.1, 0.7, 10), M.brass, cg).position.set(0, wr + 8.8, 5.4);
+        mesh(new THREE.SphereGeometry(1.1, 10, 6), M.brass, cg).position.set(0, wr + 5.6, 1.4); // the dome
+        box(W, 5, 4.5, M.red, cg, 0, wr + 4.4, -5.2); // the cab
+        box(W + 0.8, 0.5, 5.4, M.black, cg, 0, wr + 7.1, -5.2);
+        box(W + 0.05, 1.6, 1.6, M.glass, cg, 0, wr + 5.4, -4.4);
+        mesh(new THREE.SphereGeometry(0.7, 8, 6), M.lamp, cg).position.set(0, wr + 6, 7.9);
+        const catcher = mesh(new THREE.ConeGeometry(2.6, 2.6, 4), M.red, cg); catcher.rotation.set(Math.PI / 2, Math.PI / 4, 0); catcher.scale.set(1, 0.5, 1); catcher.position.set(0, 1.1, 8.4);
+        for (const wz of [-4.5, -0.5, 3.5]) wheel(wz, 1.5);
+        for (const sx of [-1, 1]) box(0.2, 0.3, 8, M.steel, cg, sx * (T.gauge / 2 + 0.4), 1.5, -0.5); // coupling rods
+      } else if (c.kind === 'tender') {
+        box(W, 4, CL - 1, M.black, cg, 0, wr + 3.4, 0);
+        box(W - 1, 1.2, CL - 2, M.coal, cg, 0, wr + 5.8, 0);
+        box(W + 0.1, 0.6, CL - 0.8, M.brass, cg, 0, wr + 5.1, 0);
+        for (const wz of [-3, 3]) wheel(wz);
+      } else {
+        box(W, 4.2, CL - 1, M.green, cg, 0, wr + 3.6, 0);
+        box(W + 0.1, 1.2, CL - 1.4, M.cream, cg, 0, wr + 4.6, 0); // the window band
+        for (let k = 0; k < 4; k++) box(W + 0.15, 1, 1.8, M.glass, cg, 0, wr + 4.6, -CL / 2 + 2.6 + k * ((CL - 5.2) / 3));
+        const top = mesh(new THREE.CylinderGeometry(W * 0.62, W * 0.62, CL - 0.6, 10, 1, false, -Math.PI / 2, Math.PI), M.roof, cg);
+        top.rotation.set(-Math.PI / 2, 0, 0); top.scale.set(1, 1, 0.4); top.position.set(0, wr + 5.6, 0);
+        for (const wz of [-CL / 2 + 2.5, CL / 2 - 2.5]) wheel(wz);
+      }
+      t.cars.push({ ...c, group: cg, off: off + c.len / 2, x: 0 });
+      off += c.len + T.gap;
+    }
+    t.trainLen = off;
+    Object.assign(t, { dir: Math.random() < 0.5 ? 1 : -1, tx: 0, wait: rand(0, 2), under: false, raced: false, prevZ: null, bumpT: 0, smokeT: 0, steamT: rand(...T.steamEvery) });
+    t.tx = -t.dir * (L / 2 + 6);
+    G.scene.add(g);
+    this.trestle = t;
+    this.placeTrain();
+    return t;
+  }
+
+  // The train along the deck: the engine's nose at tx, heading dir (+1 or -1 along the deck). Cars inside a tunnel
+  // are hidden.
+  placeTrain() {
+    const t = this.trestle, edge = TRESTLE.len / 2 - 1;
+    for (const c of t.cars) {
+      c.x = t.tx - t.dir * c.off;
+      c.group.position.set(c.x, 0.8, 0);
+      c.group.rotation.y = t.dir * Math.PI / 2;
+      c.group.visible = t.wait <= 0 && Math.abs(c.x) - c.len / 2 < edge; // shown as soon as its nose leaves the tunnel
+    }
+  }
+
+  updateTrestle(dt) {
+    const G = this.G, p = G.player, T = TRESTLE, L = T.len;
+    if (this.trestle && Math.hypot(this.trestle.pos.x - p.pos.x, this.trestle.pos.z - p.pos.z) > T.drop) this.dropTrestle();
+    if (!this.trestle && !G.terrain.stale && (this.trestleT -= dt) <= 0) { this.trestleT = 0.5; this.placeTrestle(); }
+    const t = this.trestle;
+    if (!t) return;
+    // The train: out of one tunnel, across and into the other; a little later the next one comes out the first.
+    if (t.wait > 0) {
+      t.wait -= dt;
+    } else {
+      t.tx += t.dir * T.speed * dt;
+      for (const { w, r } of t.wheels) w.rotation.x += (T.speed / r) * dt;
+      if (t.dir * t.tx > L / 2 + t.trainLen + 4) { t.tx = -t.dir * (L / 2 + 6); t.wait = rand(...T.wait); }
+    }
+    this.placeTrain();
+    t.bumpT = Math.max(0, t.bumpT - dt);
+    const loco = t.cars[0], near = Math.hypot(t.pos.x - p.pos.x, t.pos.z - p.pos.z) < 900;
+    // Smoke from the chimney while the engine is out in the open, and now and then a hiss of steam.
+    if (near && loco.group.visible && (t.smokeT -= dt) <= 0) {
+      t.smokeT = 0.14;
+      t.group.updateMatrixWorld();
+      G.fx.emit(loco.group.localToWorld(_q.set(0, T.wheel + 9.2, 5.4)), 2, { colors: ['#5a5652', '#8a8682', '#c8c4be'], speed: 3, life: 3, size: 6, gravity: 6, up: 6, drag: 0.5 });
+    }
+    if ((t.steamT -= dt) <= 0) {
+      t.steamT = rand(...T.steamEvery);
+      if (near && loco.group.visible) {
+        t.group.updateMatrixWorld();
+        for (const sx of [-1, 1]) G.fx.emit(loco.group.localToWorld(_q.set(sx * 3, 1.4, 4)), 14, { colors: ['#ffffff', '#e8eef2'], speed: 9, life: 1.4, size: 5, gravity: 3, drag: 1.4 });
+      }
+    }
+    if (p.dead) { t.prevZ = null; return; }
+    const P = this.archLocal(t, _local), r = 2.5 * (p.sizeScale || 1), cs = Math.cos(t.yaw), sn = Math.sin(t.yaw);
+    let hit = false, ox = 0, oy = 0, oz = 0;
+    // A box in the trestle's frame: if you're in it, out the shallowest way.
+    const solid = (x0, x1, y0, y1, hz) => {
+      if (P.x <= x0 - r || P.x >= x1 + r || P.y <= y0 - r || P.y >= y1 + r || Math.abs(P.z) >= hz + r) return;
+      const dx = P.x - (x0 + x1) / 2 < 0 ? x0 - r - P.x : x1 + r - P.x, dy = P.y - (y0 + y1) / 2 < 0 ? y0 - r - P.y : y1 + r - P.y;
+      const dz = (P.z < 0 ? -1 : 1) * (hz + r) - P.z;
+      if (Math.abs(dy) <= Math.abs(dx) && Math.abs(dy) <= Math.abs(dz)) oy += dy; else if (Math.abs(dx) <= Math.abs(dz)) ox += dx; else oz += dz;
+      hit = true;
+    };
+    solid(-L / 2, L / 2, -2.6, 0.6, T.deckW / 2); // the deck
+    for (const b of t.bents) if (P.y < -2.6 && P.y > b.bottom - r) solid(b.x - 1.2, b.x + 1.2, b.bottom, -2.6, T.deckW / 2 + T.splay * Math.max(0, -P.y));
+    for (const sx of [-1, 1]) solid(sx > 0 ? L / 2 - 1 : -L / 2 - 21, sx > 0 ? L / 2 + 21 : -L / 2 + 1, -80, 17, 17); // the bluffs
+    for (const c of t.cars) if (c.group.visible) solid(c.x - c.len / 2, c.x + c.len / 2, 0.8, 0.8 + T.wheel + c.h, T.width / 2);
+    if (hit) { p.pos.x += ox * cs + oz * sn; p.pos.y += oy; p.pos.z += -ox * sn + oz * cs; }
+    // Under the deck, from one side to the other between the bluffs: a pass under the trestle.
+    if (!hit && t.prevZ !== null && Math.sign(t.prevZ) !== Math.sign(P.z) && !t.under && P.y < -2.6 - r && Math.abs(P.x) < L / 2 - 2) {
+      t.under = true;
+      G.score += T.score;
+      G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${T.score} Under the trestle!`);
+      G.fx.emit(p.pos, 30, { colors: ['#d8a83a', '#b0643a', '#efe0bc', '#ffffff'], speed: 16, life: 1.4, size: 3, gravity: -5 });
+    }
+    t.prevZ = hit ? t.prevZ : P.z;
+    // Close past the engine out in the open: racing the train.
+    if (!hit && !t.raced && !p.landed && loco.group.visible && Math.hypot(P.x - loco.x, P.y - 5, P.z) < T.close) {
+      t.raced = true;
+      G.score += T.score;
+      G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${T.score} Racing the train!`);
+      G.fx.emit(p.pos, 30, { colors: ['#d8a83a', '#9a2a22', '#efe0bc', '#ffffff'], speed: 16, life: 1.4, size: 3, gravity: -5 });
+    }
+    if (hit && t.bumpT <= 0) {
+      t.bumpT = T.bumpEvery;
+      p.damage(T.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#a8845a', '#7a5636', '#d8a83a'], speed: 18, life: 0.8, size: 4 });
+      if (!this.trestleTip) { this.trestleTip = true; G.ui.notify('The trestle is solid! Fly under the deck between its legs for points.', 'warn', 4, 1); }
     }
   }
 }

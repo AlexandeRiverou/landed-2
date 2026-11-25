@@ -134,9 +134,13 @@ try {
     // The Autumn Woods' windmill (land 2, flown through by many early checks) stays out of them until its own check sets
     // __smokeMill, like the hidden finds above: no tower in the way of a boss fight, no rolls taken from the stream those
     // checks were tuned on. Once on, it rolls its spot and its leaves aside.
-    const SP = window.G.zones.setPieces, updateMill = SP.updateMill;
-    SP.updateMill = function (dt) { if (window.__smokeMill) return updateMill.call(this, dt); };
-    for (const k of ['placeMill', 'updateMill']) window.__smokeAside(SP, k);
+    // Canyon Country's trestle (land 3) does the same with __smokeTrestle.
+    const SP = window.G.zones.setPieces;
+    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle']]) {
+      const f = SP[up];
+      SP[up] = function (dt) { if (window[flag]) return f.call(this, dt); };
+      for (const k of [place, up]) window.__smokeAside(SP, k);
+    }
   });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
@@ -4842,7 +4846,43 @@ try {
       const L = SP.archLocal(mill, p.pos.clone());
       out.sail = { hits: hits.filter((n) => n === MILL.dmg).length, off: L.z - MILL.hubZ >= MILL.thick + 2.5 * (p.sizeScale || 1) - 0.1 };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo;
+    // Canyon Country: a railway trestle over a gorge. Flying under its deck between two bents is +25 once, so is racing
+    // close past the engine; the deck, the bents and the train are solid: one knock, and you're shoved clear.
+    const { TRESTLE } = await import('./src/setpieces.js');
+    out.millTrestle = !!SP.trestleInfo;
+    window.__smokeTrestle = true;
+    into('Canyon Country');
+    for (let k = 0; k < 120 && !SP.trestleInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    const tr = SP.trestleInfo;
+    out.trestle = !!tr;
+    if (tr) {
+      const cs = Math.cos(tr.yaw), sn = Math.sin(tr.yaw);
+      const put = (lx, ly, lz) => p.pos.set(tr.pos.x + lx * cs + lz * sn, tr.pos.y + ly, tr.pos.z - lx * sn + lz * cs);
+      const gy = (lx, lz = 0) => SP.trestleGround(tr, lx, lz);
+      // Its legs reach down into the ground; the gorge drops away under the middle of the deck.
+      out.trestleGrounded = tr.bents.length >= 3 && tr.bents.every((b) => gy(b.x) > b.bottom) && gy(0) <= -TRESTLE.deep;
+      // Under the deck at its middle (halfway between two bents), from one side to the other and back.
+      tr.wait = 1e9; tr.prevZ = null;
+      const floor = Math.max(gy(0, -20), gy(0), gy(0, 20)), uy = (floor - 2.6) / 2;
+      hits.length = 0;
+      const s7 = G.score;
+      for (let k = 0; k <= 40; k++) { put(0, uy, 20 - k); clear(); G.step(1 / 30); }
+      for (let k = 0; k <= 40; k++) { put(0, uy, -20 + k); clear(); G.step(1 / 30); } // back under: no second bonus
+      out.under = { under: tr.under, score: G.score - s7, hits: hits.filter((n) => n === TRESTLE.dmg).length, room: +(uy - floor).toFixed(1) };
+      // Racing the train: out on the deck, 12 m beside the engine.
+      hits.length = 0;
+      const s8 = G.score;
+      for (let k = 0; k < 20; k++) { tr.wait = 0; tr.tx = 0; SP.placeTrain(); put(tr.cars[0].x, 5, TRESTLE.width / 2 + 9.5); clear(); G.step(1 / 30); }
+      out.race = { raced: tr.raced, score: G.score - s8, hits: hits.filter((n) => n === TRESTLE.dmg).length, seen: tr.cars[0].group.visible };
+      // The deck is solid: one knock, and you're out of it.
+      hits.length = 0;
+      tr.bumpT = 0; tr.wait = 1e9; SP.placeTrain();
+      put(0, -1.5, 0);
+      clear(); G.step(1 / 30);
+      const L = SP.archLocal(tr, p.pos.clone()), r = 2.5 * (p.sizeScale || 1);
+      out.deck = { hits: hits.filter((n) => n === TRESTLE.dmg).length, off: L.y <= -2.6 - r + 0.1 || L.y >= 0.6 + r - 0.1 };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -5266,6 +5306,7 @@ try {
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
+    [(({ setPieces: q }) => q.trestle && !q.millTrestle && !q.beltTrestle && q.trestleGrounded && q.under?.under && q.under.room > 2.5 && q.under.score >= 25 && q.under.score < 50 && q.under.hits === 0 && q.race?.raced && q.race.score >= 25 && q.race.score < 50 && q.race.hits === 0 && q.deck?.hits === 1 && q.deck.off)(report), `set pieces: Canyon Country has its railway trestle over a gorge (no other land does), its legs in the ground; flying under the deck between two legs is +25 once with no bump, so is racing close past the engine; the deck is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { trestle: report.setPieces.trestle, mill: report.setPieces.millTrestle, belt: report.setPieces.beltTrestle, grounded: report.setPieces.trestleGrounded, under: report.setPieces.under, race: report.setPieces.race, deck: report.setPieces.deck })})`],
     [(({ setPieces: q }) => q.mill && !q.shroomMill && !q.beltMill && q.millGrounded && q.sails?.threaded && q.sails.score >= 25 && q.sails.score < 50 && q.sails.hits === 0 && q.sail?.hits === 1 && q.sail.off)(report), `set pieces: the Autumn Woods has its great windmill (no other land does), sunk into the ground; slipping between its turning sails is +25 once with no bump, a sail is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { mill: report.setPieces.mill, shroom: report.setPieces.shroomMill, belt: report.setPieces.beltMill, grounded: report.setPieces.millGrounded, sails: report.setPieces.sails, sail: report.setPieces.sail })})`],
     [(({ setPieces: q }) => q.shrooms >= 1 && q.tropicShrooms === 0 && q.beltShrooms === 0 && q.boing?.lifted && q.boing.score >= 15 && q.boing.score < 30 && q.boing.again === q.boing.score && q.boing.rise > 10 && q.boing.nose > 0.1 && q.boing.hits === 0)(report), `set pieces: the Mushroom Forest has giant bounce mushrooms (no other land does); touching a cap boings you up with the nose lifted, +15 once per mushroom, and never hurts (${JSON.stringify(report.setPieces && { shrooms: report.setPieces.shrooms, tropic: report.setPieces.tropicShrooms, belt: report.setPieces.beltShrooms, boing: report.setPieces.boing })})`],
     [(({ setPieces: q }) => q.whales >= 1 && q.frozenWhales === 0 && q.beltWhales === 0 && q.pass?.passed && q.pass.splashed && q.pass.gone && q.pass.score >= 25 && q.pass.score < 50 && q.pass.hits === 0 && q.ram?.hits === 1 && q.ram.off)(report), `set pieces: the Tropical Archipelago has breaching whales (no other land does); skimming past one in the air is +25 once, it splashes back down and goes; flying into one is one knock per jump and you're shoved clear (${JSON.stringify(report.setPieces && { whales: report.setPieces.whales, frozen: report.setPieces.frozenWhales, belt: report.setPieces.beltWhales, pass: report.setPieces.pass, ram: report.setPieces.ram })})`],

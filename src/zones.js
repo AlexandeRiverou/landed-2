@@ -32,7 +32,7 @@ export const ZONES = [
   {
     name: 'Canyon Country', blurb: 'Red rock, deep gorges and table mountains. Bring sunscreen.',
     world: { palette: 'Classic Countryside', tempBias: 0.7, canyon: 1.4, canyonWidth: 2.2, mesa: 2, spikes: 1.2, amp: 0.8 },
-    sky: 'morning', weather: 'clear', clouds: ['#fff4e0', 15], mood: 'day', lock: LOCK,
+    sky: 'morning', weather: 'clear', clouds: ['#fff4e0', 15], mood: 'day', setPiece: 'trestle', lock: LOCK,
   },
   {
     name: 'Dune Sea', blurb: 'Endless golden dunes. Somewhere out here, a cactus is very lonely.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
