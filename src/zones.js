@@ -97,7 +97,7 @@ export const ZONES = [
   {
     name: 'Princess Kingdom', blurb: 'Pink castles, heart-shaped trees and unicorns. Curtsy while flying.',
     world: { palette: 'princess', propTheme: 'princess', propDensity: 1.3, amp: 0.7, spikes: 0.2, tempBias: -0.2 },
-    sky: 'royal', weather: 'petals', clouds: ['#fff0fa', 45], mood: 'dream', lock: [...LOCK, 'weather'],
+    sky: 'royal', weather: 'petals', clouds: ['#fff0fa', 45], mood: 'dream', setPiece: 'castle', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Candy Kingdom', blurb: 'Lollipop forests and donut boulders. Dentists fear this place.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
