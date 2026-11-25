@@ -340,6 +340,13 @@ doesn't by itself, but flying on from where it put you does.
   mouth at the top (5 enraged), her jaw opening and throat glowing first. Level flight under the arch is safe; her body
   hurts (20) and can be shot while it's up. The two gill frills behind her head (each one shot off is one fireball
   fewer) and the ember on her back are the weak spots. 115 hp, 18 a fireball.
+- Glacierra, the Aurora Ray (a lead boss of the cold lands: Frozen Peaks, Hollow Peaks and the Stratosphere; the deck
+  brings her only there, and first there once the two openers are done): a giant ice manta trailing aurora webbing.
+  Every attack is a shard fan: for 1.1 s (1.8 s the first time, with a tip) she stops flapping, glows, and rolls her wings into the fan's plane. Wings
+  level fire a flat fan (climb or dive out of it); wings on edge fire an upright one (turn aside). A fan is 7 shards
+  over 0.9 rad, 14 a shard, and each shard that hits also frosts a third of your boost tank. Enraged, a second fan in
+  the other plane follows. The crystals on her wingtips are weak spots: each one shot off means two shards fewer a fan
+  (3 at least); the green core on her back is the other. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
@@ -575,7 +582,7 @@ Close it with `Esc`, the ✕ button, or the same 3 s hold. It's a testing aid, s
 card.
 
 - **Zones:** jump straight to any of the 30 zones (the next zone change is a full zone's worth of objectives away).
-- **Bosses:** start any of the 17, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
+- **Bosses:** start any of the 18, with an optional modifier and the Twins checkbox. Fort Grumpington needs flat land
   (where there is none, King Drone comes instead and you get a notice). HMS Overkill always comes: the menu finds open
   sea round you (up to 6 km out) and puts you 600 m off it, or, in a zone with none, flies you to the Tropical
   Archipelago first. Magmadora always comes too: the menu flies you to Volcano Land and puts you 300 m off a lava sea.

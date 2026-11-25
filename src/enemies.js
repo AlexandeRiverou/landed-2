@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -332,6 +332,16 @@ export const BOSSES = {
     taunts: ['Magmadora: "I am not a noodle. I am a SPICY noodle."', 'Magmadora: "Ssssurf\'s up. The surf is lava."', 'Magmadora: "I swim in lava. You can\'t even land."'],
     rage: ['Magmadora has reached a rolling boil.', 'She is boiling over. Mostly onto you.'],
   },
+  // Land boss for the cold lands: a lead boss that fires telegraphed shard fans in the plane her wings show (see SHARDS).
+  auroraRay: {
+    make: makeAuroraRay, scale: 4, crownY: 1, crownS: 0.8, radius: 20, hp: 95, speed: 34, lead: 170, sway: 50, dmg: 20, face: 'player',
+    lands: ['Frozen Peaks', 'Hollow Peaks', 'Stratosphere'],
+    name: 'Glacierra, the Aurora Ray', short: 'Glacierra', noun: 'Glacierra',
+    move: 'fans',
+    desc: 'A giant ice manta trailing the northern lights. She rolls her wings into the shape of her next shard fan: wings level, climb or dive out of it; wings on edge, turn aside. Each shard ices up your boost. Shoot the crystals off her wingtips for smaller fans.',
+    taunts: ['Glacierra: "Chill. No, really. I insist."', 'Glacierra: "I am a ray of sunshine. A frozen one."', 'Glacierra: "Mind the draft. I AM the draft."'],
+    rage: ['Glacierra is giving you the cold shoulder. Both of them.', 'Her aurora has gone a very angry green.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -413,6 +423,7 @@ const BOSS_BREAK_TEXT = {
   gun: 'Deck gun destroyed! One less cannon on that deck.',
   cannon: 'Tower cannon down! One less cannon on the walls.',
   frill: 'Frill snapped off! Less spit, same attitude.',
+  crystal: 'Wingtip crystal shattered! Her shard fans are thinner now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -855,6 +866,10 @@ export class Enemies {
         }
         break;
       }
+      case 'auroraRay':
+        cd = 3.2; // the wing-up and fan come from her move (fans); attacks wait while she aims
+        BOSS_MOVES.fans.start(this, e, n);
+        break;
       case 'lavaSerpent':
         cd = 0.5; // she only spits at the top of an arc (her move holds every other attack)
         BOSS_MOVES.breach.spit(this, e);
@@ -1356,6 +1371,7 @@ export class Enemies {
       case 'gun': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'cannon': if (e.boss) e.hp -= e.maxHp * 0.03; break;
       case 'frill': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'crystal': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1924,7 +1940,7 @@ export class Enemies {
     const u = e.mesh.userData;
     if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
-    if (u.wings) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
+    if (u.wings && !u.webs) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
@@ -1948,6 +1964,7 @@ export class Enemies {
       e.snap = Math.max(0, (e.snap || 0) - dt);
       u.claws.forEach((c, k) => { c.rotation.y = (k ? -1 : 1) * (e.snap > 0 ? 0.5 : Math.sin(e.t * 2) * 0.15); });
     }
+    if (u.webs) BOSS_MOVES.fans.pose(this, e, dt); // Glacierra rolls her wings into her next fan's plane
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {
@@ -1984,7 +2001,15 @@ export class Enemies {
       if (s.g) s.vel.y -= s.g * dt; // dropped bombs and eggs fall
       s.pos.addScaledVector(s.vel, dt);
       const d2 = s.pos.distanceToSquared(p.pos), hit = !p.dead && d2 < s.r2 * p.sizeScale * p.sizeScale;
-      if (hit) p.damage(s.dmg);
+      if (hit) {
+        const h0 = p.health;
+        p.damage(s.dmg);
+        // Glacierra's shards also frost part of your boost tank (only when they actually hurt).
+        if (s.frost && p.health < h0) {
+          p.boost = Math.max(0, p.boost - s.frost);
+          if (!(this.frostNews > this.G.time)) { this.frostNews = this.G.time + 6; this.G.ui.notify('Frostbite! Your boost iced over.', 'bad', 2); }
+        }
+      }
       else if (!p.dead && !s.whiffed && d2 < s.r2 && this.G.powerups.has('tiny')) {
         // Tiny Ace: it would have hit a normal-size plane.
         s.whiffed = true;
