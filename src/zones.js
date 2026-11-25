@@ -42,7 +42,7 @@ export const ZONES = [
   {
     name: 'Frozen Peaks', blurb: 'Jagged ice-cold mountains. The snowmen here are judgmental.',
     world: { palette: 'Winter Wonderland', amp: 1.9, terrace: 0.9, snowLine: 60, tempBias: -0.5 },
-    sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'frost', lock: [...LOCK, 'weather'],
+    sky: 'dawn', weather: 'snow', clouds: ['#e8f0ff', 55], mood: 'frost', setPiece: 'arches', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Hollow Peaks', blurb: 'Huge mountains with holes clean through them. Yes, you can fly in there. The mountain is fine with it.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
