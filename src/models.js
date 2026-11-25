@@ -1492,42 +1492,43 @@ export function makeHarvestOak() {
 // his spores and tongue come from. Feet at y -2.6 (TOAD_FEET).
 export const TOAD_FEET = 2.6;
 export function makeToadBaron(hat) {
-  const g = new THREE.Group();
+  const g = new THREE.Group(), b = new THREE.Group(); // b: all but the legs, squashed and stretched as one (animateBoss: children[0])
+  g.add(b);
   const skin = lam('#2e8f86', { emissive: '#06201c' }), dark = lam('#1f5f5a'), belly = lam('#efe6c4'), gold = lam('#e8b030');
   const glow = basic('#c66cff'), lip = lam('#3aa396');
-  add(g, Sph(3, 16, 10), skin, { s: [1.25, 0.85, 1.1] }); // the body
-  add(g, Sph(2.5, 12, 8), belly, { y: -0.75, z: 1.2, s: [1.1, 0.72, 0.78] }); // cream belly
+  add(b, Sph(3, 16, 10), skin, { s: [1.25, 0.85, 1.1] }); // the body
+  add(b, Sph(2.5, 12, 8), belly, { y: -0.75, z: 1.2, s: [1.1, 0.72, 0.78] }); // cream belly
   for (const [x, y, z, r] of [[-1.6, 1.6, -0.6, 0.45], [1.7, 1.4, -1.4, 0.5], [0.2, 2.2, -1.9, 0.38], [-2.6, 0.6, -1.4, 0.42], [2.8, 0.4, 0.2, 0.35], [-0.9, 2.2, 0.4, 0.3], [1.0, 2.1, 0.7, 0.32]]) {
-    add(g, Sph(r, 6, 4), glow, { x, y, z, s: [1, 0.5, 1] }); // glowing spots on his back
+    add(b, Sph(r, 6, 4), glow, { x, y, z, s: [1, 0.5, 1] }); // glowing spots on his back
   }
-  const sac = add(g, Sph(1.15, 12, 8), basic('#ff9ad6'), { y: -1.05, z: 2.75, s: [1.15, 0.85, 0.75] }); // throat sac
+  const sac = add(b, Sph(1.15, 12, 8), basic('#ff9ad6'), { y: -1.05, z: 2.75, s: [1.15, 0.85, 0.75] }); // throat sac
   weak(g, sac, 1.4, 3);
   // Eyes on top, in bumps, gold with a black slit; lids for a blink; a gold monocle on his left eye.
   const lids = [];
   for (const sd of [-1, 1]) {
-    add(g, Sph(0.95, 10, 8), skin, { x: sd * 1.35, y: 1.85, z: 1.65 });
-    add(g, Sph(0.78, 12, 8), basic('#ffd23a'), { x: sd * 1.35, y: 2.0, z: 2.0 });
-    add(g, Box(0.95, 0.22, 0.12), basic('#140c06'), { x: sd * 1.35, y: 2.0, z: 2.75 });
-    add(g, Sph(0.1, 4, 3), basic('#ffffff'), { x: sd * 1.35 + 0.25, y: 2.3, z: 2.7 });
-    const lid = add(g, Sph(0.84, 10, 6), dark, { x: sd * 1.35, y: 2.0, z: 2.05 });
+    add(b, Sph(0.95, 10, 8), skin, { x: sd * 1.35, y: 1.85, z: 1.65 });
+    add(b, Sph(0.78, 12, 8), basic('#ffd23a'), { x: sd * 1.35, y: 2.0, z: 2.0 });
+    add(b, Box(0.95, 0.22, 0.12), basic('#140c06'), { x: sd * 1.35, y: 2.0, z: 2.75 });
+    add(b, Sph(0.1, 4, 3), basic('#ffffff'), { x: sd * 1.35 + 0.25, y: 2.3, z: 2.7 });
+    const lid = add(b, Sph(0.84, 10, 6), dark, { x: sd * 1.35, y: 2.0, z: 2.05 });
     lid.visible = false;
     lids.push(lid);
   }
-  add(g, Tor(0.66, 0.08, 5, 18), gold, { x: 1.35, y: 2.0, z: 2.78 }); // the monocle
-  add(g, Cyl(0.03, 0.03, 1.6, 3), gold, { x: 1.95, y: 1.25, z: 2.5, rz: 0.4 }); // its chain
+  add(b, Tor(0.66, 0.08, 5, 18), gold, { x: 1.35, y: 2.0, z: 2.78 }); // the monocle
+  add(b, Cyl(0.03, 0.03, 1.6, 3), gold, { x: 1.95, y: 1.25, z: 2.5, rz: 0.4 }); // its chain
   // The jaw: a wide lower lip on a hinge; open, it shows a dark mouth. userData.mouth: where spores and tongue leave.
   const jaw = new THREE.Group();
   jaw.position.set(0, 0.35, 1.1);
-  g.add(jaw);
+  b.add(jaw);
   add(jaw, Sph(2.7, 14, 6), lip, { y: -0.35, z: 1.15, s: [1.2, 0.3, 0.95] });
-  add(g, Sph(2.3, 12, 6), basic('#6a1a36'), { y: 0.4, z: 2.0, s: [1.1, 0.35, 0.65] }); // inside his mouth
-  add(g, Tor(2.45, 0.09, 4, 20, PI), dark, { y: 0.55, z: 1.55, rx: PI / 2, s: [1.25, 1.05, 1] }); // the line of his mouth
+  add(b, Sph(2.3, 12, 6), basic('#6a1a36'), { y: 0.4, z: 2.0, s: [1.1, 0.35, 0.65] }); // inside his mouth
+  add(b, Tor(2.45, 0.09, 4, 20, PI), dark, { y: 0.55, z: 1.55, rx: PI / 2, s: [1.25, 1.05, 1] }); // the line of his mouth
   const mouth = new THREE.Object3D();
   mouth.position.set(0, 0.45, 3.2);
-  g.add(mouth);
+  b.add(mouth);
   // Spore crests on his back: a glowing green puffball with little spikes each.
   for (const sd of [-1, 1]) {
-    const c = add(g, Sph(0.75, 8, 6), basic('#9dff6a'), { x: sd * 1.25, y: 2.35, z: -1.3 });
+    const c = add(b, Sph(0.75, 8, 6), basic('#9dff6a'), { x: sd * 1.25, y: 2.35, z: -1.3 });
     for (let k = 0; k < 4; k++) add(c, Cone(0.18, 0.6, 4), lam('#4fbf3a'), { x: Math.cos(k * 1.57) * 0.55, y: 0.45, z: Math.sin(k * 1.57) * 0.55, rx: Math.sin(k * 1.57) * 0.6, rz: -Math.cos(k * 1.57) * 0.6 });
     breakable(g, c, 0.9, 'crest', 2);
   }
@@ -1552,7 +1553,7 @@ export function makeToadBaron(hat) {
     return l;
   });
   Object.assign(g.userData, { toad: true, sac, sacMat: sac.material, lids, jaw, mouth, fore, hind });
-  if (hat) partyHat(g, 2.9);
+  if (hat) partyHat(b, 2.9);
   return g;
 }
 

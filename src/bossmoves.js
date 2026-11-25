@@ -60,17 +60,17 @@ export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 250
 // or `restless` s at most), and stops following beyond `follow` m. Attacks (only sitting): `spores` puffs (4 / 3 / 2 with
 // 0 / 1 / 2 crests shot off), `sporeDmg` each; every 3rd (2nd enraged), within `lashRange` m and in clear line, a tongue
 // lash: a `tell` s tell (`first` the first time, with a tip; `tellRage` enraged), aimed at where you'll be at the strike,
-// locked for the last `lock` s; then the tongue shoots `reach` m out in `out` s, stays `hold` s and goes back in `back` s.
+// locked for the last `lock` s; then the tongue shoots `tongue` m out in `out` s, stays `hold` s and goes back in `back` s.
 // It hits within `width` m (+ the plane's size): `dmg`, and `slow` m/s of speed.
 export const LEAP = {
   stool: 1, perch: 1.7, near: 260, crouch: 0.35, ring: 140, ahead: 80, turn: 0.8, reach: 220, air: [1.1, 1.6], airK: 400,
-  apex: [30, 70], apexK: 0.3, clear: 15, settle: 0.3, sit: [1.2, 2], sitRage: [0.9, 1.4], restless: 3.5, follow: 700,
+  apex: [30, 70], apexK: 0.3, clear: 15, settle: 0.3, sit: [1.6, 2.4], sitRage: [1.1, 1.6], restless: 3.5, follow: 700,
   spores: [4, 3, 2], sporeSpeed: 62, sporeDmg: 9, spread: 0.12, sporeColor: '#c66cff', sporeColor2: '#3fd6c6',
-  lashRange: 200, tell: 1.2, first: 1.6, tellRage: 1, lock: 0.35, out: 0.2, hold: 0.15, back: 0.3, width: 6, dmg: 18, slow: 10,
+  lashRange: 200, tongue: 230, tell: 1.2, first: 1.6, tellRage: 1, lock: 0.35, out: 0.2, hold: 0.15, back: 0.3, width: 6, dmg: 18, slow: 10,
   dust: ['#c66cff', '#3fd6c6', '#e8e0d0', '#9dff6a'],
 };
 const SAC = new THREE.Color('#ff9ad6'), SAC_HOT = new THREE.Color('#fff0a0');
-const BEAM_LINE = new THREE.CylinderGeometry(0.5, 0.5, 1, 6, 1, true);
+const BEAM_LINE = new THREE.CylinderGeometry(1.1, 1.1, 1, 6, 1, true);
 // A world mesh of height 1 along +Y stretched from `from` along unit `dir` for `len` m (an aim line, a tongue).
 function place(mesh, from, dir, len) {
   mesh.position.copy(from).addScaledVector(dir, len / 2);
@@ -1418,6 +1418,7 @@ export const MOVES = {
       MOVES.leap.tongue(en, e, c);
       const feet = TOAD_FEET * e.mesh.scale.x;
       if (m.phase === 'sit') {
+        if (!u.perch) m.at.y = G.terrain.surfaceHeight(m.at.x, m.at.z) + feet; // feet on the ground (even after a persuasion grows him)
         e.pos.copy(m.at);
         m.bodyS = m.settle > 0 ? [1.25, 0.72, 1.25] : [1, 1, 1];
         const busy = m.tell > 0 || !!m.lash;
@@ -1524,7 +1525,7 @@ export const MOVES = {
       if (!L) return;
       L.t += dt;
       const T = LEAP.out + LEAP.hold, out = L.t < LEAP.out ? L.t / LEAP.out : L.t < T ? 1 : Math.max(0, 1 - (L.t - T) / LEAP.back);
-      L.len = LEAP.reach * out;
+      L.len = LEAP.tongue * out;
       if (!L.hit && L.t < T && !p.dead && !p.landed) {
         _a.subVectors(p.pos, L.from);
         const along = THREE.MathUtils.clamp(_a.dot(L.dir), 0, L.len), off = _b.copy(L.from).addScaledVector(L.dir, along).distanceTo(p.pos);
@@ -1565,7 +1566,7 @@ export const MOVES = {
       fx.line.visible = tell;
       if (tell) {
         _a.copy(m.aim).sub(from);
-        const len = Math.min(LEAP.reach, _a.length() + 30);
+        const len = Math.min(LEAP.tongue, _a.length() + 30);
         place(fx.line, from, _a.normalize(), len);
         fx.line.material.opacity = m.tell <= LEAP.lock ? 0.55 : 0.2;
       }

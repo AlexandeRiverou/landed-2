@@ -913,7 +913,7 @@ export class Enemies {
         BOSS_MOVES.mirage.attack(this, e, n);
         break;
       case 'toadBaron':
-        cd = 2.8; // spore puffs, only while he sits; every 3rd attack (2nd enraged) a tongue lash instead (see the leap move)
+        cd = 1.6; // spore puffs, only while he sits (a long sit gets two); every 3rd attack (2nd enraged) a tongue lash instead (see the leap move)
         BOSS_MOVES.leap.attack(this, e, n);
         break;
       case 'harvestOwl':

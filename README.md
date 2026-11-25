@@ -376,7 +376,7 @@ doesn't by itself, but flying on from where it put you does.
   and hops off when you come within 260 m, when you hit him, or after about 2 s. Then he bounds after you across the
   ground: a crouch (0.35 s), then a hop of up to 220 m onto dry, gentle, roofless ground on a ring round where you're
   heading, its arc 30-70 m high (higher only to clear a hill on the way), with a squash, a thud and a puff of spores as
-  he lands; he sits 1.2-2 s between hops (0.9-1.4 s enraged) and stops following beyond 700 m. He only attacks sitting:
+  he lands; he sits 1.6-2.4 s between hops (1.1-1.6 s enraged) and stops following beyond 700 m. He only attacks sitting:
   most attacks are a volley of 4 spores (9 each) at where you're heading. Every 3rd attack (every 2nd enraged), when
   you're within 200 m and in clear line, his throat swells pink for 1.2 s (1.6 s the first time, with a tip; 1 s
   enraged) and a faint pink line shows where the tongue will go (aimed at where you'll be, locked for the last 0.35 s);

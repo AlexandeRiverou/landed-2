@@ -748,7 +748,7 @@ function mkBoss(G, level, kind, spot, { mod = null, duo = false } = {}) {
         if (e.chase || e.def.sea || e.def.swim) continue;
         if (e.def.hop) { // Count Ribbiton: only between hops, along the ground, onto dry land
           const m = e.mv, x = e.pos.x + (G.player.pos.x - e.pos.x) * f * 0.6, z = e.pos.z + (G.player.pos.z - e.pos.z) * f * 0.6, g = G.terrain.surfaceHeight(x, z);
-          if (!m || m.phase !== 'sit' || e.mesh.userData.perch || !Number.isFinite(g) || g < waterLine() + 2 || !G.enemies.isGentleGround(x, z)) continue;
+          if (!m || m.phase !== 'sit' || e.mesh.userData.perch || !Number.isFinite(g) || g < waterLine() + 2 || !G.enemies.isGentleGround(x, z) || Number.isFinite(G.terrain.ceilingHeight(x, z, g + 5))) continue;
           m.at.set(x, g + e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z), z); e.pos.copy(m.at);
           continue;
         } // a ship can't be dragged over land, nor a serpent out of the lava
