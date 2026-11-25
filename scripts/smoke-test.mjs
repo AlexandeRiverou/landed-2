@@ -765,6 +765,11 @@ try {
       e.mesh.updateMatrixWorld();
       const tower = e.mesh.localToWorld(new V(8.4, 4, 6.6));
       r.towerDist = Math.round(tower.distanceTo(e.pos));
+      // (A plane that bumped into the walls, or a fort mid-duck, would make this about the run-up, not the hull.)
+      r.wasDead = p.dead;
+      if (p.dead) { p.spawn(e.pos.x + 300, e.pos.z); p.invuln = 99; }
+      for (let i = 0; i < 30 * 10 && (e.shield ?? 1) < 1; i++) step(1);
+      r.shieldAt = e.shield ?? 1;
       while (p.bullets.length) p.removeBullet(0);
       const hp0 = e.hp;
       p.shootCd = 0; p.fire();
@@ -938,6 +943,9 @@ try {
       r.noCrystals = fan()?.shards ?? 0;
       return r;
     };
+    // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
+    const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
+    const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
     const startBoss = (kind, opts) => {
       if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
@@ -955,7 +963,7 @@ try {
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed;
+      const done0 = G.objectives.completed, spot0 = kind === 'auroraRay' && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -971,6 +979,7 @@ try {
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
+      if (spot0) putBack(spot0);
       if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
@@ -1022,6 +1031,7 @@ try {
       // Fly on level, keeping the heading: the fights above leave the nose pointed at the last boss, maybe nearly
       // straight up or down, and hands off it stays there. A lead boss holds a slot ahead along your *flat* heading.
       G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+      const spot0 = kind === 'auroraRay' && place();
       const [e] = startBoss(kind, { mod: null, duo: false });
       // Sampled twice a second for 6 s, after 6 s to fly in (it may spawn 800 m out, or behind you if you're turning).
       let ahead = 0, samples = 0;
@@ -1036,6 +1046,7 @@ try {
       out.leadBosses[kind] = { ahead: +(ahead / samples).toFixed(2), attacks: e.attacks, zone: G.zones.current.name };
       G.objectives.current.dispose(G);
       G.objectives.current = null;
+      if (spot0) putBack(spot0);
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
     // Boss signature moves: ~20 s engaged with each boss shows its move at least once (a blink, a dive, a perch...).
@@ -1064,6 +1075,7 @@ try {
           const land = (def.sea || def.swim) && { amp: G.world.amp, seaLevel: G.world.seaLevel };
           if (def.sea || def.swim) seaUp(); // the carrier needs open sea, Magmadora a lava sea
           G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
+          const spot0 = kind === 'auroraRay' && place();
           const [e] = startBoss(kind, { mod: null, duo: false });
           const prev = e.pos.clone(), f = new V(), side = new V(), track = [];
           const S = { teleport: 0, hazards: 0, run: 0, maxSpeed: 0, blobs: 0, ring: 0, angles: 0, guards: 0, shell: 0, still: 0, diveVy: 0, joust: 0, roll: -1, shields: '', lead: [Infinity, -Infinity], lateral: 0, puffShrink: 0 };
@@ -1119,6 +1131,7 @@ try {
           if (e.mv?.fired !== undefined) S.fans = e.mv.fired;
           M.kinds[kind] = S;
           end();
+          if (spot0) putBack(spot0);
           if (land) { Object.assign(G.world, land); G.terrain.rebuildAll(); step(30); }
         }
       } finally {
