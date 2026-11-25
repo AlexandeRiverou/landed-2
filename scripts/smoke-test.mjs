@@ -4470,7 +4470,7 @@ try {
     out.volcanoCastle = !!SP.castleInfo;
     // Princess Kingdom: one huge castle ahead. Its gate is a bonus way in, its stone is solid but only knocks you.
     const { CASTLE } = await import('./src/setpieces.js');
-    out.volcanoMeteorsAll = SP.meteorList.length;
+    out.volcanoMeteorsAll = SP.meteorList.length; // still in Volcano Land here
     into('Princess Kingdom');
     for (let k = 0; k < 40 && !SP.castleInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
     const c = SP.castleInfo;
@@ -4491,7 +4491,6 @@ try {
     }
     // The Moon: meteors streak down ahead. Shot down: +20. Left alone: a crater, and a knock if you're close.
     const { METEOR } = await import('./src/setpieces.js');
-    out.volcanoMeteors = 0;
     into('The Moon');
     let most = 0;
     for (let k = 0; k < 30 * 25 && !most; k++) { G.step(1 / 30); most = Math.max(most, SP.meteorList.length); }
@@ -4510,7 +4509,7 @@ try {
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m); k++) { p.pos.copy(far); G.step(1 / 30); }
       out.landedFar = { gone: !SP.meteorList.includes(m), hits: hits.filter((n) => n === METEOR.dmg).length }; // the Moon's asteroids hit harder, they don't count
       hits.length = 0;
-      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), near = new far.constructor(t2.x + 15, m2.target.y + 12, t2.z);
+      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), near = new far.constructor(t2.x + 25, m2.target.y + 12, t2.z); // in the blast, out of its path
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m2); k++) { p.pos.copy(near); G.step(1 / 30); }
       out.landedNear = { gone: !SP.meteorList.includes(m2), hits: hits.filter((n) => n === METEOR.dmg) };
     }
