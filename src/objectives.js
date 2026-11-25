@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { makeRing, dressRing, setRingColor, makeStar, makeBalloon, makeGoose, makeArch, makeLandmark, makeTextSprite, disposeTree } from './models.js';
 import { pick, rand, T, weightedPick } from './texts.js';
 import { BOSSES, BOSS_MODS, bossStandoff } from './enemies.js';
+import { SERPENT } from './bossmoves.js';
 import * as C from './challenges.js';
 import * as Q from './quests.js';
 import { mkLanding } from './runway.js';
@@ -666,7 +667,7 @@ function bossSpot(G, def) {
 }
 
 // Where the carrier appears: open water ahead, deep enough SEA_CLEAR m all round (it's 230 m long). Null when there's none.
-const SEA_CLEAR = 150, LAVA_CLEAR = 80; // Magmadora needs less room than a carrier
+const SEA_CLEAR = 150, LAVA_CLEAR = SERPENT.clear; // Magmadora needs less room than a carrier
 function seaSpot(G, clear = SEA_CLEAR) {
   const deep = (x, z) => G.terrain.surfaceHeight(x, z) < waterLine() - 4;
   for (let k = 0; k < 80; k++) {
@@ -825,7 +826,9 @@ export class Objectives {
       // elsewhere it waits in the deck. A deck left with only other lands' bosses is topped up.
       const here = G.zones.current.name, fits = (k) => !BOSSES[k].lands || BOSSES[k].lands.includes(here);
       if (!this.bossDeck.some(fits)) this.bossDeck.push(...shuffle(Object.keys(BOSSES).filter((k) => !this.bossDeck.includes(k))));
-      const local = this.bossLevel >= OPENERS.length ? (k) => !!BOSSES[k].lands : () => false;
+      // (Not past a boss relax mode interrupted: that one comes back first, see suspend.)
+      const local = this.bossLevel >= OPENERS.length && !this.bossBack ? (k) => !!BOSSES[k].lands : () => false;
+      this.bossBack = false;
       const order = this.bossDeck.map((k, i) => i).filter((i) => fits(this.bossDeck[i])).sort((a, b) => local(this.bossDeck[b]) - local(this.bossDeck[a]));
       for (const i of order) {
         spot = bossSpot(G, BOSSES[this.bossDeck[i]]);
@@ -930,7 +933,7 @@ export class Objectives {
     G.persuasion.reset(null);
     if (obj.siege) { this.held = obj; obj.doze(true); } // the planet stays, asleep (planetboss.js)
     else {
-      if (obj.type === 'boss') { this.pendingBoss = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
+      if (obj.type === 'boss') { this.pendingBoss = true; this.bossBack = true; this.bossLevel--; this.bossDeck.unshift(obj.boss); }
       obj.dispose(G);
     }
     this.current = null;

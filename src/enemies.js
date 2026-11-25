@@ -422,6 +422,8 @@ const TOAST_GAP = 10; // s between breakaway toasts, so twins don't double up
 
 // HMS Overkill's air wing: at most `max` Deck Fighters up at once; `launch` s off the catapult before they hunt you.
 export const FIGHTERS = { max: 4, launch: 1.2, lines: ['HMS Overkill is launching fighters!', 'Fighters off the deck! The captain is showing off.', 'Two more jets off the catapults.'] };
+// A part hidden under the lava (it, or the segment or head it's on): Magmadora's (see MOVES.breach.lay).
+const underLava = (o) => { for (; o; o = o.parent) if (!o.visible) return true; return false; };
 // Weak-point halo: its hit flash (see Enemies.animateMark).
 const MARK_WHITE = new THREE.Color('#ffffff'), MARK_FLASH = 0.2; // the hit flash, s
 
@@ -1298,7 +1300,7 @@ export class Enemies {
     const s = e.mesh.scale.x;
     let best = null, bd = Infinity;
     for (const part of parts) {
-      if (part.broken || (part.seg && !part.obj.visible)) continue; // a serpent segment under the lava
+      if (part.broken || (e.def.swim && underLava(part.obj))) continue; // Magmadora's parts under the lava
       part.obj.getWorldPosition(_pp);
       const d = _pp.distanceToSquared(pos), r = part.r * s + 1.5;
       if (d < r * r && d < bd) { bd = d; best = part; }

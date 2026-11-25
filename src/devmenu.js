@@ -4,6 +4,7 @@ import { ZONES } from './zones.js';
 import { BOSSES, BOSS_MODS } from './enemies.js';
 import { OBJECTIVE_TYPES, findOpenSea } from './objectives.js';
 import { POWERUPS } from './powerups.js';
+import { SERPENT } from './bossmoves.js';
 import { xpForLevel } from './progression.js';
 import { SECRETS } from './secrets.js';
 
@@ -267,7 +268,7 @@ export class DevMenu {
   toLava(def) {
     const G = this.G, p = G.player, i = ZONES.findIndex((z) => def.lands.includes(z.name));
     if (i >= 0 && i !== G.zones.index) { G.zones.enter(i); G.zones.sinceZone = 0; }
-    const spot = findOpenSea(G, 6000, 80);
+    const spot = findOpenSea(G, 6000, SERPENT.clear);
     if (!spot) return null;
     const dx = spot.x - p.pos.x, dz = spot.z - p.pos.z, d = Math.hypot(dx, dz), back = Math.max(0, d - 300);
     p.spawn(p.pos.x + (dx / d) * back, p.pos.z + (dz / d) * back, Math.atan2(-dx / d, -dz / d));

@@ -831,6 +831,7 @@ export const MOVES = {
       const m = e.mv, G = en.G, p = G.player, u = e.mesh.userData;
       if (!m?.spitDue) return;
       m.spitDue = false; m.spat = true;
+      e.mesh.updateMatrixWorld(true); // her head moved since it was last laid
       const from = u.mouth.getWorldPosition(new THREE.Vector3());
       const n = Math.max(1, (e.enraged ? SERPENT.spitRage : SERPENT.spit) - (e.broken?.frill || 0));
       const tgt = p.pos.clone().addScaledVector(p.forward, p.speed * (from.distanceTo(p.pos) / SERPENT.spitSpeed) * 0.6);
