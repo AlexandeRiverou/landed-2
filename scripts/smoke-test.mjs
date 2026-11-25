@@ -774,7 +774,8 @@ try {
       const hp0 = e.hp;
       p.shootCd = 0; p.fire();
       for (const b of p.bullets) { b.pos.copy(tower); b.vel.set(0, 0, 0); }
-      step(1);
+      // Straight to the hit test (a full frame would first let the ground under a tower on a slope eat the bullets).
+      G.enemies.update(0);
       r.hullHit = e.hp < hp0;
       const c = u.parts.find((x) => x.name === 'cannon' && !x.broken), at = c.obj.getWorldPosition(new V()), hp1 = e.hp;
       let hits = 0;
@@ -1069,6 +1070,11 @@ try {
       const flat = (v) => v.set(G.player.forward.x, 0, G.player.forward.z).normalize();
       // Fly level at it (orbiters), or straight on (lead bosses and the Baron, who crosses in front of you).
       const STRAIGHT = new Set(['octopus', 'crab', 'puffer', 'blimpBaron', 'auroraRay']);
+      // In open sky (Meadowlands, calm land): a cave's roof and bends would cut a bombing run or a dive short depending
+      // on where in the cave you happen to be. Bosses in a cave and in space have their own check (moveZones).
+      const { ZONES } = await import('./src/zones.js'), zone0 = G.zones.index, open = { amp: G.world.amp, seaLevel: G.world.seaLevel };
+      G.zones.enter(ZONES.findIndex((z) => z.name === 'Meadowlands'), { instant: true, keepSeed: true });
+      Object.assign(G.world, open); G.terrain.rebuildAll(); step(60);
       try {
         for (const [kind, def] of Object.entries(window.BOSSES_FOR_TEST)) {
           tidy();
@@ -1137,6 +1143,8 @@ try {
       } finally {
         G.enemies.warn = warn;
         G.input.keys.delete('Space');
+        G.zones.enter(zone0, { instant: true, keepSeed: true });
+        Object.assign(G.world, open); G.terrain.rebuildAll(); step(60);
       }
     }
     // Gary Prime's cut: aimed 140 m ahead of you and 25 m up (it crosses in front of you, not through you), and a bump
