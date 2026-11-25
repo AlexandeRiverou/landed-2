@@ -4391,7 +4391,28 @@ try {
     step(30 * 3, at(GEYSER.radius + 6));
     out.nearHits = hits.length;
     out.nearScore = G.score - s0;
-    into('Meteor Belt'); step(30); out.belt = SP.list.length;
+    out.volcanoCastle = !!SP.castleInfo;
+    // Princess Kingdom: one huge castle ahead. Its gate is a bonus way in, its stone is solid but only knocks you.
+    const { CASTLE } = await import('./src/setpieces.js');
+    into('Princess Kingdom');
+    for (let k = 0; k < 40 && !SP.castleInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    const c = SP.castleInfo;
+    out.castle = !!c;
+    if (c) {
+      const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+      const put = (lx, ly, lz) => p.pos.set(c.pos.x + lx * cs + lz * sn, c.pos.y + ly, c.pos.z - lx * sn + lz * cs);
+      hits.length = 0;
+      const s1 = G.score;
+      for (let k = 0; k <= 40; k++) { put(0, 12, CASTLE.half + 20 - k); clear(); G.step(1 / 30); }
+      out.gate = { welcomed: c.welcomed, score: G.score - s1, hits: hits.length };
+      hits.length = 0;
+      c.bumpT = 0;
+      put(CASTLE.half, 40, CASTLE.half); // in the middle of a corner tower
+      G.step(1 / 30);
+      const L = SP.castleLocal(c, p.pos.clone());
+      out.tower = { hits: hits.slice(), out: Math.hypot(L.x - CASTLE.half, L.z - CASTLE.half) >= CASTLE.towerR * 1.15 - 0.01 };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -4801,6 +4822,7 @@ try {
     [(({ landEnemies: { perLand: q, stray } }) => Object.keys(q).length === 29 && Object.values(q).every((t) => t.length >= 1) && stray.length === 0 && q['Frozen Peaks'].length >= 2 && q['Alien World'].length >= 2)(report), `land enemies: every land (but Grumbleglobe, which has its Grumblings) spawns at least one enemy of its own, none outside its lands (${JSON.stringify(report.landEnemies && { perLand: report.landEnemies.perLand, stray: report.landEnemies.stray })})`],
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
+    [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
     [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore >= 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
     [(({ landEnemies: { charger: c, consts: k } }) => c.states[0] === 'wind' && c.states.includes('dash') && c.windT >= k.wind - 0.05 && c.topSpeed >= k.speed - 1 && c.topSpeed <= k.speed * 1.05)(report), `land enemies: a Comet Charger winds up first, then charges at its full speed (${JSON.stringify(report.landEnemies?.charger)})`],
     [browserDesktop.count === 2 && browserDesktop.shown === 0, 'desktop: in a browser (no bridge) the Quit and Fullscreen buttons stay hidden'],
