@@ -92,6 +92,8 @@ export class Player {
     this.up = new THREE.Vector3(0, 1, 0);
     this.right = new THREE.Vector3(1, 0, 0);
     this.wind = new THREE.Vector3();
+    this.gust = new THREE.Vector3(); // a boss's shove (Lady Hootrude's gust, bossmoves GUST): flat, fading at gustDecay/s
+    this.gustDecay = 2.2;
     this.resetRun();
     this.speed = this.baseSpeed;
     this.sizeScale = 1;    // Mega Ram / Tiny Ace power-ups
@@ -178,6 +180,7 @@ export class Player {
     this.health = this.maxHealth;
     this.dead = false;
     this.invuln = 3;
+    this.gust.set(0, 0, 0);
     if (G.enemies) G.enemies.streakAt = -Infinity; // a new plane starts a new kill streak
     this.maneuver = null; // a crash ends any stunt
     this.dodging = false;
@@ -276,7 +279,13 @@ export class Player {
     this.speed += (target - this.speed) * (1 - Math.exp(-dt * (boosting ? 2.5 : 1.2)));
 
     this.prevPos.copy(this.pos);
-    this.pos.addScaledVector(this.forward, this.speed * dt).addScaledVector(this.wind, dt);
+    this.pos.addScaledVector(this.forward, this.speed * dt).addScaledVector(this.wind, dt).addScaledVector(this.gust, dt);
+    if (this.gust.lengthSq() > 0.25) {
+      // A gust's drift stops short of a hill or a wall rather than carrying you into it.
+      _v.copy(this.gust).normalize().multiplyScalar(12).add(this.pos);
+      if (G.terrain.surfaceHeight(_v.x, _v.z, this.pos.y) > this.pos.y - 5 || G.terrain.ceilingHeight(_v.x, _v.z, this.pos.y) < this.pos.y + 5) this.gust.set(0, 0, 0);
+      else this.gust.multiplyScalar(Math.exp(-dt * this.gustDecay));
+    } else this.gust.set(0, 0, 0);
 
     // A carrier's flight deck: come down on it gently and you land there (the secret; see deckTouchdown).
     const deck = G.enemies.deckAt(this.pos, _d);
@@ -439,6 +448,7 @@ export class Player {
     this.everLanded = true;
     this.airTime = 0;
     this.events.push('landed');
+    this.gust.set(0, 0, 0);
     this.G.score += points;
     return { ...grade, points };
   }
@@ -731,6 +741,7 @@ export class Player {
     this.health = 0;
     this.model.group.visible = false;
     this.wind.set(0, 0, 0);
+    this.gust.set(0, 0, 0);
     G.stats.crashes++;
     const free = G.relax || this.god; // Relax Mode is no-pressure, and god mode is for testing: no life lost
     if (!free) this.lives = Math.max(0, this.lives - 1);

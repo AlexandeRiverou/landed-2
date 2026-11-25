@@ -989,6 +989,60 @@ try {
       r.noHorn = volley().filter((x) => !x.fake).length;
       return r;
     };
+    // Lady Hootrude: her first attacks are 5-acorn volleys; every 3rd she hovers and rears up (1 s+, 1.8 s the first
+    // time), then beats a band of leaves. A band that reaches you shoves you flat along its travel (up to 45 m/s, fading
+    // within a second) and costs some speed, once a gust, and leaves the tailwind vector alone; low over the ground it
+    // doesn't shove at all. With both ear tufts shot off a gust is 42 m wide, shoves 22 m/s and costs no speed.
+    const owlChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, r = { deaths: 0 };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          if (p.dead) { r.deaths++; p.spawn(e.pos.x + 150, e.pos.z); p.invuln = 99; }
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; p.nudgeToward(e.pos, 2, 1 / 30); step(1);
+          if (until()) return true;
+        }
+        return false;
+      };
+      const shots0 = new Set(G.enemies.shots);
+      let fresh = [];
+      fly(30 * 10, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).length > 0);
+      r.acorns = fresh.length;
+      // The next band, with the player put just ahead of it at `lift` m over the ground: what it did to them.
+      const gust = (lift) => {
+        if (!fly(30 * 20, () => e.mv?.tell > 0)) return null;
+        const g = { tell: +e.mv.tell0.toFixed(2) };
+        fly(20);
+        g.hover = Math.round(e.vel.length());
+        if (!fly(30 * 4, () => !!e.mv?.band)) return g;
+        const b = e.mv.band, hits = e.mv.hits;
+        g.w = b.w; g.pushK = b.push; g.slowK = b.slow;
+        const ground = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y), G.world.underwater ? -Infinity : G.world.seaLevel);
+        p.pos.y = p.prevPos.y = ground + lift;
+        p.gust.set(0, 0, 0); p.wind.set(1, 0, 2); p.invuln = 0;
+        const put = () => b.at.copy(p.pos).addScaledVector(b.dir, -(b.dist + 3)); // the band's middle 3 m behind them
+        put();
+        const speed0 = p.speed;
+        p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable, and a gust leaves an invulnerable plane alone
+        g.hit = e.mv.hits - hits;
+        g.push = +p.gust.length().toFixed(1);
+        g.flatY = +Math.abs(p.gust.y).toFixed(2);
+        g.slowed = +(speed0 - p.speed).toFixed(1);
+        g.wind = p.wind.x === 1 && p.wind.z === 2;
+        p.wind.set(0, 0, 0);
+        if (e.mv.band) { put(); p.grace = 1; step(1); }
+        g.once = e.mv.hits - hits === 1;
+        for (let i = 0; i < 30; i++) { p.grace = 1; step(1); }
+        g.after = +p.gust.length().toFixed(1);
+        p.invuln = 99;
+        return g;
+      };
+      r.high = gust(120);
+      r.low = gust(8);
+      for (const t of e.mesh.userData.parts.filter((x) => x.name === 'tuft')) { let n = 0; while (!t.broken && n < 60) { G.enemies.damagePart(e, t, 1, t.obj.getWorldPosition(new V())); n++; } r.tuftHits = n; }
+      const k = gust(120);
+      r.tufts = k && { w: k.w, push: k.pushK, slow: k.slowK };
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1009,7 +1063,7 @@ try {
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle') && place();
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -1023,6 +1077,7 @@ try {
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
       if (kind === 'auroraRay' && e.kind === kind) out.ray = rayChecks(e);
       if (kind === 'sunBeetle' && e.kind === kind) out.beetle = beetleChecks(e);
+      if (kind === 'harvestOwl' && e.kind === kind) out.owl = owlChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1065,6 +1120,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'sunBeetle'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Dune Sea');
       L.beetleHome = draw();
+      // Lady Hootrude in the woods lands (not Meadowlands, where it all begins).
+      O.bossDeck = ['harvestOwl', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.owlElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'harvestOwl'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Autumn Woods');
+      L.owlHome = draw();
       G.zones.index = saved.zone;
       Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
       Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
@@ -1189,6 +1251,7 @@ try {
           S.attacks = e.attacks; // context when a signature is missing
           if (e.mv?.fired !== undefined) S.fans = e.mv.fired;
           if (e.mv?.peak !== undefined) S.mirage = e.mv.peak;
+          if (e.mv?.gusts !== undefined) S.gust = e.mv.gusts;
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -4485,8 +4548,16 @@ try {
     hits = [];
     q = E.spawn('flyingSquirrel', ahead(80));
     q.cd = 0;
-    Q.front = { states: new Set() };
-    step(30 * 4, () => Q.front.states.add(q.state));
+    Q.front = { states: new Set(), dives: 0 };
+    // One dive can still come in from wide and miss (the plane's own path isn't scripted): up to 8 s, put back dead
+    // ahead and ready again after each miss, until one connects.
+    for (let k = 0; k < 30 * 8 && !hits.length && !q.dead; k++) {
+      if (q.state === 'idle' && q.cd > 0 && Q.front.states.has('swoop')) { q.pos.copy(ahead(80)); q.vel.set(0, 0, 0); q.cd = 0; q.restT = 0; } // a miss: dead ahead again
+      const was = q.state;
+      G.step(1 / 30);
+      if (q.state === 'swoop' && was !== 'swoop') Q.front.dives++;
+      Q.front.states.add(q.state);
+    }
     Q.front.states = [...Q.front.states];
     Q.front.hits = hits.slice();
     out.squirrels = Q;
@@ -4650,10 +4721,15 @@ try {
       out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
       hits.length = 0;
       a.bumpT = 0;
+      // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
+      // back into the leg after the shove.
+      const v0 = p.speed, w0 = p.wind.clone();
+      p.speed = 0.001; p.wind.set(0, 0, 0);
       put(a.R, a.spring * 0.5, 0); // inside a leg
       G.step(1 / 30);
       const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01 };
+      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2) };
+      p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
     // solid: one knock per jump, and you're shoved clear.
@@ -4664,13 +4740,16 @@ try {
     out.whales = SP.whaleList.length;
     SP.whaleT = 1e9; // no new ones while the checks run
     SP.whaleList.slice().forEach(() => SP.dropWhale(0));
+    // The search above can fly the plane into an island; a downed plane meets no whales, so bring it back first.
+    out.whaleDead = p.dead;
+    if (p.dead) { p.spawn(p.pos.x, p.pos.z); p.pos.y = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + 60; }
     {
       const t = p.pos.clone().addScaledVector(p.forward, 300), apex = (w) => Math.abs(w.vy / WHALE.gravity - w.t);
-      const jump = (w, f) => { for (let k = 0; k < 30 * 10 && SP.whaleList.includes(w); k++) { if (w.state === 'air' && apex(w) < 0.6) f(); else p.pos.set(t.x, t.y + 400, t.z); clear(); G.step(1 / 30); } };
+      const jump = (w, f) => { for (let k = 0; k < 30 * 10 && SP.whaleList.includes(w); k++) { if (w.state === 'air' && apex(w) < 0.6) f(); else p.pos.set(t.x, t.y + 400, t.z); p.grace = 1; clear(); G.step(1 / 30); } }; // grace: no crashing into the sea beside it
       hits.length = 0;
       const s4 = G.score, w = SP.spawnWhale(t.x, t.z, 1.2), side = new t.constructor(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
       jump(w, () => p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8));
-      out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length };
+      out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length, downed: out.whaleDead };
       hits.length = 0;
       const w2 = SP.spawnWhale(t.x, t.z, 1.2);
       let off = null;
@@ -4857,6 +4936,8 @@ try {
       return h && v && [h, v].every((f) => f.shards === 7 && f.wound >= 1 && f.wound <= 2.5 && f.frost > 0) && h.spreadY < 0.3 && v.spreadY > 0.7 && h.roll < 0.3 && v.roll > 1.3 && r.hit && r.hit.hull > 0 && r.hit.boost <= 0.7 && r.crystalHits >= 1 && r.crystalHits <= 12 && r.noCrystals === 3;
     })(report), `Glacierra: a shard fan comes 1-2.5 s after she lines her wings up, 7 shards; wings level = a flat fan, wings on edge = an upright one; a shard hurts and frosts a third of the boost; with both wingtip crystals gone a fan is 3 shards (${JSON.stringify(report.ray)})`],
     [(({ beetle: b }) => b?.up && b.mirages === 2 && b.gap >= 10 && b.gap >= b.away * 0.4 && b.shadow.on && b.shadow.off < 1 && b.shadow.above >= 0 && b.shadow.above < 2 && b.real === 5 && b.fake >= 5 && b.fakeHurt === 0 && b.realHurt > 0 && b.before === 2 && b.after === 0 && b.hornHits >= 1 && b.hornHits <= 12 && b.noHorn === 3)(report), `Pharaoh Scarabus: two mirages shimmer in well apart from it; only it casts a shadow, flat on the ground under it; mirages copy its 5-orb volleys with fake orbs that don't hurt (real ones do); a hit on it pops the mirages; with its horn shot off a volley is 3 orbs (${JSON.stringify(report.beetle)})`],
+    [(({ owl: o }) => o?.acorns === 5 && o.high?.tell >= 1 && o.high.hover < 12 && o.high.hit === 1 && o.high.push >= 20 && o.high.push <= 45.01 && o.high.flatY === 0 && o.high.slowed >= 4 && o.high.wind && o.high.once && o.high.after < 9 && o.low?.hit === 1 && o.low.push === 0 && o.tuftHits >= 1 && o.tuftHits <= 12 && o.tufts?.w === 42 && o.tufts.push === 22 && o.tufts.slow === 0)(report), `Lady Hootrude: 5-acorn volleys; she hovers through a 1 s+ rear-up, then a leaf gust shoves you flat along it (up to 45 m/s, half of any part straight back at you, fading within a second, some speed lost, the tailwind left alone), once a gust, and not at all low over the ground; with both ear tufts off a gust is 42 m wide, shoves 22 m/s and costs no speed (${JSON.stringify(report.owl)})`],
+    [(({ lands: l }) => l && l.owlElsewhere === 'gooseQueen' && l.owlHome === 'harvestOwl')(report.serpent || {}), `Lady Hootrude only comes in the woods lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.beetleElsewhere === 'gooseQueen' && l.beetleHome === 'sunBeetle')(report.serpent || {}), `Pharaoh Scarabus only comes in the desert lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.rayElsewhere === 'gooseQueen' && l.rayHome === 'auroraRay')(report.serpent || {}), `Glacierra only comes in the cold lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.elsewhere === 'gooseQueen' && l.waits && l.topUp !== 'lavaSerpent' && l.home === 'lavaSerpent')(report.serpent || {}), `Magmadora only comes in Volcano Land (another boss comes elsewhere, she waits in the deck, a deck of only her tops up), and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -4869,7 +4950,7 @@ try {
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
-        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2,
+        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1,
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
