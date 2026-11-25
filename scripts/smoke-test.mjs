@@ -883,7 +883,8 @@ try {
         const fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.owner === e);
         if (fresh.length && mouthOff < 0) {
           const m = e.mesh.userData.mouth.getWorldPosition(new V());
-          mouthOff = Math.round(Math.min(...fresh.map((x) => x.pos.distanceTo(m) - x.vel.length() / 30)));
+          // How far past one frame of flight from the mouth (closer than that is 0: it left the mouth this frame).
+          mouthOff = Math.max(0, Math.round(Math.min(...fresh.map((x) => x.pos.distanceTo(m) - x.vel.length() / 30))));
           spat = fresh.length;
           seg = e.mesh.userData.segs.findIndex((x) => x.visible);
         }
