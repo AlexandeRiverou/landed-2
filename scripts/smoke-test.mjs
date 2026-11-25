@@ -4549,10 +4549,10 @@ try {
     q = E.spawn('flyingSquirrel', ahead(80));
     q.cd = 0;
     Q.front = { states: new Set(), dives: 0 };
-    // Its ring spot ahead is random, so one dive can come in from wide and miss: up to 8 s, with it ready again each
-    // time it's back round, until one connects.
+    // One dive can still come in from wide and miss (the plane's own path isn't scripted): up to 8 s, put back dead
+    // ahead and ready again after each miss, until one connects.
     for (let k = 0; k < 30 * 8 && !hits.length && !q.dead; k++) {
-      if (q.state === 'idle' && q.cd > 0 && Q.front.states.has('swoop')) q.cd = 0;
+      if (q.state === 'idle' && q.cd > 0 && Q.front.states.has('swoop')) { q.pos.copy(ahead(80)); q.vel.set(0, 0, 0); q.cd = 0; q.restT = 0; } // a miss: dead ahead again
       const was = q.state;
       G.step(1 / 30);
       if (q.state === 'swoop' && was !== 'swoop') Q.front.dives++;
