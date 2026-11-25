@@ -1,5 +1,5 @@
-// Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle, and
-// meteors falling onto the Moon and Mars, and Frozen Peaks' ice arches.
+// Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
+// meteors falling onto the Moon and Mars, Frozen Peaks' ice arches and the Tropical Archipelago's breaching whales.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -69,7 +69,30 @@ export const ARCH = {
   dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
 };
 
+// Breaching whales (Tropical Archipelago): every so often the sea ahead froths white, then a great whale bursts out,
+// arcs through the air with a lazy twist and crashes back in a big splash. Skimming close past one while it's in the
+// air is a "+25 Whale watcher!", once per jump. The whale is solid: flying into it knocks a little hull (once per
+// jump) and shoves you clear, never a wreck.
+export const WHALE = {
+  first: [3, 6],         // s before the first one in a land
+  every: [6, 11],        // s between jumps
+  max: 2,                // in the sea at once
+  ahead: [260, 560],     // where it comes up, ahead of the player
+  deep: 12,              // only where the sea is at least this deep (the whole jump)
+  warn: 1.8,             // s of white froth before it breaks the surface
+  height: [30, 44],      // how high its middle rises above the sea
+  gravity: 28,
+  speed: 14,             // m/s along its jump
+  size: [1, 1.3],        // scale: about 40 m nose to flukes at 1
+  radius: 5,             // body radius (x size) that's solid
+  close: 16,             // within this of its body (but not touching) while it's up: Whale watcher!
+  score: 25,
+  dmg: 7,                // x1.5 enemy damage = 10.5 hull, once per jump
+};
+
 const _local = new THREE.Vector3();
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Vector3();
+const SPRAY = ['#ffffff', '#e8f6ff', '#bfe4ff'];
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
 const SMOKE = ['#3a3030', '#4a4040', '#5a504c'];
 
@@ -84,6 +107,18 @@ export class SetPieces {
     this.ice = new THREE.MeshLambertMaterial({ color: '#cbeaff', flatShading: true, transparent: true, opacity: 0.88 });
     this.ice2 = new THREE.MeshLambertMaterial({ color: '#9fd4f4', flatShading: true });
     this.iceGlow = new THREE.MeshBasicMaterial({ color: '#e8f8ff', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.whales = [];
+    this.whaleT = 0;
+    this.whaleSkin = new THREE.MeshLambertMaterial({ color: '#3f5f80', flatShading: true });
+    this.whaleBelly = new THREE.MeshLambertMaterial({ color: '#d8e0e8', flatShading: true });
+    this.whaleEye = new THREE.MeshBasicMaterial({ color: '#1d1d22' });
+    this.whaleBody = new THREE.SphereGeometry(1, 12, 8);
+    this.whaleTail = new THREE.ConeGeometry(1, 1, 8);
+    this.whaleTail.rotateX(-Math.PI / 2); // points back along -z
+    this.whaleFluke = new THREE.BoxGeometry(1, 1, 1);
+    this.frothGeo = new THREE.CircleGeometry(0.85, 24);
+    this.frothGeo.rotateX(-Math.PI / 2);
+    this.whaleTip = false;
     this.meteorT = 0;
     this.meteorGeo = new THREE.DodecahedronGeometry(1, 0);
     this.meteorRock = new THREE.MeshLambertMaterial({ color: '#4a3a34', flatShading: true });
@@ -112,6 +147,8 @@ export class SetPieces {
     this.meteorT = rand(...METEOR.first);
     while (this.arches.length) this.dropArch(0);
     this.archT = 0;
+    while (this.whales.length) this.dropWhale(0);
+    this.whaleT = rand(...WHALE.first);
   }
 
   get geysers() { return this.kind === 'geysers' ? this.list : []; }
@@ -190,6 +227,7 @@ export class SetPieces {
     if (this.kind === 'castle') { this.updateCastle(dt); return; }
     if (this.kind === 'meteors') { this.updateMeteors(dt); return; }
     if (this.kind === 'arches') { this.updateArches(dt); return; }
+    if (this.kind === 'whales') { this.updateWhales(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -598,6 +636,137 @@ export class SetPieces {
       p.damage(ARCH.dmg);
       G.fx.emit(p.pos, 18, { colors: ['#ffffff', '#cbeaff'], speed: 18, life: 0.8, size: 4 });
       if (!this.archTip) { this.archTip = true; G.ui.notify('Ice is hard! Thread the arch through the middle for points.', 'warn', 4, 1); }
+    }
+  }
+  // ---- Tropical Archipelago: breaching whales ---------------------------------------------------------------------
+  get whaleList() { return this.whales; }
+
+  // A spot ahead with deep water for a whole jump, crossing your path side-on so you see it, or null.
+  placeWhale() {
+    const G = this.G, p = G.player, sea = G.world.seaLevel, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 6; tries++) {
+      const d = rand(...WHALE.ahead), s = rand(-0.4, 0.4) * d;
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      const yaw = Math.atan2(f.x, f.z) + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2 + rand(-0.6, 0.6);
+      const run = 70; // about how far one jump carries it
+      const deep = [0, 0.5, 1].every((k) => G.terrain.surfaceHeight(x + Math.sin(yaw) * run * k, z + Math.cos(yaw) * run * k) < sea - WHALE.deep);
+      if (deep && !this.whales.some((w) => Math.hypot(w.x0 - x, w.z0 - z) < 120)) return this.spawnWhale(x, z, yaw);
+    }
+    return null;
+  }
+
+  // A whale that will come up at (x, z), heading along yaw. Its body runs along local +z (the nose).
+  spawnWhale(x, z, yaw) {
+    const G = this.G, sea = G.world.seaLevel, s = rand(...WHALE.size), g = new THREE.Group();
+    const part = (geo, mat, px, py, pz, sx, sy, sz, rx = 0, ry = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.rotation.set(rx, ry, 0);
+      g.add(m);
+    };
+    part(this.whaleBody, this.whaleSkin, 0, 0, 0, 5, 4.6, 14);
+    part(this.whaleBody, this.whaleBelly, 0, -1.2, 0.8, 4.6, 3.9, 13);
+    part(this.whaleTail, this.whaleSkin, 0, 0.3, -18, 2.6, 2.2, 10);
+    part(this.whaleFluke, this.whaleSkin, 3.6, 0.4, -23.5, 7, 0.7, 3, 0, 0.35);
+    part(this.whaleFluke, this.whaleSkin, -3.6, 0.4, -23.5, 7, 0.7, 3, 0, -0.35);
+    part(this.whaleFluke, this.whaleSkin, 5, -2.4, 4, 6, 0.6, 2.4, 0, -0.5); // flippers
+    part(this.whaleFluke, this.whaleSkin, -5, -2.4, 4, 6, 0.6, 2.4, 0, 0.5);
+    part(this.whaleBody, this.whaleEye, 4.2, 0.6, 9.5, 0.6, 0.6, 0.6);
+    part(this.whaleBody, this.whaleEye, -4.2, 0.6, 9.5, 0.6, 0.6, 0.6);
+    g.scale.setScalar(s);
+    g.rotation.order = 'YXZ';
+    g.visible = false;
+    G.scene.add(g);
+    const foamMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false });
+    const foam = new THREE.Mesh(this.ringGeo, foamMat);
+    foam.position.set(x, sea + 0.4, z);
+    foam.scale.setScalar(14 * s);
+    const frothMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false });
+    foam.add(new THREE.Mesh(this.frothGeo, frothMat)); // a soft white patch inside the ring
+    G.scene.add(foam);
+    const rise = rand(...WHALE.height), sink = 12 * s; // it starts this far under the surface
+    const vy = Math.sqrt(2 * WHALE.gravity * (rise + sink));
+    const w = { group: g, pos: g.position, s, yaw, x0: x, z0: z, y0: sea - sink, vy, state: 'warn', t: WHALE.warn, foam, foamMat, frothMat, passed: false, hit: false, splashed: false, roll: rand(0.5, 1.1) * (Math.random() < 0.5 ? 1 : -1) };
+    g.position.set(x, w.y0, z);
+    this.whales.push(w);
+    return w;
+  }
+
+  dropWhale(i) {
+    const w = this.whales[i];
+    this.G.scene.remove(w.group);
+    this.G.scene.remove(w.foam);
+    w.foamMat.dispose();
+    w.frothMat.dispose();
+    this.whales.splice(i, 1);
+  }
+
+  // How high in the air a whale is at time t of its jump, and its pitch (nose up positive).
+  whalePose(w, t) {
+    const vy = w.vy - WHALE.gravity * t;
+    return { y: w.y0 + w.vy * t - 0.5 * WHALE.gravity * t * t, pitch: Math.atan2(vy, WHALE.speed) };
+  }
+
+  updateWhales(dt) {
+    const G = this.G, p = G.player, sea = G.world.seaLevel;
+    if (!G.terrain.stale && (this.whaleT -= dt) <= 0) {
+      this.whaleT = 0.5; // try again soon if there's no deep water ahead
+      if (this.whales.length < WHALE.max && !p.dead && this.placeWhale()) this.whaleT = rand(...WHALE.every);
+    }
+    for (let i = this.whales.length - 1; i >= 0; i--) {
+      const w = this.whales[i], top = new THREE.Vector3(w.x0, sea + 0.5, w.z0);
+      if (Math.hypot(w.x0 - p.pos.x, w.z0 - p.pos.z) > 1500) { this.dropWhale(i); continue; }
+      if (w.state === 'warn') {
+        w.t -= dt;
+        const k = 1 - w.t / WHALE.warn;
+        w.foamMat.opacity = 0.5 * k; // a faint white patch, a hint rather than a siren
+        w.frothMat.opacity = 0.22 * k;
+        G.fx.emit(top, 22 * k * dt, { colors: SPRAY, speed: 5, up: 4, life: 0.9, size: 3, gravity: -8 });
+        if (w.t <= 0) {
+          w.state = 'air'; w.t = 0; w.group.visible = true;
+          G.fx.emit(top, 45, { colors: SPRAY, speed: 14, up: 26, life: 1.4, size: 5, gravity: -22 });
+        }
+        continue;
+      }
+      w.t += dt;
+      const { y, pitch } = this.whalePose(w, w.t);
+      w.pos.set(w.x0 + Math.sin(w.yaw) * WHALE.speed * w.t, y, w.z0 + Math.cos(w.yaw) * WHALE.speed * w.t);
+      w.group.rotation.set(-pitch, w.yaw, w.roll * Math.min(1, w.t / 3));
+      w.foamMat.opacity = Math.max(0, w.foamMat.opacity - dt * 0.25);
+      w.frothMat.opacity = w.foamMat.opacity * 0.45;
+      if (y > sea) G.fx.emit(w.pos, 16 * dt, { colors: SPRAY, speed: 4, life: 0.8, size: 3 * w.s, gravity: -18 }); // water streaming off it
+      if (!w.splashed && w.t > 0.5 && y < sea + 2 && pitch < 0) { // back in: a big splash
+        w.splashed = true;
+        const at = w.pos.clone().setY(sea + 0.5);
+        G.fx.emit(at, 70, { colors: SPRAY, speed: 22, up: 34, life: 1.8, size: 7 * w.s, gravity: -22 });
+        w.foam.position.set(at.x, sea + 0.4, at.z); w.foamMat.opacity = 0.45;
+        const d = p.pos.distanceTo(at);
+        if (d < 200) G.shake?.(0.25 * (1 - d / 200), 0.3);
+      }
+      if (y < w.y0 - 6 * w.s) { this.dropWhale(i); continue; }
+      if (p.dead || y < sea - 8 * w.s) continue;
+      // Its body: a capsule along its length, tail stock to head.
+      const ax = Math.sin(w.yaw) * Math.cos(pitch), ay = Math.sin(pitch), az = Math.cos(w.yaw) * Math.cos(pitch);
+      _a.set(ax, ay, az).multiplyScalar(-20 * w.s).add(w.pos); // back to the flukes
+      _b.set(ax, ay, az).multiplyScalar(10 * w.s).add(w.pos);
+      const seg = _q.subVectors(_b, _a), k = Math.max(0, Math.min(1, _local.subVectors(p.pos, _a).dot(seg) / seg.lengthSq()));
+      const near = _a.addScaledVector(seg, k), off = _local.subVectors(p.pos, near), d = off.length();
+      const rad = WHALE.radius * w.s, r = 2.5 * (p.sizeScale || 1);
+      if (d < rad + r) {
+        if (d > 1e-3) p.pos.addScaledVector(off, (rad + r - d) / d); else p.pos.y += rad + r;
+        if (!w.hit) {
+          w.hit = true;
+          p.damage(WHALE.dmg);
+          G.fx.emit(p.pos, 24, { colors: SPRAY, speed: 18, life: 0.8, size: 4 });
+          if (!this.whaleTip) { this.whaleTip = true; G.ui.notify('Whales are big! Watch for white froth on the sea and skim past instead.', 'warn', 4, 1); }
+        }
+      } else if (d < rad + WHALE.close && !w.passed && !w.hit) {
+        w.passed = true;
+        G.score += WHALE.score;
+        G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${WHALE.score} Whale watcher!`);
+        G.fx.emit(p.pos, 20, { colors: SPRAY, speed: 10, life: 1, size: 3, gravity: -10 });
+      }
     }
   }
 }

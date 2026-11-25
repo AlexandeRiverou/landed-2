@@ -4655,7 +4655,29 @@ try {
       const L = SP.archLocal(a, p.pos.clone());
       out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01 };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length;
+    // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
+    // solid: one knock per jump, and you're shoved clear.
+    const { WHALE } = await import('./src/setpieces.js');
+    out.frozenWhales = SP.whaleList.length;
+    into('Tropical Archipelago');
+    for (let k = 0; k < 40 && !SP.whaleList.length; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    out.whales = SP.whaleList.length;
+    SP.whaleT = 1e9; // no new ones while the checks run
+    SP.whaleList.slice().forEach(() => SP.dropWhale(0));
+    {
+      const t = p.pos.clone().addScaledVector(p.forward, 300), apex = (w) => Math.abs(w.vy / WHALE.gravity - w.t);
+      const jump = (w, f) => { for (let k = 0; k < 30 * 10 && SP.whaleList.includes(w); k++) { if (w.state === 'air' && apex(w) < 0.6) f(); else p.pos.set(t.x, t.y + 400, t.z); clear(); G.step(1 / 30); } };
+      hits.length = 0;
+      const s4 = G.score, w = SP.spawnWhale(t.x, t.z, 1.2), side = new t.constructor(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
+      jump(w, () => p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8));
+      out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length };
+      hits.length = 0;
+      const w2 = SP.spawnWhale(t.x, t.z, 1.2);
+      let off = null;
+      jump(w2, () => { p.pos.copy(w2.pos); if (off === null) { G.step(1 / 30); off = p.pos.distanceTo(w2.pos) >= WHALE.radius * w2.s; } });
+      out.ram = { hits: hits.filter((n) => n === WHALE.dmg).length, off };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -5076,6 +5098,7 @@ try {
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
+    [(({ setPieces: q }) => q.whales >= 1 && q.frozenWhales === 0 && q.beltWhales === 0 && q.pass?.passed && q.pass.splashed && q.pass.gone && q.pass.score >= 25 && q.pass.score < 50 && q.pass.hits === 0 && q.ram?.hits === 1 && q.ram.off)(report), `set pieces: the Tropical Archipelago has breaching whales (no other land does); skimming past one in the air is +25 once, it splashes back down and goes; flying into one is one knock per jump and you're shoved clear (${JSON.stringify(report.setPieces && { whales: report.setPieces.whales, frozen: report.setPieces.frozenWhales, belt: report.setPieces.beltWhales, pass: report.setPieces.pass, ram: report.setPieces.ram })})`],
     [(({ setPieces: q }) => q.arches >= 1 && q.moonArches === 0 && q.beltArches === 0 && q.thread?.threaded && q.thread.score >= 30 && q.thread.score < 60 && q.thread.hits === 0 && q.leg?.hits === 1 && q.leg.off)(report), `set pieces: Frozen Peaks has ice arches (no other land does); threading one is +30 once with no bump, a leg is solid: one knock and you're shoved off (${JSON.stringify(report.setPieces && { arches: report.setPieces.arches, moon: report.setPieces.moonArches, belt: report.setPieces.beltArches, thread: report.setPieces.thread, leg: report.setPieces.leg })})`],
     [(({ setPieces: q }) => q.castle && !q.volcanoCastle && !q.beltCastle && q.gate?.welcomed && q.gate.score >= 50 && q.gate.hits === 0 && q.tower?.hits.length === 1 && q.tower.out)(report), `set pieces: Princess Kingdom has its castle (no other land does); flying in through the gate is +50 with no bump, a tower is solid: one knock and you're pushed clear (${JSON.stringify(report.setPieces && { castle: report.setPieces.castle, gate: report.setPieces.gate, tower: report.setPieces.tower })})`],
     [(({ setPieces: q }) => q.states.join() === 'idle,rumble,blast,idle' && q.hits.length === 1 && q.nearHits === 0 && q.nearScore >= 15)(report), `set pieces: a fire geyser rumbles, blows, scorches once inside the pillar, and a near miss beside it gives +15 (${JSON.stringify(report.setPieces && { states: report.setPieces.states, hits: report.setPieces.hits, nearHits: report.setPieces.nearHits, nearScore: report.setPieces.nearScore })})`],
