@@ -61,6 +61,7 @@ export class SetPieces {
     this.kind = kind || null;
     while (this.list.length) this.remove(this.list.length - 1);
     this.dropCastle();
+    this.siteT = 0;
   }
 
   get geysers() { return this.kind === 'geysers' ? this.list : []; }
@@ -215,8 +216,11 @@ export class SetPieces {
       const hs = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => this.G.terrain.surfaceHeight(x + a * CASTLE.half, z + b * CASTLE.half));
       const lo = Math.min(...hs), hi = Math.max(...hs);
       if (lo < this.G.world.seaLevel + 2 || hi - lo > CASTLE.slope) continue;
-      // Face the gate back toward where you're coming from, so the way in is the first thing you see.
-      this.buildCastle(x, (lo + hs[0]) / 2, z, Math.atan2(p.pos.x - x, p.pos.z - z));
+      // Face the gate back toward where you're coming from, so the way in is the first thing you see, and make sure
+      // the ground in front of the gate is level with it (not burying the way in, nor leaving it on stilts).
+      const y = (lo + hs[0]) / 2, yaw = Math.atan2(p.pos.x - x, p.pos.z - z), gz = CASTLE.half + 12;
+      if (Math.abs(this.G.terrain.surfaceHeight(x + Math.sin(yaw) * gz, z + Math.cos(yaw) * gz) - y) > 6) continue;
+      this.buildCastle(x, y, z, yaw);
       return;
     }
   }
@@ -284,7 +288,10 @@ export class SetPieces {
     const G = this.G, p = G.player;
     let c = this.castle;
     if (c && Math.hypot(c.pos.x - p.pos.x, c.pos.z - p.pos.z) > CASTLE.drop) { this.dropCastle(); c = null; }
-    if (!c) { if (!G.terrain.stale) this.placeCastle(); return; }
+    if (!c) { // look for a site twice a second, not every frame
+      if (!G.terrain.stale && (this.siteT = (this.siteT || 0) - dt) <= 0) { this.siteT = 0.5; this.placeCastle(); }
+      return;
+    }
     for (const f of c.flags) f.mesh.rotation.y = 0.25 * Math.sin(G.time * 2.2 + f.phase); // a lazy flutter
     c.bumpT = Math.max(0, c.bumpT - dt);
     if (p.dead) { c.prevZ = null; return; }
@@ -308,7 +315,7 @@ export class SetPieces {
         const top = s.y1 + r - L.y; // over the wall top is a way out too
         let best = outs[0];
         for (const o of outs) if (Math.abs(o[0] + o[1]) < Math.abs(best[0] + best[1])) best = o;
-        if (top < Math.abs(best[0] + best[1])) { p.pos.y += top; this.bump(c); continue; }
+        if (top < Math.abs(best[0] + best[1])) { p.pos.y += top; this.castleLocal(c, L); this.bump(c); continue; }
         [px, pz] = best;
       } else {
         const dx = L.x - s.x, dz = L.z - s.z, d = Math.hypot(dx, dz), rr = s.r + r;
