@@ -4629,7 +4629,15 @@ try {
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m); k++) { p.pos.copy(far); G.step(1 / 30); }
       out.landedFar = { gone: !SP.meteorList.includes(m), hits: hits.filter((n) => n === METEOR.dmg).length }; // the Moon's asteroids hit harder, they don't count
       hits.length = 0;
-      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), near = new far.constructor(t2.x + 25, m2.target.y + 12, t2.z); // in the blast, out of its path
+      // In the blast but out of its path: 18 m from where it lands, on the side away from where it comes in, at the
+      // spot whose ground keeps you closest (a crater rim or a boulder hill could otherwise lift you out of the blast).
+      const t2 = fwd(300), m2 = SP.spawnMeteor(t2.x, t2.z), inA = Math.atan2(-m2.vel.z, -m2.vel.x);
+      let near = null;
+      for (let k = 0; k < 8; k++) {
+        const a = inA + Math.PI * (0.5 + k / 7), x = m2.target.x + Math.cos(a) * 18, z = m2.target.z + Math.sin(a) * 18;
+        const spot = new far.constructor(x, Math.max(m2.target.y + 10, G.terrain.surfaceHeight(x, z) + 4), z);
+        if (!near || spot.distanceTo(m2.target) < near.distanceTo(m2.target)) near = spot;
+      }
       for (let k = 0; k < 30 * 8 && SP.meteorList.includes(m2); k++) { p.pos.copy(near); G.step(1 / 30); }
       out.landedNear = { gone: !SP.meteorList.includes(m2), hits: hits.filter((n) => n === METEOR.dmg) };
     }
