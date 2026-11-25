@@ -1,6 +1,6 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
-// the Mushroom Forest's giant bounce mushrooms.
+// the Mushroom Forest's giant bounce mushrooms and the Autumn Woods' great windmill.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -109,6 +109,27 @@ export const SHROOM = {
   every: 2,              // s before the same cap bounces you again (so circling low over one isn't a pogo)
   score: 15,
 };
+// The great windmill (Autumn Woods): one huge old harvest mill stands on a rise ahead, its four canvas sails turning
+// in the wind (faster in the gusts), shedding the odd autumn leaf. It faces you. Flying through the turning sails,
+// between two of them, is a "+25 Through the sails!", once per mill. The sails, the tower and its roof are solid:
+// a bump costs a little hull at most once a second and shoves you clear, never a wreck.
+export const MILL = {
+  near: 550, far: 900,   // a new mill appears this far ahead
+  drop: 1500,
+  foot: 18,              // footprint radius checked for flat ground
+  slope: 10,             // the most the ground may rise and fall across it
+  base: 10,              // stone foundation height (it also sinks 8 m into the ground)
+  towerH: 58,
+  hubZ: 15,              // the sails turn this far in front of the tower
+  sail: 46,              // sail length from the hub
+  sailW: 9,              // canvas width
+  thick: 3,              // half the depth of the sails' plane that's solid
+  spin: 0.45,            // rad/s, and up to gust x that in the gusts
+  gust: 0.35,
+  score: 25,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+};
+
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
@@ -138,6 +159,15 @@ export class SetPieces {
     this.whaleTail = new THREE.ConeGeometry(1, 1, 8);
     this.whaleTail.rotateX(-Math.PI / 2); // points back along -z
     this.whaleFluke = new THREE.BoxGeometry(1, 1, 1);
+    this.mill = null;
+    this.millT = 0;
+    this.millTip = false;
+    this.millStone = new THREE.MeshLambertMaterial({ color: '#8a7e70', flatShading: true });
+    this.millWall = new THREE.MeshLambertMaterial({ color: '#efe2c8', flatShading: true });
+    this.millRoof = new THREE.MeshLambertMaterial({ color: '#b5532e', flatShading: true });
+    this.millWood = new THREE.MeshLambertMaterial({ color: '#6a4a30', flatShading: true });
+    this.millCanvas = new THREE.MeshLambertMaterial({ color: '#f3e6c8', flatShading: true, side: THREE.DoubleSide });
+    this.millDark = new THREE.MeshLambertMaterial({ color: '#3a2a20' });
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -185,6 +215,8 @@ export class SetPieces {
     this.archT = 0;
     while (this.whales.length) this.dropWhale(0);
     this.whaleT = rand(...WHALE.first);
+    this.dropMill();
+    this.millT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -268,6 +300,7 @@ export class SetPieces {
     if (this.kind === 'arches') { this.updateArches(dt); return; }
     if (this.kind === 'whales') { this.updateWhales(dt); return; }
     if (this.kind === 'mushrooms') { this.updateShrooms(dt); return; }
+    if (this.kind === 'windmill') { this.updateMill(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -904,6 +937,150 @@ export class SetPieces {
         const push = (m.sr + r - d) / d;
         p.pos.x += dx * push; p.pos.z += dz * push;
       }
+    }
+  }
+  // ---- Autumn Woods: the great windmill ---------------------------------------------------------------------------
+  get millInfo() { return this.mill; }
+
+  dropMill() {
+    if (!this.mill) return;
+    this.G.scene.remove(this.mill.group);
+    for (const geo of this.mill.geos) geo.dispose();
+    this.mill = null;
+  }
+
+  // A flat-enough rise ahead (not in water): the mill's foundation is sunk into the lowest ground of its footprint,
+  // so it never floats.
+  placeMill() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 4; tries++) {
+      const d = rand(MILL.near, MILL.far), s = rand(-0.4, 0.4) * d;
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      const hs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]].map(([a, b]) => G.terrain.surfaceHeight(x + a * MILL.foot, z + b * MILL.foot));
+      const lo = Math.min(...hs), hi = Math.max(...hs);
+      if (hi - lo > MILL.slope || lo < G.world.seaLevel + 2) continue;
+      return this.buildMill(x, lo, z, Math.atan2(-f.x, -f.z)); // facing you: local +z points back along your path
+    }
+    return null;
+  }
+
+  // The tower's radius at local height y (null above the roof): foundation, tapering tower, conical roof.
+  millRadius(y) {
+    const B = MILL.base, H = B + MILL.towerH;
+    if (y < B) return 16;
+    if (y < H) return 13 - 5 * (y - B) / MILL.towerH;
+    if (y < H + 14) return 10.5 * (1 - (y - H) / 14);
+    return null;
+  }
+
+  buildMill(x, y, z, yaw) {
+    const G = this.G, g = new THREE.Group(), geos = [], B = MILL.base, H = B + MILL.towerH;
+    const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    mesh(new THREE.CylinderGeometry(16, 17, B + 8, 10), this.millStone).position.y = (B - 8) / 2; // sunk 8 m
+    mesh(new THREE.CylinderGeometry(8, 13, MILL.towerH, 8), this.millWall).position.y = B + MILL.towerH / 2;
+    for (const h of [0.3, 0.62]) { // timber bands
+      const r = 13 - 5 * h;
+      mesh(new THREE.CylinderGeometry(r + 0.4, r + 0.5, 1.4, 8), this.millWood).position.y = B + MILL.towerH * h;
+    }
+    mesh(new THREE.ConeGeometry(10.5, 14, 8), this.millRoof).position.y = H + 7;
+    const door = mesh(new THREE.BoxGeometry(5, 8, 1), this.millDark);
+    door.position.set(0, B + 4, 12.6);
+    for (const [wx, wy] of [[-4, B + 22], [4, B + 38], [0, B + 50]]) { // little windows up the front
+      const w = mesh(new THREE.BoxGeometry(2.4, 3.2, 1), this.millDark);
+      const r = 13 - 5 * (wy - B) / MILL.towerH;
+      w.position.set(wx, wy, Math.sqrt(Math.max(0, r * r - wx * wx)) + 0.2);
+    }
+    const axle = mesh(new THREE.CylinderGeometry(1.2, 1.2, MILL.hubZ - 4, 6), this.millWood);
+    axle.rotation.x = Math.PI / 2;
+    axle.position.set(0, H, 4 + (MILL.hubZ - 4) / 2);
+    // The sails: a rotor at the hub, turning about the axle (local z). Each sail's arm runs along its +y, the canvas
+    // to its +x side.
+    const rotor = new THREE.Group();
+    rotor.position.set(0, H, MILL.hubZ);
+    g.add(rotor);
+    mesh(new THREE.SphereGeometry(3.5, 8, 6), this.millWood, rotor);
+    const reach = 6 + MILL.sail * 0.82;
+    for (let k = 0; k < 4; k++) {
+      const sail = new THREE.Group();
+      sail.rotation.z = k * Math.PI / 2;
+      rotor.add(sail);
+      mesh(new THREE.BoxGeometry(1.4, MILL.sail, 1.4), this.millWood, sail).position.set(0, 3 + MILL.sail / 2, 0);
+      const cloth = mesh(new THREE.BoxGeometry(MILL.sailW, reach - 6, 0.4), this.millCanvas, sail);
+      cloth.position.set(MILL.sailW / 2 + 0.7, 6 + (reach - 6) / 2, 0.4);
+      for (let j = 0; j <= 5; j++) { // the lattice
+        const slat = mesh(new THREE.BoxGeometry(MILL.sailW + 0.6, 0.45, 0.8), this.millWood, sail);
+        slat.position.set(MILL.sailW / 2 + 0.7, 6 + (reach - 6) * j / 5, 0.5);
+      }
+    }
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    G.scene.add(g);
+    this.mill = { group: g, geos, rotor, pos: g.position, yaw, H, reach, angle: rand(0, Math.PI * 2), seed: rand(0, 10), threaded: false, bumpT: 0, prevZ: null, leafAcc: 0 };
+    return this.mill;
+  }
+
+  // Is the point (x, y) in the sails' plane, relative to the hub, on a sail at the rotor's angle? r: the plane's size.
+  onSail(m, x, y, r) {
+    if (Math.hypot(x, y) < 3.5 + r) return true; // the hub
+    for (let k = 0; k < 4; k++) {
+      const a = -(m.angle + k * Math.PI / 2), cs = Math.cos(a), sn = Math.sin(a);
+      const u = x * cs - y * sn, v = x * sn + y * cs; // into that sail's frame
+      if (v > 3 && v < 3 + MILL.sail && Math.abs(u) < 0.7 + r) return true; // its arm
+      if (v > 6 && v < m.reach && u > -0.7 - r && u < MILL.sailW + 0.7 + r) return true; // its canvas
+    }
+    return false;
+  }
+
+  updateMill(dt) {
+    const G = this.G, p = G.player;
+    if (this.mill && Math.hypot(this.mill.pos.x - p.pos.x, this.mill.pos.z - p.pos.z) > MILL.drop) this.dropMill();
+    if (!this.mill && !G.terrain.stale && (this.millT -= dt) <= 0) { this.millT = 0.5; this.placeMill(); }
+    const m = this.mill;
+    if (!m) return;
+    // The sails turn, faster in the gusts.
+    m.angle += MILL.spin * (1 + MILL.gust * Math.max(0, Math.sin(G.time * 0.35 + m.seed))) * dt;
+    m.rotor.rotation.z = m.angle;
+    m.bumpT = Math.max(0, m.bumpT - dt);
+    // Now and then a leaf blows off a sail tip (only when you're near enough to see it).
+    if ((m.leafAcc += dt) > 0.4 && p.pos.distanceToSquared(m.pos) < 800 * 800) {
+      m.leafAcc = 0;
+      const a = m.angle + Math.floor(Math.random() * 4) * Math.PI / 2 + Math.PI / 2, cs = Math.cos(m.yaw), sn = Math.sin(m.yaw);
+      const lx = Math.cos(a) * m.reach, ly = m.H + Math.sin(a) * m.reach;
+      _q.set(m.pos.x + lx * cs + MILL.hubZ * sn, m.pos.y + ly, m.pos.z - lx * sn + MILL.hubZ * cs);
+      G.fx.emit(_q, 1, { colors: ['#e8902a', '#d8602a', '#f0c040'], speed: 4, life: 2.5, size: 2, gravity: -4, drag: 0.6 });
+    }
+    if (p.dead) { m.prevZ = null; return; }
+    const L = this.archLocal(m, _local), r = 2.5 * (p.sizeScale || 1), z = L.z - MILL.hubZ, hx = L.x, hy = L.y - m.H;
+    const cs = Math.cos(m.yaw), sn = Math.sin(m.yaw);
+    let hit = false;
+    // The sails' plane (taxiing on the ground never reaches it; the tower below still stops you).
+    if (p.landed) m.prevZ = null;
+    else if (Math.abs(z) < MILL.thick + r && this.onSail(m, hx, hy, r)) {
+      const side = Math.sign(m.prevZ ?? z) || 1, out = side * (MILL.thick + r) - z; // back out the way you came
+      p.pos.x += out * sn; p.pos.z += out * cs;
+      hit = true;
+    } else if (m.prevZ !== null && Math.sign(m.prevZ) !== Math.sign(z) && !m.threaded && Math.hypot(hx, hy) < m.reach) {
+      m.threaded = true;
+      G.score += MILL.score;
+      G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${MILL.score} Through the sails!`);
+      G.fx.emit(p.pos, 30, { colors: ['#e8902a', '#d8602a', '#f0c040', '#f3e6c8'], speed: 16, life: 1.4, size: 3, gravity: -5 });
+    }
+    if (!p.landed) m.prevZ = hit ? Math.sign(m.prevZ ?? z) || 1 : z;
+    // The tower, foundation and roof.
+    const tr = this.millRadius(L.y);
+    const d = Math.hypot(L.x, L.z);
+    if (tr !== null && d < tr + r) {
+      const k = d > 1e-3 ? (tr + r - d) / d : 0, px = L.x * k, pz = d > 1e-3 ? L.z * k : tr + r;
+      p.pos.x += px * cs + pz * sn; p.pos.z += -px * sn + pz * cs;
+      hit = true;
+    }
+    if (hit && m.bumpT <= 0) {
+      m.bumpT = MILL.bumpEvery;
+      p.damage(MILL.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#f3e6c8', '#6a4a30', '#e8902a'], speed: 18, life: 0.8, size: 4 });
+      if (!this.millTip) { this.millTip = true; G.ui.notify('The windmill is solid! Slip between the turning sails for points.', 'warn', 4, 1); }
     }
   }
 }

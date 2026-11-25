@@ -27,7 +27,7 @@ export const ZONES = [
   },
   {
     name: 'Autumn Woods', blurb: 'Crunchy leaves, cozy forests and pumpkin-coloured everything.',
-    world: { palette: 'Autumn Spice', propDensity: 1.5, amp: 0.8, tempBias: -0.45, mesa: 0.3 }, sky: 'morning', weather: 'leaves', clouds: ['#fff0e0', 35], mood: 'day', lock: [...LOCK, 'weather'],
+    world: { palette: 'Autumn Spice', propDensity: 1.5, amp: 0.8, tempBias: -0.45, mesa: 0.3 }, sky: 'morning', weather: 'leaves', clouds: ['#fff0e0', 35], mood: 'day', setPiece: 'windmill', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Canyon Country', blurb: 'Red rock, deep gorges and table mountains. Bring sunscreen.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
