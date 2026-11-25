@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, CARRIER_HULL, CARRIER_DECK, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -294,10 +294,11 @@ export const BOSSES = {
     rage: ['She is inflating with fury.', 'Mother Spiky is now extra pointy.'],
   },
   fortGrump: {
-    make: makeCannon, scale: 4.5, crownY: 6.2, crownS: 1.2, radius: 26, hp: 95, speed: 0, orbit: 0, dmg: 20, face: 'none', ground: true,
+    make: makeFort, scale: 3.8, crownX: -1.6, crownY: 8.8, crownZ: -1.6, crownS: 0.5, radius: 36, hp: 105, speed: 0, orbit: 0, dmg: 20, face: 'none', ground: true,
+    boxes: FORT_HULL, markerUp: 50,
     name: 'Fort Grumpington', short: 'Fort Grumpington', noun: 'Fort Grumpington',
     move: 'duck',
-    desc: 'A giant grumpy cannon dug into the ground. Pops up to fire mortars at marked spots, then ducks. Shoot it while it\'s up, aim for the barrel.',
+    desc: 'A grumpy stone fortress. Its tower cannons fire orb volleys, the great mortar on the keep lobs shells at marked spots, then it all ducks behind the walls. Shoot the towers\' cannons and the mortar while they\'re up.',
     taunts: ['Fort Grumpington: "GET OFF MY LAWN. (The sky is my lawn.)"', 'Fort Grumpington: "In my day, planes were made of WOOD."', 'Fort Grumpington: "I have one setting: grump."'],
     rage: ['Fort Grumpington is extremely grumped.', 'The fort is shouting at clouds now. Literally.'],
   },
@@ -387,10 +388,11 @@ const BOSS_BREAK_TEXT = {
   rotor: 'Rotor down! The King wobbles. Fewer minions incoming.',
   prop: 'Propeller shot off! Gary Prime is sputtering: slower, with shorter bursts.',
   gondola: 'Gondola gone! The Baron\'s bombing runs are mostly bluster now.',
-  barrel: 'Barrel smashed! The fort can only manage sad little mortars now.',
+  barrel: 'Mortar smashed! The fort can only manage sad little mortars now.',
   wing: 'Wing clipped! She\'s flying slower now.',
   tentacle: 'Tentacle severed! Fewer arms, fewer orbs in the spiral.',
   gun: 'Deck gun destroyed! One less cannon on that deck.',
+  cannon: 'Tower cannon down! One less cannon on the walls.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -832,9 +834,17 @@ export class Enemies {
       }
       case 'fortGrump': {
         cd = 2.4;
-        const muzzle = e.pos.clone().add(new THREE.Vector3(0, 6 * e.mesh.scale.x, 0));
-        if (n % 3 === 0 && !e.disarmed) {
-          for (let k = 0; k < 8; k++) this.fireOrb(muzzle, lead(0.5, 70).add(new THREE.Vector3(rand(-40, 40), rand(-25, 25), rand(-40, 40))), 70, 9, '#ffb03a', 1);
+        const u = e.mesh.userData, guns = (u.guns || []).filter((g) => g.gun.visible);
+        const muzzle = u.muzzle ? u.muzzle.getWorldPosition(new THREE.Vector3()) : e.pos.clone().add(new THREE.Vector3(0, 6 * e.mesh.scale.x, 0));
+        // The volley: 8 orbs, shared out among the tower cannons still standing (from their muzzles); with every tower
+        // down, the great mortar fires them all; with the mortar gone too, there's no volley.
+        const from = guns.length ? guns.map((g) => g.muzzle.getWorldPosition(new THREE.Vector3())) : e.disarmed ? [] : [muzzle];
+        if (n % 3 === 0 && from.length) {
+          for (let k = 0; k < 8; k++) {
+            const at = from[k % from.length], dir = lead(0.5, 70).add(e.pos).sub(at);
+            this.fireOrb(at, dir.add(new THREE.Vector3(rand(-40, 40), rand(-25, 25), rand(-40, 40))), 70, 9, '#ffb03a', 1);
+          }
+          for (const at of from) G.fx.emit(at, 6, { colors: ['#ffe08a', '#888888'], speed: 14, life: 0.4, size: 5 }); // muzzle flashes
         } else {
           // Mortars: they land on marked rings along your path (one sad mortar without a barrel).
           BOSS_MOVES.duck.mortars(this, e, e.disarmed ? 1 : 3);
@@ -1315,6 +1325,7 @@ export class Enemies {
       case 'crown': e.vulnerable = 1.3; break;
       case 'turret': if (e.boss) e.hp -= e.maxHp * 0.02; break;
       case 'gun': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'cannon': if (e.boss) e.hp -= e.maxHp * 0.03; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1794,6 +1805,47 @@ export class Enemies {
     m.halo.material.color.copy(m.tint).lerp(MARK_WHITE, hit);
   }
 
+  // Fort Grumpington (makeFort): it turns its gate to you once; ducking sinks the mortar into the keep, tips the tower
+  // cannons down behind their merlons and drops the portcullis; braziers and fires flicker, the chimney smokes,
+  // pennants wave, wrecks smoke, and damage builds up in stages as it loses hp (userData.damage).
+  animateFort(e, u, dt) {
+    const G = this.G, ease = 1 - Math.exp(-dt * 6), down = e.mv && !e.mv.up ? 1 : 0;
+    if (!e.facedYou) { e.facedYou = true; e.mesh.rotation.y = Math.atan2(G.player.pos.x - e.pos.x, G.player.pos.z - e.pos.z); }
+    u.duckK = (u.duckK || 0) + (down - (u.duckK || 0)) * ease;
+    u.mortar.position.y = 8.4 - u.duck.mortar * u.duckK;
+    // The mortar turns to you but never aims lower than a lob (0.5 rad up): it stays a mortar, clear of the roof.
+    // Ducked, it points straight up inside the keep.
+    u.mortar.updateMatrixWorld();
+    const to = u.mortar.worldToLocal(_pp.copy(G.player.pos)).sub(u.barrel.position);
+    const lob = Math.max(0.5, Math.atan2(to.y, Math.hypot(to.x, to.z)));
+    u.barrel.rotation.set(-(lob + (Math.PI / 2 - lob) * u.duckK), Math.atan2(to.x, to.z), 0, 'YXZ');
+    u.portcullis.position.y = 1.9 + u.duck.gate * (1 - u.duckK);
+    for (const g of u.guns) {
+      g.gun.position.y = g.y0 - u.duck.gun * u.duckK;
+      g.pennant.rotation.y = Math.sin(e.t * 6 + g.y0 + g.gun.position.x) * 0.3;
+    }
+    u.flames.forEach((f, k) => { if (f.visible) f.scale.y = f.scale.x * (1 + 0.25 * Math.sin(e.t * 17 + k * 1.7) + 0.1 * Math.sin(e.t * 31 + k)); });
+    const ch = u.chimney;
+    ch.puffs.forEach((m, k) => {
+      const f = (e.t * 0.3 + k / ch.puffs.length) % 1;
+      m.position.set(ch.at[0] + f * ch.drift[0], ch.at[1] + f * ch.rise, ch.at[2] + f * ch.drift[1]);
+      m.scale.setScalar(0.8 + f * 2.4);
+      m.material.opacity = 0.5 * (1 - f);
+    });
+    for (const w of u.wrecks) if (w.visible && Math.random() < dt * 8) G.fx.emit(w.getWorldPosition(_pp), 1, { colors: ['#2a2a2a', '#555555', '#777777'], speed: 5, life: 2, size: 10, up: 16 });
+    const frac = e.hp / e.maxHp;
+    for (const st of u.damage) {
+      if (!st.on && frac < st.at && e.hp > 0) {
+        st.on = true;
+        for (const o of st.show) o.visible = true;
+        for (const o of st.hide) o.visible = false;
+        for (const at of [st.burst, ...st.smoke]) if (at) G.fx.emit(e.mesh.localToWorld(_pp.copy(at)), 10, { colors: ['#8a8378', '#b8b0a4', '#ff8a3a'], speed: 22, life: 0.8, size: 7, up: 10 });
+        if (st.burst) { G.fx.explosion(e.mesh.localToWorld(_pp.copy(st.burst))); G.audio.noise(0.5, { vol: 0.2, freq: 400 }); G.shake?.(0.4, 0.3); }
+      }
+      if (st.on) for (const at of st.smoke) if (Math.random() < dt * 5) G.fx.emit(e.mesh.localToWorld(_pp.copy(at)), 1, { colors: ['#3a3a3a', '#5a5a5a', '#7a7a7a'], speed: 5, life: 2.4, size: 12, up: 14 });
+    }
+  }
+
   animate(e, dt) {
     const u = e.mesh.userData;
     if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
@@ -1807,6 +1859,7 @@ export class Enemies {
       if (g.gun.visible) g.aim.lookAt(this.G.player.pos);
       else if (g.wreck && Math.random() < dt * 8) this.G.fx.emit(g.wreck.getWorldPosition(_pp), 1, { colors: ['#2a2a2a', '#555555', '#777777'], speed: 5, life: 2, size: 10, up: 16 }); // a wreck smokes
     }
+    if (u.faceYou) this.animateFort(e, u, dt);
     if (u.radars) u.radars.forEach((r, k) => { r.rotation.y += dt * (k ? -3 : 2); });
     if (u.flag) u.flag.rotation.y = Math.sin(e.t * 7) * 0.25;
     if (u.foam) u.foam.opacity = 0.45 + 0.12 * Math.sin(e.t * 2.5);
@@ -1911,7 +1964,7 @@ export class Enemies {
     const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
     if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
     if (e.boss) {
-      const w = e.def.boxes ? 90 : 20; // a carrier goes up all along its length
+      const w = e.def.sea ? 90 : e.def.boxes ? 30 : 20; // a carrier goes up all along its length, the fort across its walls
       for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-w, w), rand(-15, 15), rand(-w, w)))), k * 150);
       G.stats.kills++;
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up

@@ -756,6 +756,34 @@ try {
     };
     // HMS Overkill: a long bar; a bullet on the hull 90 m from its middle hits it (the hull boxes, not a sphere); a plane
     // flown into the hull is lifted out over the deck; a deck gun shot off costs it 4% of its hull.
+    // Fort Grumpington: its hull boxes take hits on a tower 30 m+ from its middle, a tower cannon takes a few plain hits
+    // (no boss x6), costs it 3% and leaves a wreck, its damage shows in two stages (the breached wall top falls), and
+    // ducking sinks only its mortar (the fort itself stays put).
+    const fortChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, r = { spawned: true, maxHp: e.maxHp };
+      e.mesh.updateMatrixWorld();
+      const tower = e.mesh.localToWorld(new V(8.4, 4, 6.6));
+      r.towerDist = Math.round(tower.distanceTo(e.pos));
+      while (p.bullets.length) p.removeBullet(0);
+      const hp0 = e.hp;
+      p.shootCd = 0; p.fire();
+      for (const b of p.bullets) { b.pos.copy(tower); b.vel.set(0, 0, 0); }
+      step(1);
+      r.hullHit = e.hp < hp0;
+      const c = u.parts.find((x) => x.name === 'cannon' && !x.broken), at = c.obj.getWorldPosition(new V()), hp1 = e.hp;
+      let hits = 0;
+      while (!c.broken && hits < 50) { G.enemies.damagePart(e, c, 1, at); hits++; }
+      Object.assign(r, { cannonHits: hits, cannonCost: +((hp1 - e.hp - hits) / e.maxHp).toFixed(3), wreck: !!c.wreck?.visible });
+      e.hp = e.maxHp * 0.3;
+      step(2);
+      r.stages = u.damage.filter((st) => st.on).length;
+      r.breached = !u.damage[1].hide[0].visible;
+      e.mv.up = false; e.mv.t = 0;
+      step(15);
+      r.mortarDown = +(8.4 - u.mortar.position.y).toFixed(1);
+      r.fortStill = Math.abs(e.mesh.children[0].position.y) < 0.01;
+      return r;
+    };
     const carrierChecks = (e, afloat) => {
       const p = G.player, V = p.pos.constructor, s = e.mesh.scale.x, r = { spawned: true, afloat, maxHp: e.maxHp };
       r.longBar = document.getElementById('boss-bar').classList.contains('long');
@@ -852,6 +880,7 @@ try {
       }
       const attacks = e.attacks;
       if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
+      if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -4438,6 +4467,7 @@ try {
     [Object.keys(report.bosses).length >= 16, 'at least 16 bosses'],
     [(({ carrier: c }) => c.spawned && c.afloat && c.longBar && c.maxHp >= 300 && c.sternDist >= 80 && c.shots > 0 && c.hullHit && c.bumpedAbove >= 4 && c.gunCost === 0.04 && c.gunHidden && c.gunHits >= 3 && c.gunHits <= 8 && c.wreck && c.launched === 2 && c.climbed)(report), `HMS Overkill: spawns on open sea and stays afloat, a long health bar (300+ hp), its hull boxes take hits 80 m+ from its middle, a plane flown into the hull is lifted out over the deck, a deck gun shot off costs it 4% and takes only a few hits (3 to 8), leaving a wreck, and its catapults launch two climbing fighters (${JSON.stringify(report.carrier)})`],
     [(({ carrier: c }) => !c.diveLanded && c.deck?.landed && c.deck.secret && c.deck.patched && c.deck.bonus >= 300 && c.deck.onTop === 2.5 && c.deck.rode && c.deck.held && c.deck.tookOff)(report), `HMS Overkill's secret: a gentle approach lands on its deck (hull patched, +300 or more, the Welcome Aboard secret), the deck carries you along with its guns quiet, and pulling up takes off unhurt; a steep dive onto it doesn't land (${JSON.stringify(report.carrier?.deck)}, dive landed: ${report.carrier?.diveLanded})`],
+    [(({ fort: f }) => f?.spawned && f.towerDist >= 30 && f.hullHit && f.cannonHits >= 3 && f.cannonHits <= 8 && f.cannonCost === 0.03 && f.wreck && f.stages === 2 && f.breached && f.mortarDown >= 2 && f.fortStill)(report), `Fort Grumpington: its hull boxes take hits on a tower 30 m+ from its middle, a tower cannon takes only a few hits (3 to 8), costs it 3% and leaves a wreck, its damage shows in two stages (a wall top falls), and ducking sinks only its mortar (${JSON.stringify(report.fort)})`],
     [Object.entries(report.bosses).every(([k, b]) => b.done && b.attacks > 0 && b.spawned === k), 'every boss attacks and can be defeated'],
     [Object.keys(report.leadBosses).length >= 3 && Object.values(report.leadBosses).every((b) => b.ahead >= 0.75 && b.attacks > 0), 'lead bosses stay in front of the player and attack'],
     // Boss signature moves: each one shows within ~20 s engaged (and none of these held for the old orbit-and-shoot).

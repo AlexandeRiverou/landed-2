@@ -694,7 +694,9 @@ export const MOVES = {
       else if (!m.up && m.t > 2.5) { m.up = true; m.t = 0; }
       if (!m.up && !m.harrumph && m.t > 2.1) { m.harrumph = true; en.G.audio.tone(90, 0.35, { type: 'sawtooth', vol: 0.07, slide: 40 }); }
       if (m.up) m.harrumph = false;
-      m.sink = m.up ? 0 : 0.6 * 6.5 / 4; // 60% of the model's height (animateBoss sinks 4 units per 1)
+      // The fort sinks only its mortar (and battens down, Enemies.animateFort); a model without that sinks whole: 60%
+      // of its height (animateBoss sinks 4 units per 1).
+      m.sink = m.up || e.mesh.userData.duck ? 0 : 0.6 * 6.5 / 4;
       e.shield = m.up ? 1 : 0.15;
       return true;
     },
