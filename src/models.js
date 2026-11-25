@@ -1464,7 +1464,7 @@ export function makeHarvestOwl(hat) {
 }
 
 // Lady Hootrude's harvest oak: a giant autumn tree with a bare snag and crossbar on top (userData.perchY) where she sits
-// until you come near (MOVES.gust.plant / PERCH). Decoration only: no collision, like the world's other trees.
+// until you come near (MOVES.gust.spawn / PERCH). Decoration only: no collision, like the world's other trees.
 export function makeHarvestOak() {
   const g = new THREE.Group(), bark = lam('#5a3a22'), bark2 = lam('#47301e');
   const leaves = ['#c8511e', '#e08a2a', '#b8452a', '#e8b23a'].map((c) => lam(c));

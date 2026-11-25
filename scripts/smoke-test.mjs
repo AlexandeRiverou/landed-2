@@ -1073,7 +1073,7 @@ try {
       const owlFly = kind === 'harvestOwl' && e.kind === kind && (() => {
         const u = e.mesh.userData, a = e.anchor, T = u.tree, sea = G.world.underwater ? -Infinity : G.world.seaLevel;
         const dry = G.terrain.surfaceHeight(a.x, a.z) > sea + 2 && !Number.isFinite(G.terrain.ceilingHeight(a.x, a.z, a.y));
-        return { tree: !!T, dry, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, launch: -1, wing: [9, -9], bank: 0, shadow: null };
+        return { tree: !!T, dry, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, launch: -1, wing: [9, -9], bank: 0, shadow: null, crab: 0, backward: 0 };
       })();
       for (let i = 0; i < 30 * 10; i++) {
         G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(swim ? e.pos.clone().setY(G.world.seaLevel + 90) : e.pos, 2, 1 / 30); step(1);
@@ -1083,6 +1083,12 @@ try {
           if (owlFly.launch < 0 && !u.perch) owlFly.launch = +((i + 1) / 30).toFixed(2);
           if (!u.perch) { owlFly.wing[0] = Math.min(owlFly.wing[0], +w.toFixed(2)); owlFly.wing[1] = Math.max(owlFly.wing[1], +w.toFixed(2)); }
           owlFly.bank = Math.max(owlFly.bank, +Math.abs(e.mesh.rotation.z).toFixed(3));
+          // Flying at speed (not rearing up), her body points within ~80° of where she's going: never tail first.
+          if (!u.perch && !(e.mv?.tell > 0) && Math.hypot(e.vel.x, e.vel.z) > 24) {
+            const d = Math.abs(Math.atan2(Math.sin(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z)), Math.cos(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z))));
+            owlFly.crab = Math.max(owlFly.crab, Math.round((d * 180) / Math.PI));
+            if (d > 1.4) owlFly.backward++;
+          }
           if (sh?.visible) owlFly.shadow = +(sh.position.y - G.terrain.surfaceHeight(sh.position.x, sh.position.z, e.pos.y)).toFixed(2);
         }
       }
@@ -4953,7 +4959,7 @@ try {
     })(report), `Glacierra: a shard fan comes 1-2.5 s after she lines her wings up, 7 shards; wings level = a flat fan, wings on edge = an upright one; a shard hurts and frosts a third of the boost; with both wingtip crystals gone a fan is 3 shards (${JSON.stringify(report.ray)})`],
     [(({ beetle: b }) => b?.up && b.mirages === 2 && b.gap >= 10 && b.gap >= b.away * 0.4 && b.shadow.on && b.shadow.off < 1 && b.shadow.above >= 0 && b.shadow.above < 2 && b.real === 5 && b.fake >= 5 && b.fakeHurt === 0 && b.realHurt > 0 && b.before === 2 && b.after === 0 && b.hornHits >= 1 && b.hornHits <= 12 && b.noHorn === 3)(report), `Pharaoh Scarabus: two mirages shimmer in well apart from it; only it casts a shadow, flat on the ground under it; mirages copy its 5-orb volleys with fake orbs that don't hurt (real ones do); a hit on it pops the mirages; with its horn shot off a volley is 3 orbs (${JSON.stringify(report.beetle)})`],
     [(({ owl: o }) => o?.acorns === 5 && o.high?.tell >= 1 && o.high.hover < 12 && o.high.hit === 1 && o.high.push >= 20 && o.high.push <= 45.01 && o.high.flatY === 0 && o.high.slowed >= 4 && o.high.wind && o.high.once && o.high.after < 9 && o.low?.hit === 1 && o.low.push === 0 && o.tuftHits >= 1 && o.tuftHits <= 12 && o.tufts?.w === 42 && o.tufts.push === 22 && o.tufts.slow === 0)(report), `Lady Hootrude: 5-acorn volleys; she hovers through a 1 s+ rear-up, then a leaf gust shoves you flat along it (up to 45 m/s, half of any part straight back at you, fading within a second, some speed lost, the tailwind left alone), once a gust, and not at all low over the ground; with both ear tufts off a gust is 42 m wide, shoves 22 m/s and costs no speed (${JSON.stringify(report.owl)})`],
-    [(({ owlFly: f }) => f && (f.tree ? f.perched && f.rooted && f.launch > 0 && f.launch <= 2.2 : !f.dry) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && (f.shadow === null || Math.abs(f.shadow - 0.6) < 0.05))(report), `Lady Hootrude: she starts on top of her giant oak (rooted in the ground; none over water or under a roof), takes off within about 2 s, then flaps, banks into her turns and casts a shadow on the ground (${JSON.stringify(report.owlFly)})`],
+    [(({ owlFly: f }) => f && (f.tree ? f.perched && f.rooted && f.launch > 0 && f.launch <= 2.2 : !f.dry) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && (f.shadow === null || Math.abs(f.shadow - 0.6) < 0.05))(report), `Lady Hootrude: she starts on top of her giant oak (rooted in the ground; none over water or under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first (never more than ~80° off her heading for more than a moment) and casts a shadow on the ground (${JSON.stringify(report.owlFly)})`],
     [(({ lands: l }) => l && l.owlElsewhere === 'gooseQueen' && l.owlHome === 'harvestOwl')(report.serpent || {}), `Lady Hootrude only comes in the woods lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.beetleElsewhere === 'gooseQueen' && l.beetleHome === 'sunBeetle')(report.serpent || {}), `Pharaoh Scarabus only comes in the desert lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.rayElsewhere === 'gooseQueen' && l.rayHome === 'auroraRay')(report.serpent || {}), `Glacierra only comes in the cold lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],

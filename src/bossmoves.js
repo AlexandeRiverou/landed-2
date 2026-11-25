@@ -51,7 +51,7 @@ export const GUST = { tell: 1.2, first: 1.8, tellRage: 1, width: 70, widthTuft: 
 // (`scale`) to meet her; none over water or under a roof (she just flies). It goes when she does, or `gone` m behind you.
 // In flight (MOVES.gust.fly): a few wingbeats at `flap` Hz (`flapUp` taking off or climbing), then a glide of `glide` s;
 // she banks up to `bank` rad into turns and pitches up to `pitch` rad.
-export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 1.7, flapUp: 2.6, beats: 3, glide: [1, 1.8], bank: 0.6, pitch: 0.35 };
+export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 1.1, flapUp: 1.6, beats: 3, glide: [1, 1.8], bank: 0.6, pitch: 0.35 };
 const LEAF_COLORS = ['#d2691e', '#e8a33a', '#b8452a', '#f2c14e', '#8a5a2b'];
 const _o = new THREE.Object3D(), CHEST = new THREE.Color('#ffa040'), CHEST_HOT = new THREE.Color('#ffe08a');
 
@@ -1133,11 +1133,12 @@ export const MOVES = {
       const k = THREE.MathUtils.clamp((e.pos.y - feet - ground) / top, PERCH.scale[0], PERCH.scale[1]);
       tree.scale.setScalar(k);
       tree.position.set(x, ground - 1, z);
-      tree.rotation.y = rand(0, TAU);
+      const yaw = Math.atan2(G.player.pos.x - x, G.player.pos.z - z); // she sits facing you, the bar under both feet
+      tree.rotation.y = yaw;
       G.scene.add(tree);
       u.tree = tree;
       e.pos.y = ground - 1 + top * k + feet;
-      u.perch = { at: e.pos.clone(), t: 0, hp: e.hp, leaves: ground - 1 + tree.userData.canopyY * k };
+      u.perch = { at: e.pos.clone(), t: 0, hp: e.hp, yaw, leaves: ground - 1 + tree.userData.canopyY * k };
     },
     // Off her perch: a hop up and toward you, a burst of leaves from the canopy, a hoot, wings beating hard.
     launch(en, e) {
@@ -1249,8 +1250,7 @@ export const MOVES = {
       }
       if (m) m.beat = Math.max(0, (m.beat || 0) - dt);
       if (u.perch && e.chase) MOVES.gust.launch(en, e); // a break pulls her off her oak too
-      MOVES.gust.fly(en, e, dt);
-      MOVES.gust.shade(en, e);
+      if (!e.dead) { MOVES.gust.fly(en, e, dt); MOVES.gust.shade(en, e); } // (a dead one's shadow is gone: dropBoss)
       if (u.tree && (!u.perch && u.tree.position.distanceToSquared(p.pos) > PERCH.gone ** 2)) MOVES.gust.fell(en, e);
       u.chest.color.copy(m?.tell > 0 ? CHEST_HOT : CHEST);
     },
@@ -1260,12 +1260,18 @@ export const MOVES = {
     fly(en, e, dt) {
       const u = e.mesh.userData, m = e.mv, o = (e.owl ||= {}), p = en.G.player, tell = m?.tell > 0, beat = m?.beat > 0, sit = !!u.perch;
       const ease = (r) => 1 - Math.exp(-dt * r), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a)), clamp = THREE.MathUtils.clamp;
-      if (!o.init) Object.assign(o, { init: true, yaw: 0, roll: 0, pitch: 0, ph: 0, beats: 0, glide: 0, w: 1, acc: new THREE.Vector3(), v0: e.vel.clone(), blink: rand(2, 5), tilt: rand(6, 10), tiltK: 0, A: [-1.2, -1.2], H: [-0.5, -0.5], look: 0 });
+      if (!o.init) Object.assign(o, { init: true, yaw: u.perch?.yaw ?? Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z), away: false, roll: 0, pitch: 0, ph: 0, beats: 0, glide: 0, w: 1, acc: new THREE.Vector3(), v0: e.vel.clone(), blink: rand(2, 5), tilt: rand(6, 10), tiltK: 0, A: [-1.2, -1.2], H: [-0.5, -0.5], look: 0 });
       e.mesh.rotation.order = 'YXZ';
       const toYaw = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z), sp = Math.hypot(e.vel.x, e.vel.z);
       if (dt > 0) { _a.subVectors(e.vel, o.v0).divideScalar(dt); o.acc.lerp(_a, ease(4)); o.v0.copy(e.vel); }
-      const lead = sit || tell || sp < 8 ? 0 : clamp(wrap(Math.atan2(e.vel.x, e.vel.z) - toYaw), -PERCH.bank, PERCH.bank) * Math.min(1, sp / 25);
-      o.yaw += wrap(toYaw + lead - o.yaw) * ease(sit ? 1.5 : 4);
+      // Mostly facing you, turned a little toward where she's going; heading well away from you she turns to fly that
+      // way (her head still on you), and back once you're in front of her again. Perched she keeps still; her head turns.
+      const velYaw = Math.atan2(e.vel.x, e.vel.z), off = wrap(velYaw - toYaw);
+      if (sit || tell || sp < 8) o.away = false;
+      else if (Math.abs(off) > 1.1) o.away = true;
+      else if (Math.abs(off) < 0.9) o.away = false;
+      const lead = sit || tell || sp < 8 ? 0 : clamp(off, -PERCH.bank, PERCH.bank) * Math.min(1, sp / 25);
+      if (!sit) o.yaw += wrap((o.away ? velYaw : toYaw + lead) - o.yaw) * ease(4);
       const lat = o.acc.x * Math.cos(o.yaw) - o.acc.z * Math.sin(o.yaw); // toward her left (+X)
       o.roll += ((sit || tell ? 0 : clamp(-lat / 28, -PERCH.bank, PERCH.bank)) - o.roll) * ease(3);
       o.pitch += ((sit ? 0 : tell ? -PERCH.pitch : clamp(-e.vel.y / 70, -PERCH.pitch, PERCH.pitch)) - o.pitch) * ease(3);
