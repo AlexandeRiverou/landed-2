@@ -1459,7 +1459,7 @@ try {
           if (e.mv?.peak !== undefined) S.mirage = e.mv.peak;
           if (e.mv?.gusts !== undefined) S.gust = e.mv.gusts;
           if (e.mv?.hops !== undefined) S.hops = e.mv.hops;
-          if (e.mv?.rakes !== undefined) S.rakes = e.mv.rakes;
+          if (kind === 'castleDragon') Object.assign(S, { rakes: e.mv?.rakes || 0, tells: e.rakeTells || 0 });
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -5264,7 +5264,7 @@ try {
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
-        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes >= 1,
+        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes + s.tells >= 1, // (a sparkle line drawn counts: the window may end before the fire)
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
