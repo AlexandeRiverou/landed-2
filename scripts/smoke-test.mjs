@@ -1316,7 +1316,7 @@ try {
       if (toadHop) { delete toadHop.a0; out.toadHop = toadHop; }
       if (dragonFly) out.dragonFly = dragonFly;
       const attacks = e.attacks;
-      if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
+      if (sea && kind === 'carrier' && e.kind === kind) out.carrier = carrierChecks(e, afloat); // the other sea boss (Grandma Atolla) has her own
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
       if (kind === 'auroraRay' && e.kind === kind) out.ray = rayChecks(e);

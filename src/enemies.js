@@ -754,7 +754,7 @@ export class Enemies {
       e.burst--;
       e.burstT = 0.12;
       const [speed, dmg, color, size] = e.burstShot || e.def.burstShot || [105, 7, '#ff3ad0', 0.8]; // this attack's, the boss's, or the default bolt
-      const from = e.def.sea ? _s.copy(e.pos).setY(e.pos.y + 13 * e.mesh.scale.x) : e.pos; // the carrier fires from its island
+      const from = e.def.deck ? _s.copy(e.pos).setY(e.pos.y + 13 * e.mesh.scale.x) : e.pos; // the carrier fires from its island
       this.fireOrb(from, _w.copy(p.pos).addScaledVector(p.forward, p.speed * 0.4).sub(from), speed, dmg, color, size);
     }
     // Sir Puffington stays puffed up (and bulletproof-ish) for a while, then pops a spike nova.
@@ -2170,7 +2170,7 @@ export class Enemies {
     const above = e.pos.y - G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
     if (above < e.radius * 2 + 15) G.terrain.deform(e.pos.x, e.pos.z, e.boss ? 26 : 5 + e.radius * 0.5, e.boss ? 12 : 3);
     if (e.boss) {
-      const w = e.def.sea ? 90 : e.def.boxes ? 30 : 20; // a carrier goes up all along its length, the fort across its walls
+      const w = e.def.deck ? 90 : e.def.boxes ? 30 : 20; // a carrier goes up all along its length, the fort across its walls
       for (let k = 0; k < 5; k++) setTimeout(() => G.fx.explosion(e.pos.clone().add(new THREE.Vector3(rand(-w, w), rand(-15, 15), rand(-w, w)))), k * 150);
       G.stats.kills++;
       G.powerups.drop(e.pos.clone()); // bosses always drop a power-up
