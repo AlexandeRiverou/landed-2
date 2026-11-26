@@ -1023,7 +1023,7 @@ try {
       };
       const shots0 = new Set(G.enemies.shots);
       let fresh = [];
-      fly(30 * 10, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).length > 0);
+      fly(30 * 20, () => (fresh = G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e)).length > 0); // her first attack may be a gust
       r.acorns = fresh.length;
       // The next band, with the player put just ahead of it at `lift` m over the ground: what it did to them.
       const gust = (lift) => {
@@ -1166,8 +1166,8 @@ try {
     // Grandma Atolla: asleep at first (an island: low in the water, gulls round her palms), awake once you're near, afloat
     // and paddling; coconut volleys (5, then 2 with her three palms down); and her Whirlpool, with the plane held inside
     // its ring at a height: pulled at 30 m (and out unhurt: a dodge), splashed at the water line, untouched up at 100 m.
-    const turtleChecks = (e) => {
-      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, sea = () => G.world.seaLevel, r = { volleys: [], nap: !!u.nap, gulls: u.gulls.visible, flip: [9, -9] }, mv = () => e.mv || {};
+    const turtleChecks = (e, n0) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, sea = () => G.world.seaLevel, r = { volleys: [], nap: !!n0?.nap, gulls: !!n0?.gulls, flip: [9, -9] }, mv = () => e.mv || {};
       const park = () => {
         const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
         if (d.lengthSq() < 1) d.set(1, 0, 0);
@@ -1201,7 +1201,7 @@ try {
           p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
           l.gust = Math.max(l.gust, Math.round(p.gust.length()));
         }
-        Object.assign(l, { caught: m.catches - c, splash: m.splashes - sp, hull: +(hull - p.health).toFixed(1), dazed: +(e.dazed || 0).toFixed(1) });
+        Object.assign(l, { why: P.why, caught: m.catches - c, splash: m.splashes - sp, hull: +(hull - p.health).toFixed(1), dazed: +(e.dazed || 0).toFixed(1) });
         for (let i = 0; i < 30 * 2 && m.pool === P; i++) { p.invuln = 99; park(); G.step(1 / 30); } // she bursts up
         l.back = u.rig.visible && e.shield === 1;
         p.invuln = 99; p.health = p.maxHealth;
@@ -1245,6 +1245,7 @@ try {
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
+      const turtleNap = kind === 'islandTurtle' && e.kind === kind && { nap: !!e.mesh.userData.nap, gulls: e.mesh.userData.gulls.visible }; // asleep as she comes
       // Lady Hootrude starts on top of her oak (rooted in the ground under her spawn spot; none over water or under a
       // roof), takes off within about 2 s, then flaps (her wings swing through a wide arc), banks, and her shadow lies on
       // the ground under her.
@@ -1324,7 +1325,7 @@ try {
       if (kind === 'harvestOwl' && e.kind === kind) out.owl = owlChecks(e);
       if (kind === 'toadBaron' && e.kind === kind) out.toad = toadChecks(e);
       if (kind === 'castleDragon' && e.kind === kind) out.dragon = dragonChecks(e);
-      if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e);
+      if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e, turtleNap);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };

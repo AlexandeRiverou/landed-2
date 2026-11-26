@@ -1964,6 +1964,7 @@ export const MOVES = {
       if (!P.hurt) p.pos.y = Math.max(p.pos.y - WHIRL.sink * k * dt, sea + WHIRL.touch - 0.5);
       if (!P.hurt && p.pos.y - sea < WHIRL.touch) {
         P.hurt = true;
+        P.why = { h: +(p.pos.y - sea).toFixed(1), d: Math.round(d), was: +h.toFixed(1) }; // for the smoke test
         e.mv.splashes++;
         p.damage(WHIRL.splash);
         p.pos.y = sea + WHIRL.touch + 8; // thrown clear
