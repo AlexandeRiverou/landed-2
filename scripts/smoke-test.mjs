@@ -183,6 +183,7 @@ try {
     window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.TOAD_FEET_FOR_TEST = (await import('./src/models.js')).TOAD_FEET;
+    window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1107,6 +1108,50 @@ try {
       r.volleys = r.volleys.slice(0, n0);
       return r;
     };
+    // Duchess Brûlée: 5-bonbon volleys; a 1.3 s+ sparkle line, then a sweep of fire along it that burns a plane sat on
+    // the line and spares one 30 m above it (a dodge: she's dazed after it); with both horns snapped the curtain is
+    // short (90 m) and doesn't linger.
+    const dragonChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, r = { volleys: [] }, mv = () => e.mv || {};
+      const park = () => {
+        const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        if (d.lengthSq() < 1) d.set(1, 0, 0);
+        p.pos.copy(e.pos).addScaledVector(d.normalize(), 150).setY(e.pos.y); p.prevPos.copy(p.pos);
+      };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          const shots0 = new Set(G.enemies.shots), v0 = mv().volleys;
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
+          if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
+          if (until()) return true;
+        }
+        return false;
+      };
+      // The next Rake, with the plane put `up` m over its line (`up` 0: right on it), a quarter of the way along.
+      const rake = (up) => {
+        if (!fly(30 * 40, () => mv().tell > 0)) return null;
+        const l = { tell: +mv().tell0.toFixed(2) };
+        if (!fly(30 * 4, () => !!mv().fire)) return l;
+        G.enemies.shots.forEach((s) => { s.life = 0; }); // no stray bonbon in the way of the dodge
+        const m = mv(), F = m.fire, hits = m.hits, hull = p.health;
+        Object.assign(l, { len: F.len, linger: F.linger });
+        for (let i = 0; i < 30 * 4 && m.fire === F; i++) {
+          p.pos.copy(m.mid).addScaledVector(m.side, F.len * 0.25 - F.len / 2).add(new V(0, up, 0)); p.prevPos.copy(p.pos);
+          p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
+        }
+        l.hit = m.hits - hits;
+        l.hull = +(hull - p.health).toFixed(1);
+        l.dazed = +(e.dazed || 0).toFixed(1);
+        p.invuln = 99; p.health = p.maxHealth;
+        return l;
+      };
+      r.on = rake(0);
+      r.over = rake(30);
+      for (const c of e.mesh.userData.parts.filter((x) => x.name === 'dragonHorn')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.hornHits = n; }
+      r.horns = rake(0);
+      r.volleys = r.volleys.slice(0, 4);
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1131,7 +1176,7 @@ try {
       if (roof) Object.assign(G.world, { cave: 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl') && place();
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -1149,6 +1194,13 @@ try {
       const toadHop = kind === 'toadBaron' && e.kind === kind && (() => {
         const u = e.mesh.userData, T = u.tree;
         return { zone: roof.zone, tree: !!T, perched: !!u.perch, rooted: !!T && Math.abs(T.position.y - (G.terrain.surfaceHeight(T.position.x, T.position.z) - 1)) < 0.01, hops: 0, apex: [Infinity, -Infinity], feet: 0, wet: 0, airAttacks: 0, shadow: null };
+      })();
+      // Duchess Brûlée starts lying on top of her tower (rooted in the ground, or on a cloud bank over water; none under a
+      // roof), takes off within about 2 s, then flaps, banks, flies head first and casts a shadow on the ground.
+      const dragonFly = kind === 'castleDragon' && e.kind === kind && (() => {
+        const u = e.mesh.userData, T = u.tree, a = e.pos, roofed = Number.isFinite(G.terrain.ceilingHeight(a.x, a.z, a.y));
+        const g = T && G.terrain.surfaceHeight(T.position.x, T.position.z);
+        return { tower: !!T, roofed, perched: !!u.perch, rooted: !!T && (Math.abs(T.position.y - (g - 1)) < 0.01 || T.position.y >= g), onTop: !!T && Math.abs(u.perch.top + window.DRAGON_FEET_FOR_TEST * e.mesh.scale.x - e.pos.y) < 0.01, launch: -1, wing: [9, -9], bank: 0, shadow: null, backward: 0, bumped: 0 };
       })();
       for (let i = 0; i < 30 * 10; i++) {
         G.player.grace = 1; G.player.health = G.player.maxHealth; G.player.nudgeToward(swim ? e.pos.clone().setY(G.world.seaLevel + 90) : e.pos, 2, 1 / 30); step(1);
@@ -1168,6 +1220,18 @@ try {
           }
           if (sh?.visible) owlFly.shadow = +(sh.position.y - G.terrain.surfaceHeight(sh.position.x, sh.position.z, e.pos.y)).toFixed(2);
         }
+        if (dragonFly) {
+          const u = e.mesh.userData, w = u.wings[1].rotation.z, sh = u.groundShadow;
+          if (dragonFly.launch < 0 && !u.perch) dragonFly.launch = +((i + 1) / 30).toFixed(2);
+          if (!u.perch) { dragonFly.wing[0] = Math.min(dragonFly.wing[0], +w.toFixed(2)); dragonFly.wing[1] = Math.max(dragonFly.wing[1], +w.toFixed(2)); }
+          dragonFly.bank = Math.max(dragonFly.bank, +Math.abs(e.mesh.rotation.z).toFixed(3));
+          if ((e.contactCd || 0) > 0.8) dragonFly.bumped++;
+          else if (!u.perch && !(e.mv?.tell > 0) && !e.mv?.fire && Math.hypot(e.vel.x, e.vel.z) > 24) {
+            const d = Math.abs(Math.atan2(Math.sin(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z)), Math.cos(e.mesh.rotation.y - Math.atan2(e.vel.x, e.vel.z))));
+            if (d > 1.4) dragonFly.backward++;
+          }
+          if (sh?.visible) dragonFly.shadow = +(sh.position.y - G.terrain.surfaceHeight(sh.position.x, sh.position.z, e.pos.y)).toFixed(2);
+        }
         if (toadHop && e.mv) {
           const m = e.mv, u = e.mesh.userData;
           if (m.phase === 'air' && m.t < 0.05) toadHop.apex = [Math.min(toadHop.apex[0], Math.round(m.apex)), Math.max(toadHop.apex[1], Math.round(m.apex))];
@@ -1185,6 +1249,7 @@ try {
       }
       if (owlFly) out.owlFly = owlFly;
       if (toadHop) { delete toadHop.a0; out.toadHop = toadHop; }
+      if (dragonFly) out.dragonFly = dragonFly;
       const attacks = e.attacks;
       if (sea && e.kind === kind) out.carrier = carrierChecks(e, afloat);
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
@@ -1193,6 +1258,7 @@ try {
       if (kind === 'sunBeetle' && e.kind === kind) out.beetle = beetleChecks(e);
       if (kind === 'harvestOwl' && e.kind === kind) out.owl = owlChecks(e);
       if (kind === 'toadBaron' && e.kind === kind) out.toad = toadChecks(e);
+      if (kind === 'castleDragon' && e.kind === kind) out.dragon = dragonChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1251,6 +1317,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'toadBaron'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Mushroom Forest');
       L.toadHome = draw();
+      // Duchess Brûlée in the castle lands.
+      O.bossDeck = ['castleDragon', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.dragonElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'castleDragon'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Princess Kingdom');
+      L.dragonHome = draw();
       G.zones.index = saved.zone;
       Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
       Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
@@ -1377,6 +1450,7 @@ try {
           if (e.mv?.peak !== undefined) S.mirage = e.mv.peak;
           if (e.mv?.gusts !== undefined) S.gust = e.mv.gusts;
           if (e.mv?.hops !== undefined) S.hops = e.mv.hops;
+          if (e.mv?.rakes !== undefined) S.rakes = e.mv.rakes;
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -5161,6 +5235,9 @@ try {
     [(({ owlFly: f }) => f && (f.tree ? f.perched && f.rooted && f.launch > 0 && f.launch <= 2.2 : !f.dry) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && (f.shadow === null || Math.abs(f.shadow - 0.6) < 0.05))(report), `Lady Hootrude: she starts on top of her giant oak (rooted in the ground; none over water or under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first (never more than ~80° off her heading for more than a moment) and casts a shadow on the ground (${JSON.stringify(report.owlFly)})`],
     [(({ toad: t }) => t?.volleys?.length >= 1 && t.volleys.every((n) => n === 4) && t.on?.tell >= 1.2 && t.on.swell > 1.3 && t.on.hit === 1 && t.on.hull > 0 && t.on.slowed >= 4 && t.off?.hit === 0 && t.off.hull === 0 && t.crestHits >= 1 && t.crestHits <= 12 && t.popped === 2)(report), `Count Ribbiton: 4-spore volleys; a 1.2 s+ tell with his throat swelling, then a tongue lash that hits a plane on its line (hull and some speed lost) and misses one 40 m off it; with both crests popped a volley is 2 spores (${JSON.stringify(report.toad)})`],
     [(({ toadHop: h }) => h && h.tree && h.perched && h.rooted && h.hops >= 1 && h.apex[0] >= 30 && h.apex[1] <= 112 && h.feet < 0.6 && h.wet === 0 && h.airAttacks === 0 && h.shadow !== null && Math.abs(h.shadow - 0.6) < 0.05)(report), `Count Ribbiton: he starts on top of his giant toadstool (rooted in the ground), then hops after you: arcs 30 m+ high, lands feet first on dry ground, never attacks in the air, and casts a shadow on the ground (${JSON.stringify(report.toadHop)})`],
+    [(({ dragon: d }) => d?.volleys?.length >= 1 && d.volleys.every((n) => n === 5) && d.on?.tell >= 1.3 && d.on.len === 180 && d.on.hit === 1 && d.on.hull > 0 && d.over?.hit === 0 && d.over.hull === 0 && d.over.dazed >= 1 && d.hornHits >= 1 && d.hornHits <= 12 && d.horns?.len === 90 && d.horns.linger === 0)(report), `Duchess Brûlée: 5-bonbon volleys; a 1.3 s+ sparkle line, then a 180 m sweep of fire along it that burns a plane on the line and spares one 30 m over it (a dodge: she's dazed); with both horns snapped the curtain is 90 m and doesn't linger (${JSON.stringify(report.dragon)})`],
+    [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
+    [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.toadElsewhere === 'gooseQueen' && l.toadHome === 'toadBaron')(report.serpent || {}), `Count Ribbiton only comes in the mushroom lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.owlElsewhere === 'gooseQueen' && l.owlHome === 'harvestOwl')(report.serpent || {}), `Lady Hootrude only comes in the woods lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.beetleElsewhere === 'gooseQueen' && l.beetleHome === 'sunBeetle')(report.serpent || {}), `Pharaoh Scarabus only comes in the desert lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -5175,7 +5252,7 @@ try {
         kingDrone: (s) => s.guards >= 1, hiveQueen: (s) => s.shell >= 6, pigeonDon: (s) => s.still >= 2,
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
-        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2,
+        auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes >= 1,
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);

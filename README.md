@@ -383,6 +383,20 @@ doesn't by itself, but flying on from where it put you does.
   then the tongue lashes 230 m out along it: 18 hull and 10 m/s of speed if you're on it. His shadow follows him on the
   ground. Each crest he loses (2 hp, 4% of his hp) takes a spore off his volleys (3, then 2); his throat sac is the
   weak spot. 95 hp.
+- Duchess Brûlée, the Castle Dragon (an orbiting boss of the castle lands: Princess Kingdom, Candy Kingdom and Cloud
+  Kingdom; the deck brings her only there, and first there once the two openers are done): a grand pink-and-lilac
+  dragon with scaled flanks, gold spines and collar, curled pearl horns, membrane wings and a heart-spade tail. She starts
+  lying on top of a tall castle tower themed for the land (stone and roses, wafer and frosting, or white stone on a
+  cloud bank when there's no dry ground under her; none under a roof) and takes off with a roar and a puff of stone dust
+  when you come within 260 m, when you hit her, or after about 2 s. In flight she beats her wings, glides, banks into her
+  turns and keeps her head on you; her shadow follows her on the ground. Most attacks are a volley of 5 bonbons (9 each)
+  at where you're heading. Every 3rd attack (every 2nd enraged), when you're 60-260 m off and not landed, she hovers,
+  back-beating, and a line of sparkles lies across your path where you'll be, at your height, for 1.3 s (1.9 s the
+  first time, with a tip; 1 s enraged; it follows you until the last 0.4 s). Then she rakes fire along it: the flames
+  sweep the 180 m line from her end in 0.9 s, 16 m tall and 8 m deep, and the curtain burns for 1.2 s more. 20 hull if
+  you're in it; climb or dive off the line and it's a dodge (+25, and she's dazed for a moment). Each horn she loses
+  (2 hp, 4% of her hp) shortens the flames: 130 m lingering 0.7 s with one gone, 90 m and no linger with both. Her
+  glowing belly is the weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.

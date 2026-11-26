@@ -1639,6 +1639,283 @@ export function makeGiantToadstool() {
   return g;
 }
 
+// Duchess Brûlée (storybook kingdoms): a grand rose-and-lilac dragon. Overlapping two-tone scales (one instanced mesh),
+// cream belly plates with a pink stripe that breathes, gold spines with mint frills down her back, a three-part neck
+// carrying a horned head (gold eyes with slit pupils, brows, cheek frills, a jaw that opens), wings with an arm bone and
+// four finger bones holding rose membranes, four clawed legs and a swishing tail ending in a heart-shaped spade.
+// Rigged for MOVES.rake (rake.fly poses it every frame): userData.rig bobs, neck[] lags behind head, wings/hands fold
+// and beat, tail[] swishes, fore/hind legs tuck and grip, jaw opens, lids blink, throat and belly glow. Her belly
+// furnace plate is the soft spot; her two curled gold horns are breakable. Feet at y -3 (DRAGON_FEET).
+export const DRAGON_FEET = 3;
+export function makeCastleDragon(hat) {
+  const g = new THREE.Group(), rig = new THREE.Group();
+  g.add(rig);
+  const D = { rose: '#d9609e', rose2: '#c24e8c', lilac: '#a978d8', lilac2: '#8a5cc0', dark: '#6a3a8a', belly: '#fbe6c4', belly2: '#f0d2a6', gold: '#f2c23a', gold2: '#ffe08a', mint: '#8ff0c8', pearl: '#fbf3e4', mem: '#f58cc4', mem2: '#e070ae', vein: '#a8407e', claw: '#fff1c8', mouth: '#5a1438' };
+  const hr = (i, k) => { const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+  const skin = lam('#ffffff', { vertexColors: true, emissive: '#1e0a22' });
+  const memMat = lam('#ffffff', { vertexColors: true, side: THREE.DoubleSide, emissive: '#2a0818', transparent: true, opacity: 0.9 });
+  const glow = basic('#ffffff', { vertexColors: true });
+  const mesh = (parent, parts, mat, t = {}) => add(parent, M(parts), mat, t);
+  // A bone or limb from a to b (cylinder radii r0 at a, r1 at b), painted.
+  const bone = (a, b, r0, r1, color, s = 5) => {
+    const d = _p.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), len = d.length();
+    const geo = P(Cyl(r1, r0, len, s), color);
+    _q.setFromUnitVectors(_s.set(0, 1, 0), d.normalize());
+    return geo.applyMatrix4(_m.compose(new THREE.Vector3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), _q, new THREE.Vector3(1, 1, 1)));
+  };
+  // A flat membrane from (x, z) points, in the y = 0 plane of its group.
+  const membrane = (pts, color) => {
+    const sh = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z)));
+    const geo = new THREE.ShapeGeometry(sh);
+    geo.rotateX(PI / 2);
+    return P(geo, color);
+  };
+  // ---- the body: a long chest-heavy barrel, belly plates, haunches, gold spines with mint frills, a gold collar ----
+  const A = 1.9, B = 1.7, Cz = 3.3, on = (az, el, f = 1) => ({ x: A * Math.cos(el) * Math.sin(az) * f, y: B * Math.sin(el) * f, z: Cz * Math.cos(el) * Math.cos(az) * f });
+  const S = [];
+  S.push(P(Sph(1.9, 18, 12), D.rose, { sx: 1, sy: 0.9, sz: 1.74 }));
+  S.push(P(Sph(1.55, 14, 10), D.rose, { y: 0.05, z: 1.95, sx: 1.08, sy: 1, sz: 1 })); // the deep chest
+  for (const sd of [-1, 1]) {
+    S.push(P(Sph(0.95, 10, 6), D.rose2, { x: sd * 1.35, y: 0.45, z: 1.75, sx: 0.8, sy: 1, sz: 1.1 })); // shoulders
+    S.push(P(Sph(1.15, 10, 8), D.rose2, { x: sd * 1.2, y: -0.45, z: -1.55, sx: 0.75, sy: 1, sz: 1.3 })); // haunches
+  }
+  for (let k = 0; k < 9; k++) { // belly plates along the underside, chest to vent
+    const z = 3.0 - k * 0.72, yb = -B * Math.sqrt(Math.max(0.05, 1 - (Math.min(z, 3.1) / 3.4) ** 2)) - 0.02;
+    S.push(P(Sph(1, 10, 4), k % 2 ? D.belly2 : D.belly, { y: yb, z, sx: 1.05 - Math.abs(z) * 0.13, sy: 0.2, sz: 0.44, rx: -z * 0.15 }));
+  }
+  for (let k = 0; k < 8; k++) { // gold spines down her back, a mint frill between each pair
+    const z = 2.6 - k * 0.75, yt = B * Math.sqrt(Math.max(0.05, 1 - (z / 3.4) ** 2));
+    S.push(P(Cone(0.3 - k * 0.015, 1.05 - k * 0.04, 5), D.gold, { y: yt + 0.38, z, rx: -0.55 }));
+    if (k < 7) S.push(P(Box(0.06, 0.55, 0.6), D.mint, { y: yt + 0.22, z: z - 0.38, rx: -0.4 }));
+  }
+  S.push(P(Tor(1.05, 0.16, 6, 18), D.gold, { y: 0.85, z: 3.15, rx: PI / 2 - 0.55, sx: 1.05 })); // the gold collar
+  for (let k = 0; k < 5; k++) { // its gems, along the front of the collar
+    const a = -PI / 2 + (k - 2) * 0.45, q = new THREE.Vector3(Math.cos(a) * 1.15, Math.sin(a) * 1.15, 0).applyEuler(_e.set(PI / 2 - 0.55, 0, 0));
+    S.push(P(Oct(0.17), k % 2 ? D.mint : '#ff6ac8', { x: q.x, y: 0.85 + q.y, z: 3.15 + q.z }));
+  }
+  mesh(rig, S, skin);
+  // Overlapping scales, rose over the back and lilac down the flanks: one instanced mesh.
+  {
+    const spots = [];
+    for (let r = 0; r < 6; r++) for (let k = 0; k < 20; k++) {
+      const el = 0.22 + r * 0.22, az = (k / 20) * PI * 2 + (r % 2) * 0.16;
+      if (Math.cos(az) > 0.93 && el < 0.6) continue; // keep her chest front clear for the collar
+      spots.push([az, el]);
+    }
+    const im = new THREE.InstancedMesh(Sph(0.32, 6, 3), lam('#ffffff', { emissive: '#160818' }), spots.length), o = new THREE.Object3D(), col = new THREE.Color();
+    spots.forEach(([az, el], i) => {
+      const q = on(az, el, 1.0);
+      o.position.set(q.x, q.y, q.z);
+      o.lookAt(q.x * 2, q.y * 2, q.z * 2);
+      o.scale.set(1.15, 0.85 + hr(i, 1) * 0.2, 0.3);
+      o.updateMatrix();
+      im.setMatrixAt(i, o.matrix);
+      im.setColorAt(i, col.set(el > 0.75 ? (hr(i, 2) < 0.5 ? D.rose2 : D.rose) : hr(i, 2) < 0.5 ? D.lilac : D.lilac2));
+    });
+    rig.add(im);
+  }
+  // The belly furnace plate (soft spot) and the glowing stripe along her belly, which breathes (rake.fly).
+  const furnace = add(rig, Oct(0.75), basic('#ff7ac8'), { y: -1.55, z: 1.3, s: [1.3, 0.55, 1.4] });
+  weak(g, furnace, 1.3, 3);
+  const stripe = add(rig, Sph(1, 12, 4), basic('#ff9ad6', { transparent: true, opacity: 0.75 }), { y: -1.62, z: -0.4, s: [0.32, 0.08, 2.6] });
+  // ---- the neck: three segments, each lagging the one before (rake.fly), then the head ----
+  const neck = [];
+  let parent = rig;
+  const nAt = [[0, 1.05, 3.0], [0, 0, 1.25], [0, 0, 1.15]], nR = [1.0, 0.88, 0.76];
+  for (let k = 0; k < 3; k++) {
+    const n = new THREE.Group();
+    n.position.set(...nAt[k]);
+    const parts = [P(Sph(nR[k], 12, 8), D.rose, { z: 0.6, sy: 0.95, sz: 1.35 }), P(Sph(nR[k] * 0.9, 8, 4), D.belly, { y: -nR[k] * 0.72, z: 0.65, sx: 0.85, sy: 0.25, sz: 1.2 })];
+    parts.push(P(Cone(0.22, 0.75, 5), D.gold, { y: nR[k] * 0.95 + 0.25, z: 0.5, rx: -0.6 }), P(Box(0.05, 0.4, 0.5), D.mint, { y: nR[k] * 0.9, z: 0.1, rx: -0.4 }));
+    for (const sd of [-1, 1]) parts.push(P(Sph(0.3, 5, 3), D.lilac, { x: sd * nR[k] * 0.85, y: 0.1, z: 0.6, sx: 0.3, sy: 0.9, sz: 1.1 }));
+    mesh(n, parts, skin);
+    n.rotation.x = [-0.75, -0.25, 0.55][k];
+    parent.add(n);
+    neck.push(n);
+    parent = n;
+  }
+  const throat = add(neck[1], Sph(0.55, 10, 6), basic('#ff6ac8', { transparent: true, opacity: 0 }), { y: -0.55, z: 0.7, s: [1.2, 0.7, 1.6] }); // her throat glows before a Rake
+  // The head: skull, long snout, nostrils, brows, cheek frills, teeth; jaw hinged under it; horns curl back.
+  const head = new THREE.Group();
+  head.position.set(0, 0.05, 1.2);
+  head.rotation.x = 0.45;
+  neck[2].add(head);
+  {
+    const H = [];
+    H.push(P(Sph(0.95, 14, 10), D.rose, { y: 0.15, z: 0.25, sx: 1.05, sy: 0.85, sz: 1.1 }));
+    H.push(P(Sph(0.7, 12, 8), D.rose, { y: 0.0, z: 1.35, sx: 0.95, sy: 0.6, sz: 1.45 })); // snout
+    H.push(P(Sph(0.42, 8, 6), D.rose2, { y: 0.1, z: 2.25, sx: 1.1, sy: 0.7, sz: 0.8 })); // its tip
+    H.push(P(Sph(0.55, 8, 4), D.belly, { y: -0.3, z: 1.2, sx: 0.85, sy: 0.25, sz: 1.5 })); // pale upper lip
+    for (const sd of [-1, 1]) {
+      H.push(P(Sph(0.11, 5, 3), D.mouth, { x: sd * 0.26, y: 0.3, z: 2.5 })); // nostrils
+      H.push(P(Sph(0.42, 8, 4), D.dark, { x: sd * 0.5, y: 0.62, z: 0.95, sx: 1.1, sy: 0.32, sz: 0.85, rz: sd * 0.35, rx: 0.15 })); // brows
+      for (let k = 0; k < 4; k++) H.push(P(Cone(0.16, 1.0 - k * 0.12, 4), D.mint, { x: sd * (0.85 + k * 0.05), y: 0.25 - k * 0.22, z: -0.1 - k * 0.12, rz: -sd * (1.15 + k * 0.18), rx: -0.6, sz: 0.3 })); // cheek frills
+      for (let k = 0; k < 5; k++) H.push(P(Cone(0.06, 0.22, 3), D.claw, { x: sd * (0.42 - k * 0.04), y: -0.42, z: 0.75 + k * 0.32, rx: PI })); // upper teeth
+      for (let k = 0; k < 3; k++) H.push(P(Cone(0.11, 0.45, 4), D.gold, { x: sd * 0.25, y: 0.85 - k * 0.05, z: -0.55 - k * 0.42, rx: -1.1 })); // little spikes down the back of her head
+    }
+    mesh(head, H, skin);
+    const E = [];
+    for (const sd of [-1, 1]) {
+      E.push(P(Sph(0.24, 10, 8), '#ffc42e', { x: sd * 0.56, y: 0.4, z: 1.02, sz: 0.7 }));
+      E.push(P(Box(0.05, 0.3, 0.06), '#1a0a14', { x: sd * 0.59, y: 0.4, z: 1.18, ry: sd * 0.4 })); // slit pupils
+      E.push(P(Sph(0.05, 4, 3), '#ffffff', { x: sd * 0.6 + 0.05, y: 0.48, z: 1.2 })); // glints
+    }
+    mesh(head, E, glow);
+  }
+  const lids = [-1, 1].map((sd) => { const l = add(head, Sph(0.27, 8, 6), lam(D.rose2), { x: sd * 0.56, y: 0.42, z: 1.03, s: [1, 1, 0.75] }); l.visible = false; return l; });
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -0.35, 0.35);
+  head.add(jaw);
+  {
+    const J = [P(Sph(0.6, 10, 6), D.rose, { z: 0.95, sx: 0.85, sy: 0.32, sz: 1.65 }), P(Sph(0.5, 8, 4), D.belly, { y: -0.12, z: 0.9, sx: 0.8, sy: 0.2, sz: 1.5 })];
+    for (const sd of [-1, 1]) for (let k = 0; k < 4; k++) J.push(P(Cone(0.06, 0.2, 3), D.claw, { x: sd * (0.36 - k * 0.05), y: 0.14, z: 0.6 + k * 0.35 }));
+    mesh(jaw, J, skin);
+  }
+  const mouth = add(head, Sph(0.4, 8, 6), basic('#ffb0e0', { transparent: true, opacity: 0 }), { y: -0.3, z: 1.4, s: [0.9, 0.35, 1.6] }); // the fire in her mouth
+  const snout = new THREE.Object3D(); snout.position.set(0, -0.2, 2.6); head.add(snout); // where her fire and bonbons come from
+  const horns = [-1, 1].map((sd) => {
+    const h = new THREE.Group(), parts = [];
+    h.position.set(sd * 0.48, 0.72, -0.15);
+    let at = [0, 0, 0];
+    for (let k = 0; k < 4; k++) { // a curl: up, back, then down and out
+      const a = 0.6 + k * 0.62, next = [at[0] + sd * 0.12, at[1] + Math.cos(a) * 0.55, at[2] - Math.sin(a) * 0.55];
+      parts.push(bone(at, next, 0.24 - k * 0.045, 0.2 - k * 0.045, k === 3 ? D.gold : D.pearl, 6));
+      parts.push(P(Tor(0.22 - k * 0.045, 0.04, 4, 10), D.gold, { x: next[0], y: next[1], z: next[2], rx: a }));
+      at = next;
+    }
+    parts.push(P(Cone(0.07, 0.3, 5), D.gold2, { x: at[0], y: at[1] - 0.1, z: at[2] + 0.05, rx: PI }));
+    mesh(h, parts, skin);
+    head.add(h);
+    breakable(g, h, 0.9, 'dragonHorn', 2);
+    return h;
+  });
+  // ---- wings: an arm from the shoulder, a hand from the wrist with four finger bones holding the membrane ----
+  const hands = [];
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group();
+    w.position.set(sd * 1.45, 1.05, 1.6);
+    mesh(w, [bone([0, 0, 0], [sd * 2.9, 0.1, 0.25], 0.36, 0.24, D.rose2), P(Sph(0.32, 6, 4), D.rose2, { x: sd * 2.9, y: 0.1, z: 0.25 })], skin);
+    mesh(w, [membrane([[0, 0.35], [sd * 2.9, 0.3], [sd * 3.0, -1.4], [sd * 2.1, -1.55], [sd * 1.2, -2.3], [sd * 0.1, -3.2], [0, -1.5]], D.mem2)], memMat);
+    const hand = new THREE.Group();
+    hand.position.set(sd * 2.9, 0.1, 0.25);
+    w.add(hand);
+    const tips = [[sd * 4.9, 0.25, 0.1], [sd * 4.3, 0, -2.0], [sd * 3.1, 0, -3.1], [sd * 1.5, 0, -3.3]];
+    const HB = [P(Cone(0.1, 0.55, 4), D.claw, { x: sd * 0.05, y: 0.15, z: 0.6, rx: PI / 2 })]; // the thumb claw
+    tips.forEach((t, k) => {
+      HB.push(bone([0, 0, 0], t, 0.18 - k * 0.02, 0.07, D.rose2));
+      HB.push(bone([t[0] * 0.45, t[1] * 0.45, t[2] * 0.45], [t[0] * 0.5 + sd * 0.25, t[1] * 0.5, t[2] * 0.5 - 0.35], 0.04, 0.03, D.vein)); // a vein off each finger
+    });
+    HB.push(P(Cone(0.09, 0.45, 4), D.claw, { x: tips[0][0] + sd * 0.15, y: 0.25, z: 0.1, rz: -sd * PI / 2 })); // the wing claw
+    mesh(hand, HB, skin);
+    const pts = [[0, 0.3], [tips[0][0], 0.1]];
+    for (let k = 1; k < 4; k++) {
+      const a = tips[k - 1], b = tips[k];
+      pts.push([(a[0] + b[0]) / 2 - sd * 0.45, (a[2] + b[2]) / 2 + 0.25], [b[0], b[2]]); // scalloped edge between the fingers
+    }
+    pts.push([sd * 0.6, -2.4], [0, -1.4]);
+    mesh(hand, [membrane(pts, D.mem)], memMat);
+    hands.push(hand);
+    w.rotation.order = hand.rotation.order = 'YZX'; // lift, then sweep (rake.fly)
+    w.rotation.set(0, sd * 0.7, sd * 0.9); // folded until she flies
+    hand.rotation.set(0, sd * 1.2, -sd * 0.5);
+    rig.add(w);
+    return w;
+  });
+  // ---- legs: forelegs under her chest, hind legs at the haunches, gold claws (tucked in flight, gripping perched) ----
+  const leg = (sd, at, hind) => {
+    const l = new THREE.Group(), parts = [];
+    l.position.set(...at);
+    parts.push(P(Sph(hind ? 0.75 : 0.55, 8, 6), D.rose2, { sx: 0.8, sy: 1.1, sz: 1 }));
+    parts.push(bone([0, -0.3, 0], [0, -1.25, hind ? -0.35 : 0.25], hind ? 0.42 : 0.32, 0.26, D.rose));
+    parts.push(bone([0, -1.25, hind ? -0.35 : 0.25], [0, -(DRAGON_FEET + at[1]) + 0.2, hind ? 0.15 : 0.35], 0.26, 0.22, D.rose));
+    const fy = -(DRAGON_FEET + at[1]) + 0.18;
+    parts.push(P(Sph(0.36, 8, 4), D.rose2, { y: fy, z: hind ? 0.35 : 0.5, sx: 1.1, sy: 0.55, sz: 1.3 }));
+    for (let k = -1; k <= 1; k++) parts.push(P(Cone(0.09, 0.45, 4), D.claw, { x: k * 0.2, y: fy - 0.05, z: (hind ? 0.35 : 0.5) + 0.55, rx: PI / 2 + 0.35, rz: k * 0.25 }));
+    mesh(l, parts, skin);
+    rig.add(l);
+    return l;
+  };
+  const fore = [-1, 1].map((sd) => leg(sd, [sd * 1.15, -1.0, 2.15], false));
+  const hind = [-1, 1].map((sd) => leg(sd, [sd * 1.25, -0.9, -1.55], true));
+  // ---- the tail: six segments that swish in a lagged wave, ending in a heart-shaped spade ----
+  const tail = [];
+  parent = rig;
+  for (let k = 0; k < 6; k++) {
+    const t = new THREE.Group(), r = 0.95 - k * 0.12;
+    t.position.set(0, k ? 0 : -0.15, k ? -1.15 + k * 0.03 : -3.05);
+    const parts = [P(Sph(r, 10, 6), k % 2 ? D.rose2 : D.rose, { z: -0.6, sy: 0.85, sz: 1.5 }), P(Sph(r * 0.8, 8, 4), D.belly, { y: -r * 0.7, z: -0.6, sx: 0.8, sy: 0.25, sz: 1.3 })];
+    parts.push(P(Cone(0.2 - k * 0.02, 0.6 - k * 0.04, 4), D.gold, { y: r * 0.85 + 0.2, z: -0.55, rx: -0.6 }));
+    if (k === 5) { // the heart spade
+      parts.push(P(Sph(0.55, 8, 6), D.mem, { x: -0.38, z: -1.75, sy: 0.22 }), P(Sph(0.55, 8, 6), D.mem, { x: 0.38, z: -1.75, sy: 0.22 }));
+      parts.push(P(Cone(0.72, 1.1, 4), D.mem, { z: -2.45, rx: -PI / 2, ry: PI / 4, sy: 1, sx: 1, sz: 0.3 }));
+      parts.push(P(Tor(0.42, 0.06, 4, 12), D.gold, { z: -1.6, rx: PI / 2 }));
+    }
+    mesh(t, parts, skin);
+    t.rotation.x = k ? -0.06 : -0.25; // a slight droop (rake.fly)
+    parent.add(t);
+    tail.push(t);
+    parent = t;
+  }
+  Object.assign(g.userData, { dragon: true, rig, neck, head, jaw, lids, mouth, snout, throat, stripe, furnace, horns, wings, hands, fore, hind, tail, crownOn: head });
+  if (hat) partyHat(head, 1.4);
+  return g;
+}
+
+// Duchess Brûlée's tower: a tall round castle tower with stone bands, arched windows (one glowing heart window), a
+// crenellated top she curls on (userData.perchY) and a little pink-roofed turret on one side with a pennant
+// (userData.flag). Its look follows the land (theme: 'princess' white stone and pink roofs, 'candy' wafer stripes and
+// frosting, 'cloud' marble and gold) and it stands on a cloud bank (cloud: true) where there's no dry ground under it.
+// Decoration only, like the oak.
+export function makeDragonTower(theme = 'princess', cloud = false) {
+  const T = {
+    princess: { wall: '#f4eef6', band: '#d8cce6', roof: '#ff7ac0', trim: '#f2c23a', flag: '#ff4da6', win: '#3a2a4a' },
+    candy: { wall: '#f4c890', band: '#c88a4a', roof: '#7ad8ff', trim: '#ffffff', flag: '#ff5a8a', win: '#5a2a3a' },
+    cloud: { wall: '#ffffff', band: '#e8e0cc', roof: '#f2c23a', trim: '#ffe08a', flag: '#8ac8ff', win: '#4a5a7a' },
+  }[theme] || {};
+  const g = new THREE.Group(), S = [], L = [];
+  const H = 55, R = 7.5;
+  S.push(P(Cyl(R + 1.2, R + 2.4, 6, 14), T.band, { y: 2 })); // the footing
+  S.push(P(Cyl(R, R + 0.6, H, 14), T.wall, { y: H / 2 }));
+  for (let k = 1; k < 8; k++) S.push(P(Cyl(R + 0.25, R + 0.25, theme === 'candy' ? 2.4 : 0.7, 14), k % 2 && theme === 'candy' ? '#ffffff' : T.band, { y: k * 6.6 })); // stone courses (wafer stripes)
+  S.push(P(Cyl(R + 1.6, R, 3, 14), T.band, { y: H + 0.5 })); // the corbelled top
+  for (let k = 0; k < 12; k++) { // merlons
+    const a = (k / 12) * PI * 2;
+    S.push(P(Box(2.6, 3, 1.6), theme === 'candy' ? '#ffffff' : T.wall, { x: Math.cos(a) * (R + 0.9), y: H + 3.5, z: Math.sin(a) * (R + 0.9), ry: -a + PI / 2 }));
+    if (theme === 'candy') S.push(P(Sph(0.7, 6, 4), pick(['#ff5a8a', '#7ad8ff', '#ffe14a', '#8ff0c8']), { x: Math.cos(a) * (R + 0.9), y: H + 5.1, z: Math.sin(a) * (R + 0.9) })); // sprinkles on the frosting
+  }
+  S.push(P(Cyl(R + 0.2, R + 0.2, 1, 14), T.band, { y: H + 1.8 })); // the floor she lies on
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { // arched windows
+    const a = (k / 4) * PI * 2 + r * 0.8, y = 14 + r * 13;
+    if (r === 2 && k === 0) continue; // (the heart window)
+    const x = Math.cos(a) * (R + 0.35), z = Math.sin(a) * (R + 0.35);
+    S.push(P(Box(1.8, 3.2, 0.6), T.win, { x, y, z, ry: -a + PI / 2 }), P(Cyl(0.9, 0.9, 0.6, 8, 1), T.win, { x, y: y + 1.6, z, ry: -a + PI / 2, rx: PI / 2 }));
+    S.push(P(Box(2.4, 0.5, 1), T.trim, { x: Math.cos(a) * (R + 0.6), y: y - 1.8, z: Math.sin(a) * (R + 0.6), ry: -a + PI / 2 })); // sills
+  }
+  L.push(P(Sph(1.2, 8, 6), '#ff6ac8', { x: R + 0.4 - 0.9, y: 41.3, z: -0.75, sz: 0.4, ry: 0.5 }), P(Sph(1.2, 8, 6), '#ff6ac8', { x: R + 0.4 - 0.9, y: 41.3, z: 0.75, sz: 0.4, ry: -0.5 }), P(Cone(1.6, 2.2, 4), '#ff6ac8', { x: R + 0.1, y: 39.7, rx: PI, ry: PI / 4, sz: 0.35 })); // the heart window glows
+  for (let k = 0; k < 9; k++) { // climbing roses (candy: gumdrops)
+    const a = 1.2 + k * 0.55 + (k % 3) * 0.2, y = 6 + k * 4.5 + (k % 2) * 2;
+    S.push(P(Sph(1.4 + (k % 3) * 0.4, 6, 4), theme === 'cloud' ? '#d8f0c8' : '#3f8f3a', { x: Math.cos(a) * (R + 0.5), y, z: Math.sin(a) * (R + 0.5), sx: 0.8 }));
+    S.push(P(Sph(0.6, 6, 4), theme === 'candy' ? pick(['#ff5a8a', '#7ad8ff', '#ffe14a']) : theme === 'cloud' ? '#ffe08a' : '#ff5a9a', { x: Math.cos(a + 0.12) * (R + 1.3), y: y + 0.6, z: Math.sin(a + 0.12) * (R + 1.3) }));
+  }
+  // The turret on the side: its own little tower and a tall cone roof, a gold finial and a pennant.
+  const tx = -(R + 3.2);
+  S.push(P(Cyl(3.2, 2.2, 14, 10), T.wall, { x: tx, y: H - 6 }), P(Cone(2.2, 3, 10), T.band, { x: tx, y: H - 14.5, rx: PI }));
+  S.push(P(Cone(4.2, 12, 10), T.roof, { x: tx, y: H + 7 }), P(Cyl(4.3, 4.3, 0.6, 10), T.trim, { x: tx, y: H + 1.2 }));
+  S.push(P(Sph(0.6, 6, 4), T.trim, { x: tx, y: H + 13.4 }), P(Cyl(0.15, 0.15, 6, 4), T.trim, { x: tx, y: H + 16 }));
+  if (cloud) for (let k = 0; k < 9; k++) { // the cloud bank it stands on
+    const a = k * 0.7, r = k < 6 ? 12 : 4;
+    S.push(P(Ico(k < 6 ? 9 : 12, 1), k % 2 ? '#ffffff' : '#eef4ff', { x: Math.cos(a) * r, y: -6 + (k % 3) * 2, z: Math.sin(a) * r, sy: 0.55 }));
+  }
+  add(g, M(S), lam('#ffffff', { vertexColors: true }));
+  add(g, M(L), basic('#ffffff', { vertexColors: true }));
+  const flag = new THREE.Group(); // the pennant swings on its pole (Enemies: rake.pose)
+  flag.position.set(tx, H + 17.6, 0);
+  add(flag, Box(5, 2.4, 0.15), lam(T.flag, { side: THREE.DoubleSide }), { x: 2.6 });
+  g.add(flag);
+  Object.assign(g.userData, { perchY: H + 2.3, flag });
+  return g;
+}
+
 // Comet Charger (space lands): a cratered rock with a cyan thruster ring behind and one red eye in front. It winds up
 // (thruster and eye brighten), then charges in a straight line.
 export function makeCometCharger(hat) {

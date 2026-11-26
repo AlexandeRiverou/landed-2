@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -376,6 +376,18 @@ export const BOSSES = {
     taunts: ['Count Ribbiton: "One does not simply fly over a Count."', 'Count Ribbiton: "Ribbit. That is French for you are doomed."', 'Count Ribbiton: "My tongue is faster than your propeller. I have measured."'],
     rage: ['Count Ribbiton has lost his monocle. And his temper.', 'The Count is hopping mad. Literally.'],
   },
+  // Land boss for the storybook kingdoms: starts curled on top of her castle tower (see ROOST), then circles you lobbing hot
+  // bonbons; every 3rd attack (2nd enraged) she rears up and rakes a sparkle line across your path with fire that hangs
+  // there a moment (see RAKE). Her curled horns are breakable (a shorter curtain), her belly furnace plate is soft.
+  castleDragon: {
+    make: makeCastleDragon, scale: 4, crownY: 1.0, crownZ: 0.2, crownS: 0.5, radius: 20, hp: 95, speed: 32, orbit: 160, orbitRate: 0.28, dmg: 20, face: 'dragon', // 'dragon': MOVES.rake.fly turns her
+    lands: ['Princess Kingdom', 'Candy Kingdom', 'Cloud Kingdom'],
+    name: 'Duchess Brûlée, the Castle Dragon', short: 'Duchess Brûlée', noun: 'Duchess Brûlée',
+    move: 'rake',
+    desc: 'A very grand, very pink dragon who guards her castle from the top of its tallest tower. She circles you lobbing hot bonbons; when her throat glows and a line of sparkles crosses your path, she rakes it with candy-pink fire that hangs there a moment: climb or dive off the line. Snap off her horns for shorter flames; her glowing belly is soft.',
+    taunts: ['Duchess Brûlée: "This castle has a strict no-fly zone. I AM the zone."', 'Duchess Brûlée: "I prefer my pilots lightly caramelized."', 'Duchess Brûlée: "My Dragonlings told me EVERYTHING."'],
+    rage: ['Duchess Brûlée has flipped her tiara.', 'She is now medium-well furious.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -461,6 +473,7 @@ const BOSS_BREAK_TEXT = {
   horn: 'Horn snapped off! Pharaoh Scarabus fires smaller volleys now.',
   tuft: 'Ear tuft plucked! Her gusts are narrower now.',
   crest: 'Crest popped! Count Ribbiton puffs fewer spores now.',
+  dragonHorn: 'Horn snapped off! Duchess Brûlée\'s flames are shorter now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -915,6 +928,10 @@ export class Enemies {
       case 'toadBaron':
         cd = 1.6; // spore puffs, only while he sits (a long sit gets two); every 3rd attack (2nd enraged) a tongue lash instead (see the leap move)
         BOSS_MOVES.leap.attack(this, e, n);
+        break;
+      case 'castleDragon':
+        cd = 2.8; // bonbon volleys; every 3rd attack (2nd enraged) a rear-up and a Rake instead (see the rake move)
+        BOSS_MOVES.rake.attack(this, e, n);
         break;
       case 'harvestOwl':
         cd = 2.8; // acorn volleys; every 3rd attack (2nd enraged) a rear-up and a gust instead (see the gust move)
@@ -1426,6 +1443,7 @@ export class Enemies {
       case 'horn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'tuft': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crest': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'dragonHorn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -1994,7 +2012,7 @@ export class Enemies {
     const u = e.mesh.userData;
     if (u.parts) for (const part of u.parts) if (part.mark) this.animateMark(part, e.t, dt);
     if (u.rotors) for (const r of u.rotors) r.rotation.y += dt * 30;
-    if (u.wings && !u.webs && !u.scarab && !u.owl) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
+    if (u.wings && !u.webs && !u.scarab && !u.owl && !u.dragon) { const f = Math.sin(e.t * 14) * 0.6; u.wings[0].rotation.z = -f; u.wings[1].rotation.z = f; }
     if (u.lights) u.lights.forEach((l, k) => l.visible = Math.floor(e.t * 6 + k) % 2 === 0);
     if (u.spin) for (const s of u.spin) s.rotation.z += dt * 25;
     if (u.tentacles) u.tentacles.forEach((t, k) => { t.rotation.x = Math.sin(e.t * 2 + k) * 0.35; t.rotation.z = Math.cos(e.t * 1.7 + k) * 0.35; });
@@ -2022,6 +2040,7 @@ export class Enemies {
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
     if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
+    if (u.dragon) BOSS_MOVES.rake.pose(this, e, dt); // Duchess Brûlée's rear-up, her Rake and its curtain, her wings
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }
     if (e.boss) {
