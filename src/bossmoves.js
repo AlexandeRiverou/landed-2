@@ -65,8 +65,9 @@ export const ROOST = { wide: 1.55, near: 260, wait: 1.7, hop: 24, scale: [0.7, 1
 // Then a jet of candy-pink fire sweeps it from her end to the far end in `sweep` s, leaving a curtain `len` m long
 // (with 0 / 1 / 2 horns shot off), `height` m tall and `depth` m deep that hangs `linger` s and fades in `fade` s.
 // Flying through it costs `dmg`, once a Rake; climbing or diving more than `height`/2 m off the line clears it (+25 Dodge!).
-// Other attacks: `bonbons` hot bonbons, `bonbonDmg` each.
-export const RAKE = { tell: 1.3, first: 1.9, tellRage: 1, lock: 0.4, ahead: 50, lead: 1.15, sweep: 0.9, len: [180, 130, 90], linger: [1.2, 0.7, 0], fade: 0.4, height: 16, depth: 8, dmg: 20, near: 60, far: 260, dots: 36, flames: 54, bonbons: 5, bonbonSpeed: 70, bonbonDmg: 9, bonbonSpread: 0.1, colors: ['#ff6ac8', '#f2c23a'] };
+// One she couldn't do (you were too close or too far) comes at the next attack in range. Other attacks: `bonbons` hot
+// bonbons, `bonbonDmg` each.
+export const RAKE = { tell: 1.3, first: 1.9, tellRage: 1, lock: 0.4, ahead: 50, lead: 1.15, sweep: 0.9, len: [180, 130, 90], linger: [1.2, 0.7, 0], fade: 0.4, height: 16, depth: 8, dmg: 20, near: 40, far: 260, dots: 36, flames: 54, bonbons: 5, bonbonSpeed: 70, bonbonDmg: 9, bonbonSpread: 0.1, colors: ['#ff6ac8', '#f2c23a'] };
 const RAKE_FX = ['#ff6ac8', '#ffb0e0', '#ffe08a', '#ffffff'];
 // Count Ribbiton's hops and tongue (enemy-time s, m, enemy-unit m/s). He starts on his giant toadstool (scaled `stool`)
 // and hops off when you come within `near` m, when hit, or after `perch` s. A hop: a `crouch`, then an arc to dry, gentle,
@@ -1462,7 +1463,9 @@ export const MOVES = {
       const G = en.G, p = G.player;
       if (m.tell > 0 || m.fire) return;
       const dist = e.pos.distanceTo(p.pos);
-      if (n % (e.enraged ? 2 : 3) === 0 && !p.landed && !p.dead && dist > RAKE.near && dist < RAKE.far) {
+      const due = m.due || n % (e.enraged ? 2 : 3) === 0;
+      if (due && !p.landed && !p.dead && dist > RAKE.near && dist < RAKE.far) {
+        m.due = false;
         m.locked = false;
         m.tell = m.tell0 = !e.rakeTip ? RAKE.first : e.enraged ? RAKE.tellRage : RAKE.tell;
         if (!e.rakeTip) { e.rakeTip = true; G.ui.notify('Dragon breath! A sparkle line means fire. Climb or dive off the line.', 'warn', 4, 1); }
@@ -1470,6 +1473,7 @@ export const MOVES = {
         G.audio.tone(110, m.tell, { type: 'sawtooth', vol: 0.045, slide: 220 }); // a rising growl
         return;
       }
+      m.due = due; // a Rake you were too close (or too far) for comes at the next attack you're in range for
       const from = e.mesh.userData.snout.getWorldPosition(_c);
       const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / RAKE.bonbonSpeed) * 0.6);
       for (let j = 0; j < RAKE.bonbons; j++) {

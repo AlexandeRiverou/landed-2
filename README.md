@@ -390,8 +390,8 @@ doesn't by itself, but flying on from where it put you does.
   cloud bank when there's no dry ground under her; none under a roof) and takes off with a roar and a puff of stone dust
   when you come within 260 m, when you hit her, or after about 2 s. In flight she beats her wings, glides, banks into her
   turns and keeps her head on you; her shadow follows her on the ground. Most attacks are a volley of 5 bonbons (9 each)
-  at where you're heading. Every 3rd attack (every 2nd enraged), when you're 60-260 m off and not landed, she hovers,
-  back-beating, and a line of sparkles lies across your path where you'll be, at your height, for 1.3 s (1.9 s the
+  at where you're heading. Every 3rd attack (every 2nd enraged; or the next one, if you were too close or too far),
+  when you're 40-260 m off and not landed, she hovers, back-beating, and a line of sparkles lies across your path where you'll be, at your height, for 1.3 s (1.9 s the
   first time, with a tip; 1 s enraged; it follows you until the last 0.4 s). Then she rakes fire along it: the flames
   sweep the 180 m line from her end in 0.9 s, 16 m tall and 8 m deep, and the curtain burns for 1.2 s more. 20 hull if
   you're in it; climb or dive off the line and it's a dodge (+25, and she's dazed for a moment). Each horn she loses

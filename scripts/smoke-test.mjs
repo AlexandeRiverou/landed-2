@@ -1032,8 +1032,12 @@ try {
         if (!fly(30 * 4, () => !!e.mv?.band)) return g;
         const b = e.mv.band, hits = e.mv.hits;
         g.w = b.w; g.pushK = b.push; g.slowK = b.slow;
-        const ground = Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y), G.world.underwater ? -Infinity : G.world.seaLevel);
+        // (Heights are asked at your altitude, as the band does: settle on the ground under the height the plane is put at.)
+        const under = (y) => Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z, y), G.world.underwater ? -Infinity : G.world.seaLevel);
+        let ground = under(p.pos.y);
+        for (let k = 0; k < 3; k++) ground = under(ground + lift);
         p.pos.y = p.prevPos.y = ground + lift;
+        if (lift < 15) p.speed = Math.min(p.speed, 30); // (low: one frame's flight can't carry it off a cliff edge into more room)
         p.gust.set(0, 0, 0); p.wind.set(1, 0, 2); p.invuln = 0;
         const put = () => b.at.copy(p.pos).addScaledVector(b.dir, -(b.dist + 3)); // the band's middle 3 m behind them
         g.pre = b.hit; b.hit = false; b.prev = Infinity; // a fresh band (it may have brushed the plane as it came out)
@@ -1041,6 +1045,7 @@ try {
         const speed0 = p.speed;
         p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable, and a gust leaves an invulnerable plane alone
         g.hit = e.mv.hits - hits;
+        g.clear = +(p.pos.y - under(p.pos.y)).toFixed(1);
         g.dead = p.dead;
         g.push = +p.gust.length().toFixed(1);
         g.flatY = +Math.abs(p.gust.y).toFixed(2);
@@ -1137,11 +1142,13 @@ try {
         Object.assign(l, { len: F.len, linger: F.linger });
         for (let i = 0; i < 30 * 4 && m.fire === F; i++) {
           p.pos.copy(m.mid).addScaledVector(m.side, F.len * 0.25 - F.len / 2).add(new V(0, up, 0)); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), new V(e.pos.x - p.pos.x, 0, e.pos.z - p.pos.z).normalize()); p.updateAxes(); // facing her: not flying off
           p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
         }
         l.hit = m.hits - hits;
         l.hull = +(hull - p.health).toFixed(1);
         l.dazed = +(e.dazed || 0).toFixed(1);
+        l.chase = e.chase || null;
         p.invuln = 99; p.health = p.maxHealth;
         return l;
       };
@@ -5032,12 +5039,15 @@ try {
       out.trestleGrounded = tr.bents.length >= 3 && tr.bents.every((b) => gy(b.x) > b.bottom) && gy(0) <= -TRESTLE.deep;
       // Under the deck at its middle (halfway between two bents), from one side to the other and back.
       tr.wait = 1e9; tr.prevZ = null;
-      const floor = Math.max(gy(0, -20), gy(0), gy(0, 20)), uy = (floor - 2.6) / 2;
+      // (Across the gorge's open middle: up to 20 m each side, less where the gorge bends and its side rises closer in.)
+      let w = 20;
+      while (w > 6 && Math.max(gy(0, -w), gy(0, w)) > -8) w -= 2;
+      const floor = Math.max(gy(0, -w), gy(0), gy(0, w)), uy = (floor - 2.6) / 2;
       hits.length = 0;
       const s7 = G.score;
-      for (let k = 0; k <= 40; k++) { put(0, uy, 20 - k); clear(); G.step(1 / 30); }
-      for (let k = 0; k <= 40; k++) { put(0, uy, -20 + k); clear(); G.step(1 / 30); } // back under: no second bonus
-      out.under = { under: tr.under, score: G.score - s7, hits: hits.filter((n) => n === TRESTLE.dmg).length, room: +(uy - floor).toFixed(1) };
+      for (let k = 0; k <= 2 * w; k++) { put(0, uy, w - k); clear(); G.step(1 / 30); }
+      for (let k = 0; k <= 2 * w; k++) { put(0, uy, -w + k); clear(); G.step(1 / 30); } // back under: no second bonus
+      out.under = { under: tr.under, score: G.score - s7, hits: hits.filter((n) => n === TRESTLE.dmg).length, room: +(uy - floor).toFixed(1), w };
       // Racing the train: out on the deck, 12 m beside the engine.
       hits.length = 0;
       const s8 = G.score;
