@@ -1137,12 +1137,14 @@ try {
         if (!fly(30 * 40, () => mv().tell > 0)) return null;
         const l = { tell: +mv().tell0.toFixed(2) };
         if (!fly(30 * 4, () => !!mv().fire)) return l;
-        G.enemies.shots.forEach((s) => { s.life = 0; }); // no stray bonbon in the way of the dodge
         const m = mv(), F = m.fire, hits = m.hits, hull = p.health;
         Object.assign(l, { len: F.len, linger: F.linger });
         for (let i = 0; i < 30 * 4 && m.fire === F; i++) {
           p.pos.copy(m.mid).addScaledVector(m.side, F.len * 0.25 - F.len / 2).add(new V(0, up, 0)); p.prevPos.copy(p.pos);
           p.quat.setFromUnitVectors(new V(0, 0, -1), new V(e.pos.x - p.pos.x, 0, e.pos.z - p.pos.z).normalize()); p.updateAxes(); // facing her: not flying off
+          // Only her fire can touch it here: no bonbon, minion or hazard of the land in the way of the dodge.
+          G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh));
+          G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
           p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
         }
         l.hit = m.hits - hits;
