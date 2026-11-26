@@ -134,13 +134,15 @@ try {
     // The Autumn Woods' windmill (land 2, flown through by many early checks) stays out of them until its own check sets
     // __smokeMill, like the hidden finds above: no tower in the way of a boss fight, no rolls taken from the stream those
     // checks were tuned on. Once on, it rolls its spot and its leaves aside.
-    // Canyon Country's trestle (land 3) does the same with __smokeTrestle.
+    // Canyon Country's trestle (land 3) does the same with __smokeTrestle, and the Candy Kingdom's gumball machine with
+    // __smokeGumball (its gumballs' colours and the chute's aim roll aside too).
     const SP = window.G.zones.setPieces;
-    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle']]) {
+    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle'], ['updateGumball', 'placeGumball', '__smokeGumball']]) {
       const f = SP[up];
       SP[up] = function (dt) { if (window[flag]) return f.call(this, dt); };
       for (const k of [place, up]) window.__smokeAside(SP, k);
     }
+    window.__smokeAside(SP, 'spawnGumball');
   });
   // The first gift shows up within 25 s of a fresh flight (was 40 s), so new players meet power-ups early.
   const firstPowerupTimer = await page.evaluate(() => {
@@ -5063,7 +5065,58 @@ try {
       const L = SP.archLocal(tr, p.pos.clone()), r = 2.5 * (p.sizeScale || 1);
       out.deck = { hits: hits.filter((n) => n === TRESTLE.dmg).length, off: L.y <= -2.6 - r + 0.1 || L.y >= 0.6 + r - 0.1 };
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo;
+    // Candy Kingdom: a giant gumball machine. Every few seconds its crank turns and a gumball rolls out and away
+    // downhill; shooting one pops it for +10, flying into one just splats it (harmless); the machine is solid: one
+    // knock, and you're shoved clear.
+    const { GUMBALL } = await import('./src/setpieces.js');
+    out.trestleGumball = !!SP.gumballInfo;
+    window.__smokeGumball = true;
+    into('Candy Kingdom');
+    for (let k = 0; k < 40 && !SP.gumballInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    const gm = SP.gumballInfo;
+    out.gumball = !!gm;
+    if (gm) {
+      const cs = Math.cos(gm.yaw), sn = Math.sin(gm.yaw);
+      const put = (lx, ly, lz) => p.pos.set(gm.pos.x + lx * cs + lz * sn, gm.pos.y + ly, gm.pos.z - lx * sn + lz * cs);
+      const above = () => { put(0, 400, 0); p.grace = 1; clear(); };
+      out.gumballGrounded = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].every(([a, b]) => { const h = G.terrain.surfaceHeight(gm.pos.x + a * GUMBALL.foot, gm.pos.z + b * GUMBALL.foot); return h >= gm.pos.y - 0.01 && h <= gm.pos.y + GUMBALL.slope + 0.01; }); // sunk into the low side, never floating
+      // The crank turns and a gumball pops out of the chute, then rolls along the ground.
+      SP.gumballList.slice().forEach(() => SP.popGumball(0));
+      gm.wait = 0;
+      above();
+      for (let k = 0; k < 90 && !SP.gumballList.length; k++) { G.step(1 / 30); above(); }
+      const ball = SP.gumballList[0];
+      gm.wait = 1e9;
+      if (ball) {
+        const p0 = ball.pos.clone();
+        for (let k = 0; k < 30; k++) { G.step(1 / 30); above(); }
+        const g = G.terrain.surfaceHeight(ball.pos.x, ball.pos.z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball;
+        out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +(ball.pos.y - floor).toFixed(2), alive: SP.gumballList.includes(ball) };
+        // Shot with real bullets placed on it: popped, +10 once.
+        const s9 = G.score;
+        while (p.bullets.length) p.removeBullet(0);
+        p.shootCd = 0; p.fire();
+        for (const b of p.bullets) { b.pos.copy(ball.pos); b.vel.set(0, 0, 0); }
+        SP.updateGumball(0);
+        out.gumShot = { popped: !SP.gumballList.includes(ball), score: G.score - s9 };
+        while (p.bullets.length) p.removeBullet(0);
+      }
+      // Flown into: a harmless splat.
+      hits.length = 0;
+      const b2 = SP.spawnGumball(gm), s10 = G.score;
+      put(0, 0, 60); b2.t = 1; b2.pos.copy(p.pos).setY(Math.max(G.terrain.surfaceHeight(p.pos.x, p.pos.z), G.world.seaLevel) + GUMBALL.ball); // out in the open, off the lip
+      p.pos.copy(b2.pos);
+      SP.updateGumball(1 / 30);
+      out.gumRam = { popped: !SP.gumballList.includes(b2), score: G.score - s10, hits: hits.length };
+      // The pedestal is solid: one knock, and you're shoved clear.
+      hits.length = 0;
+      gm.bumpT = 0;
+      put(2, GUMBALL.baseH / 2, 1);
+      clear(); G.step(1 / 30);
+      const L = SP.archLocal(gm, p.pos.clone());
+      out.gumBase = { hits: hits.filter((n) => n === GUMBALL.dmg).length, off: Math.hypot(L.x, L.z) >= GUMBALL.baseR + 2.5 * (p.sizeScale || 1) - 0.1 };
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo; out.beltGumball = !!SP.gumballInfo;
     p.damage = damage;
     p.god = god;
     E.spawnTimer = timer;
@@ -5493,6 +5546,7 @@ try {
     [(({ landEnemies: { moves: m } }) => Object.keys(m).length === 10 && Object.values(m).every((v) => (v.act === 'swoop' && v.states.includes('flare')) || (v.act === 'ambush' && v.states.includes('rise') && v.states.includes('up') && v.shieldUp === 1) || (v.act === 'charge' && v.states.includes('wind') && v.states.includes('dash'))))(report), `land enemies: each new land enemy goes through its move in its own land (${JSON.stringify(report.landEnemies?.moves)})`],
     [(({ setPieces: q }) => q.meadow === 0 && q.count >= 3 && q.dry && q.belt === 0)(report), `set pieces: Volcano Land keeps 3+ fire geysers on dry rock, other lands none (${JSON.stringify(report.setPieces && { meadow: report.setPieces.meadow, count: report.setPieces.count, dry: report.setPieces.dry, belt: report.setPieces.belt })})`],
     [(({ setPieces: q }) => q.moonMeteors >= 1 && q.volcanoMeteorsAll === 0 && q.beltMeteors === 0 && q.shot?.gone && q.shot.score >= 20 && q.landedFar?.gone && q.landedFar.hits === 0 && q.landedNear?.gone && q.landedNear.hits.length === 1 && q.landedNear.hits[0] === 8)(report), `set pieces: meteors fall on the Moon (not elsewhere); one shot down is +20, one landing far off doesn't touch you, one landing beside you knocks once (${JSON.stringify(report.setPieces && { moon: report.setPieces.moonMeteors, volcano: report.setPieces.volcanoMeteorsAll, belt: report.setPieces.beltMeteors, shot: report.setPieces.shot, far: report.setPieces.landedFar, near: report.setPieces.landedNear })})`],
+    [(({ setPieces: q }) => q.gumball && !q.trestleGumball && !q.beltGumball && q.gumballGrounded && q.gumRoll?.out && q.gumRoll.moved > 1 && Math.abs(q.gumRoll.onGround) < 0.5 && q.gumShot?.popped && q.gumShot.score >= 10 && q.gumShot.score < 20 && q.gumRam?.popped && q.gumRam.score === 0 && q.gumRam.hits === 0 && q.gumBase?.hits === 1 && q.gumBase.off)(report), `set pieces: the Candy Kingdom has its gumball machine (no other land does), sunk into the ground; its crank turns out a gumball that rolls away along the ground; shooting one pops it for +10, flying into one is a harmless splat; the machine is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { gumball: report.setPieces.gumball, trestle: report.setPieces.trestleGumball, belt: report.setPieces.beltGumball, grounded: report.setPieces.gumballGrounded, roll: report.setPieces.gumRoll, shot: report.setPieces.gumShot, ram: report.setPieces.gumRam, base: report.setPieces.gumBase })})`],
     [(({ setPieces: q }) => q.trestle && !q.millTrestle && !q.beltTrestle && q.trestleGrounded && q.under?.under && q.under.room > 2.5 && q.under.score >= 25 && q.under.score < 50 && q.under.hits === 0 && q.race?.raced && q.race.score >= 25 && q.race.score < 50 && q.race.hits === 0 && q.deck?.hits === 1 && q.deck.off)(report), `set pieces: Canyon Country has its railway trestle over a gorge (no other land does), its legs in the ground; flying under the deck between two legs is +25 once with no bump, so is racing close past the engine; the deck is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { trestle: report.setPieces.trestle, mill: report.setPieces.millTrestle, belt: report.setPieces.beltTrestle, grounded: report.setPieces.trestleGrounded, under: report.setPieces.under, race: report.setPieces.race, deck: report.setPieces.deck })})`],
     [(({ setPieces: q }) => q.mill && !q.shroomMill && !q.beltMill && q.millGrounded && q.sails?.threaded && q.sails.score >= 25 && q.sails.score < 50 && q.sails.hits === 0 && q.sail?.hits === 1 && q.sail.off)(report), `set pieces: the Autumn Woods has its great windmill (no other land does), sunk into the ground; slipping between its turning sails is +25 once with no bump, a sail is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { mill: report.setPieces.mill, shroom: report.setPieces.shroomMill, belt: report.setPieces.beltMill, grounded: report.setPieces.millGrounded, sails: report.setPieces.sails, sail: report.setPieces.sail })})`],
     [(({ setPieces: q }) => q.shrooms >= 1 && q.tropicShrooms === 0 && q.beltShrooms === 0 && q.boing?.lifted && q.boing.score >= 15 && q.boing.score < 30 && q.boing.again === q.boing.score && q.boing.rise > 10 && q.boing.nose > 0.1 && q.boing.hits === 0)(report), `set pieces: the Mushroom Forest has giant bounce mushrooms (no other land does); touching a cap boings you up with the nose lifted, +15 once per mushroom, and never hurts (${JSON.stringify(report.setPieces && { shrooms: report.setPieces.shrooms, tropic: report.setPieces.tropicShrooms, belt: report.setPieces.beltShrooms, boing: report.setPieces.boing })})`],
