@@ -1235,9 +1235,9 @@ try {
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
-      // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him): give him open sky for his
+      // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
       // turn, whatever land the loop has reached by now.
-      const roof = kind === 'toadBaron' && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
+      const roof = (kind === 'toadBaron' || kind === 'islandTurtle') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
