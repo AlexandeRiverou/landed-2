@@ -1,6 +1,7 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
-// the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill and Canyon Country's railway trestle.
+// the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle and the Candy Kingdom's
+// gumball machine.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -156,6 +157,31 @@ export const TRESTLE = {
   steamEvery: [5, 9],
 };
 
+// The gumball machine (Candy Kingdom): a giant old penny gumball machine stands on a rise ahead, its glass globe
+// heaped with gumballs. Every few seconds its big silver crank turns by itself, the gumballs churn, the chute's flap
+// swings open and a huge gumball pops out and rolls away down the hills, spinning and bouncing as it goes. Shooting a
+// rolling gumball pops it for "+10 Gumball popped!"; flying into one just splats it (sticky, harmless). The machine
+// itself is solid: a bump costs a little hull at most once a second and shoves you clear, never a wreck.
+export const GUMBALL = {
+  near: 550, far: 900,   // a new machine appears this far ahead
+  drop: 1500,
+  foot: 16,              // footprint radius checked for flat ground
+  slope: 10,             // the most the ground may rise and fall across it
+  baseR: 13, baseH: 24,  // the red pedestal (it also sinks 8 m into the ground)
+  globeR: 19,
+  ball: 2.6,             // a rolling gumball's radius
+  every: [4, 8],         // s between gumballs
+  crank: 1.4,            // s for one turn of the crank
+  max: 6,                // rolling at once
+  push: 12,              // m/s out of the chute
+  gravity: 30,
+  roll: 0.15,            // rolling friction, per s
+  life: 30,              // s before a gumball goes pop by itself
+  score: 10,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+};
+const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
+
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
@@ -193,6 +219,11 @@ export class SetPieces {
     this.trestleT = 0;
     this.trestleTip = false;
     this.trestleMats = null; // made with the first trestle, like the mill's
+    this.gum = null;
+    this.gumT = 0;
+    this.gumTip = false;
+    this.gumBumpTip = false;
+    this.gumMats = null; // made with the first machine, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -244,6 +275,8 @@ export class SetPieces {
     this.millT = 0;
     this.dropTrestle();
     this.trestleT = 0;
+    this.dropGumball();
+    this.gumT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -329,6 +362,7 @@ export class SetPieces {
     if (this.kind === 'mushrooms') { this.updateShrooms(dt); return; }
     if (this.kind === 'windmill') { this.updateMill(dt); return; }
     if (this.kind === 'trestle') { this.updateTrestle(dt); return; }
+    if (this.kind === 'gumball') { this.updateGumball(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -1371,6 +1405,248 @@ export class SetPieces {
       p.damage(T.dmg);
       G.fx.emit(p.pos, 18, { colors: ['#a8845a', '#7a5636', '#d8a83a'], speed: 18, life: 0.8, size: 4 });
       if (!this.trestleTip) { this.trestleTip = true; G.ui.notify('The trestle is solid! Fly under the deck between its legs for points.', 'warn', 4, 1); }
+    }
+  }
+  // ---- Candy Kingdom: the gumball machine --------------------------------------------------------------------------
+  get gumballInfo() { return this.gum; }
+  get gumballList() { return this.gum ? this.gum.balls : []; }
+
+  dropGumball() {
+    const m = this.gum;
+    if (!m) return;
+    for (const b of m.balls) this.G.scene.remove(b.mesh);
+    this.G.scene.remove(m.group);
+    for (const geo of m.geos) geo.dispose();
+    m.heap.dispose(); // its instance buffers (the gumball geometry itself is shared)
+    this.gum = null;
+  }
+
+  // A flat-enough rise ahead (not in water), like the windmill's: the plinth is sunk into the lowest ground of its
+  // footprint, so the machine never floats.
+  placeGumball() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 4; tries++) {
+      const d = rand(GUMBALL.near, GUMBALL.far), s = rand(-0.4, 0.4) * d;
+      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      const hs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]].map(([a, b]) => G.terrain.surfaceHeight(x + a * GUMBALL.foot, z + b * GUMBALL.foot));
+      const lo = Math.min(...hs), hi = Math.max(...hs);
+      if (hi - lo > GUMBALL.slope || lo < G.world.seaLevel + 2) continue;
+      return this.buildGumball(x, lo, z, Math.atan2(-f.x, -f.z)); // facing you: local +z points back along your path
+    }
+    return null;
+  }
+
+  // The machine's radius at local height y (null above its lid): plinth, pedestal, collar, glass globe, lid.
+  gumRadius(m, y) {
+    const T = GUMBALL;
+    if (y < 2) return T.baseR + 2.5;
+    if (y < T.baseH) return T.baseR;
+    let r = y < T.baseH + 3 ? 10 : null;
+    const dy = y - m.C;
+    if (Math.abs(dy) < T.globeR) r = Math.max(r ?? 0, Math.sqrt(T.globeR ** 2 - dy * dy));
+    const ly = y - m.lidY;
+    if (ly >= 0 && ly < 10) r = Math.max(r ?? 0, Math.sqrt(100 - ly * ly));
+    return r;
+  }
+
+  buildGumball(x, y, z, yaw) {
+    const T = GUMBALL;
+    const M = (this.gumMats ||= {
+      red: new THREE.MeshPhongMaterial({ color: '#d8202e', shininess: 60, flatShading: true }),
+      gold: new THREE.MeshPhongMaterial({ color: '#f0c040', shininess: 90, flatShading: true }),
+      steel: new THREE.MeshPhongMaterial({ color: '#d8dce4', shininess: 110, flatShading: true }),
+      dark: new THREE.MeshLambertMaterial({ color: '#2a1a22' }),
+      glass: new THREE.MeshPhongMaterial({ color: '#eaf8ff', specular: '#ffffff', shininess: 140, transparent: true, opacity: 0.2, depthWrite: false }),
+      heap: new THREE.MeshPhongMaterial({ color: '#ffffff', shininess: 70 }), // tinted per gumball
+      balls: GUM_COLORS.map((c) => new THREE.MeshPhongMaterial({ color: c, shininess: 70, emissive: c, emissiveIntensity: 0.08 })),
+      ballGeo: new THREE.SphereGeometry(1, 14, 10),
+    });
+    const G = this.G, g = new THREE.Group(), geos = [], B = T.baseH, R = T.globeR, C = B + 2 + R * 0.9, lidY = C + Math.sqrt(R * R - 100);
+    const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    const rAt = (h) => T.baseR - 1.5 * (h - 2) / (B - 2), face = Math.cos(Math.PI / 8); // the pedestal's radius, and its flat faces' share of it
+    mesh(new THREE.CylinderGeometry(T.baseR + 2, T.baseR + 2.5, 10, 16), M.red).position.y = -3; // the plinth, sunk 8 m
+    mesh(new THREE.CylinderGeometry(T.baseR + 2.2, T.baseR + 2.2, 0.8, 16), M.gold).position.y = 2.1;
+    const ped = new THREE.CylinderGeometry(rAt(B), T.baseR, B - 2, 8);
+    ped.rotateY(Math.PI / 8); // a flat face to the front
+    mesh(ped, M.red).position.y = 2 + (B - 2) / 2;
+    for (const h of [5, B - 1.5]) {
+      const band = new THREE.CylinderGeometry(rAt(h) + 0.35, rAt(h) + 0.35, 1, 8);
+      band.rotateY(Math.PI / 8);
+      mesh(band, M.gold).position.y = h;
+    }
+    for (let k = 0; k < 8; k++) { // gold studs round the top band
+      const a = k * Math.PI / 4, rr = rAt(B - 1.5) * face + 0.5;
+      mesh(new THREE.SphereGeometry(0.6, 6, 4), M.gold).position.set(Math.sin(a) * rr, B - 1.5, Math.cos(a) * rr);
+    }
+    mesh(new THREE.CylinderGeometry(9, 10, 3, 16), M.steel).position.y = B + 1.5; // the collar
+    const globe = mesh(new THREE.SphereGeometry(R, 28, 20), M.glass);
+    globe.position.y = C;
+    globe.renderOrder = 2;
+    // The heap of gumballs inside, filling the globe to a little above its middle. It churns when the crank turns.
+    const churn = new THREE.Group();
+    churn.position.y = C;
+    g.add(churn);
+    const heap = new THREE.InstancedMesh(M.ballGeo, M.heap, 150), _m = new THREE.Matrix4(), _c = new THREE.Color(), _v = new THREE.Vector3();
+    let n = 0;
+    for (let k = 0; k < 900 && n < heap.count; k++) {
+      _v.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(R - 2.6);
+      if (_v.length() > R - 2.6 || _v.y > 5 + 2 * Math.cos(_v.x * 0.3) * Math.cos(_v.z * 0.3)) continue;
+      _m.makeScale(2.3, 2.3, 2.3).setPosition(_v);
+      heap.setMatrixAt(n, _m);
+      heap.setColorAt(n, _c.set(GUM_COLORS[n % GUM_COLORS.length]));
+      n++;
+    }
+    heap.count = n;
+    churn.add(heap);
+    // The lid: a red cap with a gold knob.
+    mesh(new THREE.CylinderGeometry(10.6, 10.6, 2, 18), M.red).position.y = lidY;
+    mesh(new THREE.SphereGeometry(10, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.red).position.y = lidY + 1;
+    mesh(new THREE.CylinderGeometry(1.4, 2.4, 1.6, 10), M.gold).position.y = lidY + 11.6;
+    mesh(new THREE.SphereGeometry(2.2, 10, 8), M.gold).position.y = lidY + 13.4;
+    // The front: a steel plate with a coin slot, a price tag, the big crank and the chute with its flap.
+    const py = B * 0.6, apo = rAt(py) * face;
+    mesh(new THREE.BoxGeometry(9, 10, 0.6), M.steel).position.set(0, py, apo + 0.3);
+    mesh(new THREE.BoxGeometry(0.8, 3, 0.4), M.dark).position.set(3, py + 3, apo + 0.7);
+    mesh(new THREE.BoxGeometry(6, 2.2, 0.5), M.gold).position.set(0, py + 7.2, apo + 0.4);
+    const crank = new THREE.Group();
+    crank.position.set(0, py - 0.8, apo + 0.9);
+    g.add(crank);
+    mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.8, 16), M.steel, crank).rotation.x = Math.PI / 2;
+    mesh(new THREE.SphereGeometry(1, 8, 6), M.gold, crank).position.z = 0.6;
+    mesh(new THREE.BoxGeometry(1, 4.4, 0.6), M.steel, crank).position.set(0, 2.2, 0.7);
+    const grip = mesh(new THREE.CylinderGeometry(0.7, 0.7, 2.6, 8), M.red, crank);
+    grip.rotation.x = Math.PI / 2;
+    grip.position.set(0, 4.1, 1.9);
+    const low = rAt(4.8) * face;
+    mesh(new THREE.BoxGeometry(6, 5, 1), M.dark).position.set(0, 4.8, low + 0.1);
+    const lip = mesh(new THREE.BoxGeometry(7, 0.8, 6), M.steel);
+    lip.position.set(0, 2.4, low + 3);
+    lip.rotation.x = 0.18; // sloping down and out
+    for (const sx of [-3.5, 3.5]) mesh(new THREE.BoxGeometry(0.6, 1.8, 6), M.steel).position.set(sx, 3, low + 3);
+    const flap = new THREE.Group();
+    flap.position.set(0, 7.3, low + 0.7);
+    g.add(flap);
+    mesh(new THREE.BoxGeometry(5.6, 4.8, 0.4), M.gold, flap).position.y = -2.4;
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    G.scene.add(g);
+    this.gum = { group: g, geos, pos: g.position, yaw, C, lidY, crank, flap, churn, heap, chuteZ: low + 1, balls: [], wait: rand(1, 3), crankT: 0, spun: false, flapA: 0, bumpT: 0 };
+    return this.gum;
+  }
+
+  // A gumball out of the chute's mouth, rolling off down the lip and away from the machine.
+  spawnGumball(m = this.gum) {
+    const T = GUMBALL, M = this.gumMats, cs = Math.cos(m.yaw), sn = Math.sin(m.yaw), ez = m.chuteZ, side = rand(-1.5, 1.5);
+    const k = Math.floor(Math.random() * GUM_COLORS.length), mesh = new THREE.Mesh(M.ballGeo, M.balls[k]);
+    mesh.scale.setScalar(T.ball);
+    mesh.position.set(m.pos.x + ez * sn, m.pos.y + 2.4 + T.ball, m.pos.z + ez * cs);
+    this.G.scene.add(mesh);
+    const b = { mesh, pos: mesh.position, vel: new THREE.Vector3(T.push * sn + side * cs, 0, T.push * cs - side * sn), color: GUM_COLORS[k], t: 0, slow: 0 };
+    m.balls.push(b);
+    return b;
+  }
+
+  popGumball(i, many = 24) {
+    const m = this.gum, b = m.balls[i];
+    this.G.fx.emit(b.pos, many, { colors: [b.color, '#ffffff', '#ffd0ec'], speed: 14, life: 1, size: 2.5, gravity: -8 });
+    this.G.scene.remove(b.mesh);
+    m.balls.splice(i, 1);
+  }
+
+  updateGumball(dt) {
+    const G = this.G, p = G.player, T = GUMBALL;
+    if (this.gum && Math.hypot(this.gum.pos.x - p.pos.x, this.gum.pos.z - p.pos.z) > T.drop) this.dropGumball();
+    if (!this.gum && !G.terrain.stale && (this.gumT -= dt) <= 0) { this.gumT = 0.5; this.placeGumball(); }
+    const m = this.gum;
+    if (!m) return;
+    const near = p.pos.distanceToSquared(m.pos) < 1000 * 1000;
+    // Every few seconds (while you're near enough to see it) the crank turns, the heap churns, and out pops a gumball.
+    m.wait -= dt;
+    if (m.crankT <= 0 && m.wait <= 0 && near && m.balls.length < T.max) { m.crankT = T.crank; m.spun = false; m.wait = rand(...T.every); }
+    if (m.crankT > 0) {
+      m.crankT = Math.max(0, m.crankT - dt);
+      const k = 1 - m.crankT / T.crank;
+      m.crank.rotation.z = -k * Math.PI * 2;
+      m.churn.rotation.y += 1.2 * dt;
+      m.churn.position.y = m.C + Math.abs(Math.sin(k * Math.PI * 5)) * 0.5;
+      if (!m.spun && k >= 0.7) {
+        m.spun = true;
+        m.flapA = 1;
+        const b = this.spawnGumball(m);
+        G.fx.emit(b.pos, 12, { colors: ['#ffffff', '#ffd0ec', b.color], speed: 8, life: 0.8, size: 2, gravity: -4 });
+      }
+    } else m.churn.position.y = m.C;
+    m.flapA = Math.max(0, m.flapA - dt * 1.2);
+    m.flap.rotation.x = -1.1 * Math.min(1, m.flapA * 1.5);
+    m.bumpT = Math.max(0, m.bumpT - dt);
+    // The gumballs roll down the chute's lip and away down the hills (and bob along in water), spinning as they go.
+    const h = (x, z) => G.terrain.surfaceHeight(x, z), sea = G.world.seaLevel, e = 2;
+    for (let i = m.balls.length - 1; i >= 0; i--) {
+      const b = m.balls[i], P = b.pos, V = b.vel;
+      b.t += dt;
+      const dx = P.x - m.pos.x, dz = P.z - m.pos.z, d = Math.hypot(dx, dz), keep = T.baseR + 2.5 + T.ball, chute = b.t < 0.7;
+      const ground = h(P.x, P.z), wet = ground < sea;
+      let floor = wet ? sea + T.ball * 0.4 + Math.sin(b.t * 2.5) * 0.3 : ground + T.ball;
+      if (chute && d < keep) floor = Math.max(floor, m.pos.y + 2 + T.ball); // rolling off the lip over the plinth
+      if (P.y - floor < 0.3 && !wet) {
+        const gx = (h(P.x + e, P.z) - h(P.x - e, P.z)) / (2 * e), gz = (h(P.x, P.z + e) - h(P.x, P.z - e)) / (2 * e), k = T.gravity * 5 / 7 / (1 + gx * gx + gz * gz);
+        V.x -= gx * k * dt; V.z -= gz * k * dt;
+      }
+      const drag = Math.exp(-(wet ? 1.5 : T.roll) * dt);
+      V.x *= drag; V.z *= drag;
+      V.y -= T.gravity * dt;
+      P.x += V.x * dt; P.y += V.y * dt; P.z += V.z * dt;
+      if (P.y <= floor) { P.y = floor; V.y = V.y < -6 ? -V.y * 0.35 : 0; } // a little bounce off a big drop
+      // Never back into the machine (once it's off the lip).
+      if (!chute && d < keep && P.y < m.pos.y + T.baseH + 5) {
+        const nx = d > 1e-3 ? dx / d : Math.sin(m.yaw), nz = d > 1e-3 ? dz / d : Math.cos(m.yaw), vn = V.x * nx + V.z * nz;
+        P.x = m.pos.x + nx * keep; P.z = m.pos.z + nz * keep;
+        if (vn < 0) { V.x -= vn * nx * 1.3; V.z -= vn * nz * 1.3; }
+      }
+      const speed = Math.hypot(V.x, V.z);
+      if (speed > 0.05) {
+        _a.set(V.z, 0, -V.x).normalize();
+        _qb.setFromAxisAngle(_a, speed * dt / T.ball);
+        b.mesh.quaternion.premultiply(_qb);
+      }
+      if (speed > 3 && P.y - floor < 0.3 && p.pos.distanceToSquared(P) < 600 * 600) G.fx.emit(P, 4 * dt, { colors: ['#ffffff', b.color], speed: 2, life: 0.8, size: 1.2, drag: 1.5 }); // sugar dust
+      b.slow = speed < 0.4 ? b.slow + dt : 0;
+      if (b.t > T.life || b.slow > 4 || d > 600) { this.popGumball(i); continue; }
+      // Shot: popped, for points.
+      let shot = false;
+      for (let j = p.bullets.length - 1; j >= 0; j--) {
+        if (p.bullets[j].pos.distanceToSquared(P) < (T.ball + 2) ** 2) { p.removeBullet(j); shot = true; break; }
+      }
+      if (shot) {
+        G.score += T.score;
+        G.fx.popText(P.clone().setY(P.y + 5), `+${T.score} Gumball popped!`);
+        G.audio.pop?.();
+        if (!this.gumTip) { this.gumTip = true; G.ui.notify('Pop! Shoot the gumballs the machine rolls out for points.', 'info', 4, 1); }
+        this.popGumball(i, 40);
+        continue;
+      }
+      // Flown into: just a sticky splat, no harm done.
+      if (!p.dead && p.pos.distanceTo(P) < T.ball + 2.5 * (p.sizeScale || 1)) {
+        G.fx.popText(P.clone().setY(P.y + 5), 'Splat!');
+        G.audio.pop?.();
+        this.popGumball(i, 30);
+      }
+    }
+    if (p.dead) return;
+    // The machine itself: plinth, pedestal, globe and lid.
+    const L = this.archLocal(m, _local), r = 2.5 * (p.sizeScale || 1), tr = this.gumRadius(m, L.y), d = Math.hypot(L.x, L.z);
+    if (tr !== null && d < tr + r) {
+      const cs = Math.cos(m.yaw), sn = Math.sin(m.yaw);
+      const k = d > 1e-3 ? (tr + r - d) / d : 0, px = L.x * k, pz = d > 1e-3 ? L.z * k : tr + r;
+      p.pos.x += px * cs + pz * sn; p.pos.z += -px * sn + pz * cs;
+      if (m.bumpT <= 0) {
+        m.bumpT = T.bumpEvery;
+        p.damage(T.dmg);
+        G.fx.emit(p.pos, 18, { colors: ['#d8202e', '#f0c040', '#ffffff'], speed: 18, life: 0.8, size: 4 });
+        if (!this.gumBumpTip) { this.gumBumpTip = true; G.ui.notify('The gumball machine is solid! Shoot the gumballs it rolls out for points.', 'warn', 4, 1); }
+      }
     }
   }
 }
