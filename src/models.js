@@ -2793,3 +2793,177 @@ export function makeCrown(s = 1) {
   g.scale.setScalar(s);
   return g;
 }
+
+// Grandma Atolla, the Island Turtle (Tropical Archipelago's land boss): a huge old sea turtle whose domed, barnacled,
+// mossy shell carries a little sandy islet with three palm trees (breakable: fewer coconuts; userData.palms), a
+// driftwood beach hut with a lantern, and gulls that circle it while she sleeps (userData.gulls). Head (with a hooked
+// beak that opens, heavy lids and wise amber eyes; her pale throat is the soft spot), four flippers on pivots
+// (userData.flippers: front pair big, rear small) and a stubby tail. Her rim sits on the water line at rig y 0; she
+// draws head and flippers into the shell to sleep (bossmoves MOVES.whirl.pose). +z is forward.
+export function makeIslandTurtle(hat) {
+  const g = new THREE.Group(), rig = new THREE.Group();
+  g.add(rig);
+  const T = {
+    shell: '#6a7a3a', shell2: '#56662e', rim: '#8a8a4a', seam: '#3a4420', moss: '#4f8a3a', moss2: '#6aa848', barn: '#e6e0cc', barn2: '#b8b0a0',
+    skin: '#7a9a6a', skin2: '#5f7f52', spot: '#a8c08a', belly: '#e8dcb0', belly2: '#d6c890', beak: '#4a4038', beak2: '#2e2822',
+    sand: '#ecd6a0', sand2: '#d8bc80', trunk: '#8a6440', trunk2: '#6e4e30', frond: '#3aa84a', frond2: '#2a8a3a', nut: '#6a4a2a',
+    wood: '#a07a4e', wood2: '#7a5a38', thatch: '#d8b866', weed: '#2f6a3a', eye: '#ffb030', lid: '#6a8a5a',
+  };
+  const Hemi = (r, w, h) => new THREE.SphereGeometry(r, w, h, 0, PI * 2, 0, PI / 2);
+  const hr = (i, k) => { const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+  const skin = lam('#ffffff', { vertexColors: true, emissive: '#0a120a' });
+  const glow = basic('#ffffff', { vertexColors: true });
+  const mesh = (parent, parts, mat, t = {}) => add(parent, M(parts), mat, t);
+  // ---- the shell: a low dome with hexagonal scutes (seams between), a scalloped rim, a pale plastron under it ----
+  const A = 5, Cz = 6, H = 2.7; // half-width, half-length, dome height above the rim
+  const dome = (u, v) => ({ x: A * u, y: H * Math.sqrt(Math.max(0, 1 - u * u - v * v)), z: Cz * v }); // u, v in -1..1 (disc)
+  const S = [];
+  S.push(P(Hemi(1, 22, 12), T.shell, { sx: A, sy: H, sz: Cz })); // the dome
+  S.push(P(Sph(1, 18, 6), T.belly, { y: -0.15, sx: A * 0.93, sy: 1.2, sz: Cz * 0.93 })); // the plastron
+  for (let k = 0; k < 6; k++) S.push(P(Box(A * 1.3, 0.05, 0.12), T.belly2, { y: -1.3, z: -3.6 + k * 1.45, sx: 1 - Math.abs(k - 2.5) * 0.16 })); // its seams
+  const scute = (u, v, r, col) => {
+    const p = dome(u, v), n = new THREE.Vector3(p.x / (A * A), p.y / (H * H), p.z / (Cz * Cz)).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n), one = new THREE.Vector3(1, 1, 1);
+    const geo = P(Cyl(r, r * 1.08, 0.32, 6), col);
+    geo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y + 0.02, p.z), q, one));
+    S.push(geo);
+    const seam = P(Cyl(r * 1.12, r * 1.16, 0.2, 6), T.seam);
+    seam.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y - 0.06, p.z), q, one));
+    S.push(seam);
+  };
+  for (let k = 0; k < 5; k++) scute(0, -0.6 + k * 0.3, 1.05, k % 2 ? T.shell2 : T.shell); // the spine row
+  for (const sd of [-1, 1]) for (let k = 0; k < 4; k++) scute(sd * 0.48, -0.5 + k * 0.33, 1, (k + (sd > 0)) % 2 ? T.shell : T.shell2);
+  for (let k = 0; k < 22; k++) { // the scalloped rim
+    const a = (k / 22) * PI * 2, x = Math.sin(a) * A * 1.02, z = Math.cos(a) * Cz * 1.02;
+    if (Math.abs(a - PI) < 0.3 || a < 0.25 || a > PI * 2 - 0.25) continue; // gaps for the head and the tail
+    S.push(P(Sph(0.75, 6, 4), k % 2 ? T.rim : T.shell2, { x, y: 0.05, z, sx: 1.1, sy: 0.32, sz: 0.8, ry: a }));
+  }
+  for (let k = 0; k < 26; k++) { // barnacle clusters, mostly toward the rim
+    const a = hr(k, 1) * PI * 2, r = 0.55 + hr(k, 2) * 0.4, p = dome(Math.sin(a) * r, Math.cos(a) * r);
+    S.push(P(Cyl(0.08, 0.2, 0.22, 5), hr(k, 3) > 0.5 ? T.barn : T.barn2, { x: p.x, y: p.y + 0.05, z: p.z, rx: Math.cos(a) * r * 0.8, rz: -Math.sin(a) * r * 0.8 }));
+    if (k % 3 === 0) S.push(P(Cyl(0.06, 0.14, 0.16, 5), T.barn, { x: p.x + 0.25, y: p.y + 0.02, z: p.z + 0.15, rx: Math.cos(a) * r * 0.8, rz: -Math.sin(a) * r * 0.8 }));
+  }
+  for (let k = 0; k < 14; k++) { // moss patches
+    const a = hr(k, 4) * PI * 2, r = 0.25 + hr(k, 5) * 0.55, p = dome(Math.sin(a) * r, Math.cos(a) * r);
+    S.push(P(Sph(0.6 + hr(k, 6) * 0.5, 7, 4), k % 2 ? T.moss : T.moss2, { x: p.x, y: p.y + 0.02, z: p.z, sy: 0.14 }));
+  }
+  for (let k = 0; k < 16; k++) { // seaweed hanging off the rim
+    const a = ((k + 0.5) / 16) * PI * 2, x = Math.sin(a) * A * 1.03, z = Math.cos(a) * Cz * 1.03;
+    S.push(P(Box(0.12, 0.9 + hr(k, 7) * 0.6, 0.05), T.weed, { x, y: -0.45, z, ry: a, rz: (hr(k, 8) - 0.5) * 0.4 }));
+  }
+  // ---- the islet on top: a sand mound, pebbles, a driftwood hut with a thatched roof, a glowing lantern ----
+  const top = H; // the dome's crown
+  S.push(P(Hemi(2.6, 14, 6), T.sand, { y: top - 0.5, z: -0.6, sx: 1.25, sy: 0.38, sz: 1 }));
+  S.push(P(Hemi(1.4, 10, 4), T.sand2, { x: 1.3, y: top - 0.3, z: 0.8, sx: 1.1, sy: 0.35, sz: 0.9 }));
+  for (let k = 0; k < 8; k++) S.push(P(Dod(0.16 + hr(k, 9) * 0.12), '#9a9488', { x: -2 + hr(k, 10) * 4, y: top + 0.25, z: -2 + hr(k, 11) * 2.6 }));
+  { // the hut (rear left), a ladder of planks, a thatched cone roof with a little flag
+    const hx = -1.4, hz = -1.6, hy = top + 0.35;
+    for (let k = 0; k < 5; k++) S.push(P(Box(0.28, 1.1, 1.3), k % 2 ? T.wood : T.wood2, { x: hx - 0.55 + k * 0.28, y: hy + 0.55, z: hz }));
+    S.push(P(Box(1.4, 1.1, 0.12), T.wood2, { x: hx, y: hy + 0.55, z: hz - 0.6 }));
+    S.push(P(Cone(1.25, 1, 8), T.thatch, { x: hx, y: hy + 1.55, z: hz }));
+    S.push(P(Cyl(0.03, 0.03, 0.8), T.wood2, { x: hx, y: hy + 2.4, z: hz }));
+    S.push(P(Box(0.04, 0.3, 0.45), '#ff6a4a', { x: hx, y: hy + 2.6, z: hz + 0.22 }));
+  }
+  mesh(rig, S, skin);
+  const lantern = add(rig, Sph(0.16, 6, 4), basic('#ffd27a'), { x: -1.4, y: top + 0.9, z: -0.95 }); // the hut's window light
+  // ---- three palm trees (breakable), each a curved trunk of rings, a crown of drooping fronds and coconuts ----
+  const palms = [];
+  for (const [px, pz, lean, ry, hgt] of [[0.6, -0.4, 0.28, 0.4, 3.4], [1.6, 0.9, 0.36, -0.9, 2.8], [-0.5, 0.7, 0.22, 2.2, 3]]) {
+    const palm = new THREE.Group(), parts = [];
+    palm.position.set(px, top - 0.05, pz);
+    palm.rotation.y = ry;
+    const n = 7;
+    let x = 0, y = 0;
+    for (let k = 0; k < n; k++) {
+      const seg = hgt / n, a = lean * (k / n) * 1.6;
+      parts.push(P(Cyl(0.16 - k * 0.01, 0.2 - k * 0.01, seg * 1.05, 6), k % 2 ? T.trunk : T.trunk2, { x: x + Math.sin(a) * seg / 2, y: y + Math.cos(a) * seg / 2, rz: -a }));
+      x += Math.sin(a) * seg; y += Math.cos(a) * seg;
+    }
+    for (let k = 0; k < 7; k++) { // fronds: long thin leaves arching out and down
+      const a = (k / 7) * PI * 2 + hr(k, 12);
+      for (let j = 0; j < 3; j++) {
+        const r = 0.45 + j * 0.55, droop = 0.25 + j * 0.35;
+        parts.push(P(Box(0.6, 0.04, 0.32 - j * 0.06), j % 2 ? T.frond2 : T.frond, { x: x + Math.cos(a) * r, y: y + 0.1 - j * j * 0.16, z: Math.sin(a) * r, ry: -a, rz: -droop }));
+      }
+    }
+    for (let k = 0; k < 4; k++) parts.push(P(Sph(0.17, 6, 4), T.nut, { x: x + Math.cos(k * 1.6) * 0.22, y: y - 0.2, z: Math.sin(k * 1.6) * 0.22 }));
+    mesh(palm, parts, skin);
+    palm.userData.top = new THREE.Vector3(x, y, 0); // where the coconuts fly from
+    rig.add(palm);
+    breakable(g, palm, 1.3, 'palm', 1.5);
+    palms.push(palm);
+  }
+  // ---- the head on a wrinkled neck: a broad skull, a hooked beak (the lower half opens), heavy lids, amber eyes ----
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.35, Cz * 0.9);
+  rig.add(neck);
+  const NK = [];
+  for (let k = 0; k < 4; k++) NK.push(P(Tor(0.95 - k * 0.06, 0.14, 5, 14), k % 2 ? T.skin2 : T.skin, { z: 0.25 + k * 0.38, sy: 0.85 }));
+  NK.push(P(Cyl(0.85, 1, 1.7, 10), T.skin, { z: 0.8, rx: PI / 2, sy: 1 }));
+  NK.push(P(Sph(0.7, 8, 4), T.belly, { y: -0.45, z: 0.9, sx: 1, sy: 0.4, sz: 1.3 }));
+  mesh(neck, NK, skin);
+  const head = new THREE.Group();
+  head.position.set(0, 0.25, 1.85);
+  neck.add(head);
+  const HD = [];
+  HD.push(P(Sph(1.05, 14, 10), T.skin, { sx: 1, sy: 0.85, sz: 1.3, z: 0.4 }));
+  for (let k = 0; k < 14; k++) { // the big head scales (pale plates on top)
+    const a = (hr(k, 13) - 0.5) * 1.8, b = hr(k, 14) * 0.9;
+    HD.push(P(Sph(0.24 + hr(k, 15) * 0.1, 5, 3), k % 3 ? T.spot : T.skin2, { x: Math.sin(a) * 0.75, y: 0.55 + b * 0.25, z: 0.2 + Math.cos(a) * 0.6 + b * 0.3, sy: 0.3 }));
+  }
+  HD.push(P(Cone(0.62, 1.1, 8), T.beak, { y: 0.05, z: 1.75, rx: PI / 2 + 0.25, sx: 1.15, sy: 1, sz: 0.75 })); // the upper beak, hooked
+  HD.push(P(Sph(0.16, 5, 3), T.beak2, { y: -0.32, z: 2.25, sx: 1.3 })); // its tip
+  for (const sd of [-1, 1]) {
+    HD.push(P(Sph(0.36, 8, 6), '#2a2018', { x: sd * 0.72, y: 0.3, z: 1.05 })); // the eye sockets
+    HD.push(P(Sph(0.08, 4, 3), T.beak2, { x: sd * 0.2, y: 0.25, z: 2.05 })); // nostrils
+  }
+  mesh(head, HD, skin);
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -0.3, 1.05);
+  head.add(jaw);
+  mesh(jaw, [P(Cone(0.5, 0.95, 8), T.beak, { y: -0.08, z: 0.6, rx: PI / 2 - 0.1, sx: 1.1, sy: 1, sz: 0.5 }), P(Sph(0.6, 8, 4), T.belly, { y: -0.2, z: 0, sx: 1, sy: 0.4, sz: 1 })], skin);
+  const eyes = [], lids = [];
+  for (const sd of [-1, 1]) {
+    const eye = add(head, Sph(0.26, 8, 6), glow, { x: sd * 0.78, y: 0.32, z: 1.15 });
+    eye.geometry.dispose();
+    eye.geometry = M([P(Sph(0.26, 8, 6), T.eye), P(Sph(0.13, 6, 4), '#1a0e04', { x: sd * 0.12, z: 0.14, sy: 1.4 })]);
+    eyes.push(eye);
+    const lid = add(head, M([P(Hemi(0.4, 8, 6), T.lid), P(Tor(0.36, 0.05, 4, 10), T.skin2, { rx: PI / 2 })]), skin, { x: sd * 0.76, y: 0.34, z: 1.12, rx: -0.5 });
+    lids.push(lid);
+  }
+  const throat = add(head, Sph(0.55, 10, 6), lam(T.belly, { emissive: '#3a2a10' }), { y: -0.55, z: 0.5, s: [1, 0.55, 1.1] });
+  weak(g, throat, 1.2, 3); // her pale throat is soft
+  // ---- flippers: big front paddles with scale spots and a claw, small rear ones; each on a shoulder pivot ----
+  const flippers = [];
+  const flipper = (sd, front) => {
+    const f = new THREE.Group(), L = front ? 4.6 : 2.2, W = front ? 1.25 : 0.95, parts = [];
+    f.position.set(sd * A * (front ? 0.78 : 0.7), -0.2, front ? Cz * 0.55 : -Cz * 0.62);
+    parts.push(P(Sph(1, 12, 6), T.skin, { x: sd * L * 0.5, sx: L * 0.52, sy: 0.22, sz: W * 0.6, ry: sd * (front ? -0.35 : 0.5) }));
+    for (let k = 0; k < (front ? 9 : 4); k++) parts.push(P(Sph(0.22, 5, 3), k % 2 ? T.spot : T.skin2, { x: sd * (0.5 + k * L * 0.09), y: 0.17, z: (hr(k, 16) - 0.5) * W * 0.6 - sd * k * 0.04 * (front ? 1 : -1), sy: 0.3 }));
+    if (front) parts.push(P(Cone(0.1, 0.4, 4), T.beak2, { x: sd * 1.6, y: 0.1, z: 0.45, rx: PI / 2 }));
+    mesh(f, parts, skin);
+    f.userData = { sd, front, rest: f.rotation.clone() };
+    rig.add(f);
+    flippers.push(f);
+  };
+  for (const sd of [-1, 1]) { flipper(sd, true); flipper(sd, false); }
+  const tail = add(rig, Cone(0.45, 1.3, 6), skin, { y: -0.1, z: -Cz * 1.02, rx: -PI / 2 });
+  tail.geometry.dispose();
+  tail.geometry = M([P(Cone(0.45, 1.3, 6), T.skin, { rx: 0 })]);
+  // ---- the gulls that circle the islet while she sleeps: three little white Vs ----
+  const gulls = new THREE.Group();
+  gulls.position.y = top + 3.5;
+  rig.add(gulls);
+  for (let k = 0; k < 3; k++) {
+    const gl = add(gulls, M([P(Box(0.9, 0.06, 0.2), '#ffffff', { x: -0.4, rz: 0.35 }), P(Box(0.9, 0.06, 0.2), '#ffffff', { x: 0.4, rz: -0.35 }), P(Sph(0.12, 4, 3), '#f2f2f2', { sz: 1.8 })]), skin);
+    gl.userData = { a: k * 2.1, r: 3 + k * 0.9, h: k * 0.6 };
+  }
+  // A ring of foam at the water line round her (bossmoves sets it): it sits in the scene's frame through the rig.
+  const foam = add(g, new THREE.RingGeometry(0.86, 1.25, 28), new THREE.MeshBasicMaterial({ color: '#f4fbff', transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }), { rx: -PI / 2, y: 0.04 });
+  foam.scale.set(A * 1.12, Cz * 1.12, 1);
+  const patch = add(g, new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: '#0a2a2a', transparent: true, opacity: 0.35, depthWrite: false }), { rx: -PI / 2, y: 0.02 });
+  patch.scale.set(A * 1.05, Cz * 1.05, 1); // the dark water under her
+  Object.assign(g.userData, { turtle: true, rig, neck, head, jaw, eyes, lids, throat, flippers, tail, palms, gulls, lantern, foam, patch, crownOn: head });
+  if (hat) partyHat(head, 1);
+  return g;
+}

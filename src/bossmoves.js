@@ -58,6 +58,18 @@ export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 250
 // you. In flight (MOVES.rake.fly) she's heavier than the owl: `beats` wingbeats at `flap` Hz (`flapUp` taking off or
 // climbing), then a glide of `glide` s, banking up to `bank` rad and pitching up to `pitch` rad.
 export const ROOST = { wide: 1.55, near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 0.8, flapUp: 1.4, beats: 2, glide: [1.2, 2], bank: 0.7, pitch: 0.35 };
+// Grandma Atolla: asleep (an island) till you're within `near` m, she's hit, or `wait` s pass.
+export const NAP = { near: 260, wait: 8 };
+// Her swim and her Whirlpool (see MOVES.whirl): she keeps `keep` m off you, turning up to `turn` rad/s. Tell `tell` s
+// (`first` the first time, `tellRage` enraged), `dive` s down to `deep` (model units), `spin` s of pull, `up` s back.
+// The pull reaches planes within `r` m of the middle and under `safe` m: in at up to `pull` m/s, round at `swirl`,
+// down at `sink`. Coconuts: 5 / 4 / 3 / 2 with 0-3 palms down, 9 hull each.
+export const WHIRL = {
+  keep: 150, turn: 0.55, far: 340, reach: 160, tell: 1.4, first: 2, tellRage: 1.1, lead: 1, dive: 0.8, deep: 7, spin: 3.2, up: 0.7,
+  r: 80, safe: 70, pull: 18, swirl: 9, sink: 11, touch: 8, splash: 18, snap: 22, snapR: 32,
+  coconuts: [5, 4, 3, 2], nutSpeed: 70, nutDmg: 9, nutSpread: 0.1,
+};
+const SPLASH = ['#ffffff', '#e8fbff', '#bfefff', '#8ad8f0'];
 // Her Rake (enemy-time s, m): every 3rd attack (every 2nd enraged), with you `near`-`far` m off and not landed, she
 // hovers and rears up for `tell` s (`first` the first time, with a tip; `tellRage` enraged), throat and belly glowing.
 // A dotted sparkle line (and its twin on the ground under it) lies across your path at your height, where you'll be
@@ -363,6 +375,7 @@ export function endMoves(en, e) {
   if (e.mesh.userData.owl) MOVES.gust.hide(e);
   if (e.mesh.userData.dragon) MOVES.rake.hide(e);
   if (e.mesh.userData.toad) MOVES.leap.hide(e);
+  if (e.mesh.userData.turtle) { MOVES.whirl.hide(e); en.G.player.gustDecay = 2.2; }
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -376,6 +389,7 @@ export function dropBoss(en, e) {
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
   if (u.rakeFx) { for (const x of Object.values(u.rakeFx)) { en.G.scene.remove(x); disposeTree(x); if (x.dispose) x.dispose(); } u.rakeFx = null; } // Duchess Brûlée's sparkle line, flames and jet
   if (u.dragon) e.mesh.traverse((o) => o.isInstancedMesh && o.dispose()); // her scales' instance buffers (disposeTree frees only geometry and material)
+  if (u.whirlFx) { en.G.scene.remove(u.whirlFx); disposeTree(u.whirlFx); u.whirlFx = null; } // Grandma Atolla's whirlpool
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
   if (u.tongueFx) { // Count Ribbiton's aim line and tongue (the tongue and its tip share a material)
@@ -1697,6 +1711,290 @@ export const MOVES = {
       return (u.rakeFx = { dots, ground, fire, jet });
     },
     hide(e) { const fx = e.mesh.userData.rakeFx; if (fx) for (const x of Object.values(fx)) x.visible = false; },
+  },
+
+  // Grandma Atolla (Tropical Archipelago): asleep at first, only her shell and its islet above the water (see NAP), till
+  // you come near, hit her or she's napped long enough. Then she paddles the surface, keeping about WHIRL.keep m off
+  // you and steering round headlands, and lobs coconuts from her palms. Every 3rd attack (2nd enraged), when you're
+  // within `far` m and under `reach` m over the sea, a foam ring opens on open water where you're heading and she rears
+  // up (the tell), dives (she can't be hurt under), and the sea there spins: for `spin` s it pulls a plane inside the
+  // ring toward its middle (`pull`, with a `swirl` round it) and down (`sink`), both fading to nothing at `safe` m up.
+  // Dipping to `touch` m off the water inside it splashes you (`splash` hull, once) and throws you clear. Then she
+  // bursts up from the middle with a beak snap (`snap` hull within `snapR` m). Caught by it and out unhurt: a dodge.
+  whirl: {
+    step(en, e, c) {
+      const G = en.G, u = e.mesh.userData, m = e.mv ||= { tell: 0, whirls: 0, catches: 0, splashes: 0, snaps: 0, volleys: 0, yaw: null, turn: 0 };
+      if (m.yaw === null) m.yaw = Math.atan2(c.p.pos.x - e.pos.x, c.p.pos.z - e.pos.z);
+      const N = u.nap;
+      if (N) { // asleep: an island, till you come near, hit her, or she's napped long enough
+        N.t += c.dt;
+        if (c.dist < NAP.near || N.t > NAP.wait || e.hp < N.hp) MOVES.whirl.wake(en, e);
+        return true;
+      }
+      if (m.tell > 0 || m.pool) { m.rate = 0; return true; } // rearing up, or under the sea
+      // Head for a point WHIRL.keep m off you, round to your side: in when far, along when near, out when too close.
+      const to = _a.set(c.p.pos.x - e.pos.x, 0, c.p.pos.z - e.pos.z), d = to.length() || 1;
+      let want = Math.atan2(to.x, to.z);
+      if (d < WHIRL.keep + 60) want += (m.side ||= Math.random() < 0.5 ? 1 : -1) * Math.PI * (d < WHIRL.keep - 40 ? 0.7 : 0.5);
+      const s = e.mesh.scale.x, open = (yaw) => {
+        const r = 30 * s + 25, x = e.pos.x + Math.sin(yaw) * r, z = e.pos.z + Math.cos(yaw) * r;
+        return G.terrain.surfaceHeight(x, z) < waterLine() - 3;
+      };
+      let diff = Math.atan2(Math.sin(want - m.yaw), Math.cos(want - m.yaw)), go = 1;
+      if (!open(m.yaw)) { // land ahead: turn the open way, slowing to squeeze round
+        if (!m.turn) m.turn = open(m.yaw + 0.7) ? 1 : open(m.yaw - 0.7) ? -1 : 1;
+        diff = m.turn;
+        go = open(m.yaw + m.turn * 0.7) ? 0.4 : 0;
+        if (go === 0) m.side = -m.side || 1;
+      } else m.turn = 0;
+      const rate = THREE.MathUtils.clamp(diff * 1.5, -WHIRL.turn, WHIRL.turn);
+      m.yaw += rate * c.dt;
+      m.rate = rate;
+      e.vel.set(Math.sin(m.yaw), 0, Math.cos(m.yaw)).multiplyScalar(en.cruise(e) * go * (e.dazed > 0 ? 0.3 : 1));
+      e.mesh.rotation.y = m.yaw;
+      return true;
+    },
+    hold: (e) => e.mv?.tell > 0 || !!e.mv?.pool || !!e.mesh.userData.nap,
+    // At spawn: she's asleep, head and flippers in, low in the water, gulls round her palms.
+    spawn(en, e) {
+      const u = e.mesh.userData;
+      u.nap = { t: 0, hp: e.hp, k: 1 };
+      e.mesh.rotation.y = Math.atan2(en.G.player.pos.x - e.pos.x, en.G.player.pos.z - e.pos.z) + Math.PI * 0.5; // side-on to you, like an island
+      (e.mv ||= { tell: 0, whirls: 0, catches: 0, splashes: 0, snaps: 0, volleys: 0, yaw: null, turn: 0 }).yaw = e.mesh.rotation.y;
+    },
+    // Awake: a deep, slow bellow, a big splash, the gulls scatter.
+    wake(en, e) {
+      const G = en.G, u = e.mesh.userData;
+      if (!u.nap) return;
+      u.nap = null;
+      u.wake = 0;
+      G.fx.emit(_b.copy(e.pos).setY(waterLine() + 2), 30, { colors: SPLASH, speed: 22, life: 1.4, size: 6, up: 18 });
+      G.audio.tone(70, 1.1, { type: 'sawtooth', vol: 0.07, slide: 30 }); // the bellow
+      G.audio.noise(0.7, { vol: 0.09, freq: 400 });
+      G.ui.notify('That island just opened its eyes. It\'s Grandma Atolla!', 'warn', 3, 1);
+    },
+    attack(en, e, n) {
+      const m = e.mv, G = en.G, p = G.player;
+      if (!m || m.tell > 0 || m.pool || e.mesh.userData.nap) return;
+      const dist = e.pos.distanceTo(p.pos), sea = waterLine();
+      const due = m.due || n % (e.enraged ? 2 : 3) === 0;
+      if (due && !p.landed && !p.dead && dist < WHIRL.far && p.pos.y - sea < WHIRL.reach) {
+        const tell = !e.whirlTip ? WHIRL.first : e.enraged ? WHIRL.tellRage : WHIRL.tell;
+        const at = MOVES.whirl.spot(en, e, tell);
+        if (at) {
+          m.due = false;
+          m.at = at;
+          m.tell = m.tell0 = tell;
+          e.whirlTells = (e.whirlTells || 0) + 1;
+          if (!e.whirlTip) { e.whirlTip = true; G.ui.notify('A ring of foam on the sea means a whirlpool. Climb high or swing wide!', 'warn', 4, 1); }
+          en.warn(at, WHIRL.r, '#d8f6ff', m.tell + WHIRL.dive, () => {}, { owner: e });
+          G.audio.tone(90, m.tell, { type: 'sine', vol: 0.06, slide: -30 }); // a deep rumble
+          return;
+        }
+      }
+      m.due = due; // a Whirlpool with no open water ahead (or you too high or far) comes at the next attack that fits
+      // Coconuts: one from each palm still standing (and a couple from the biggest), at where you'll be.
+      const u = e.mesh.userData, palms = u.palms.filter((x) => x.visible), k = WHIRL.coconuts[Math.min(3, e.broken?.palm || 0)];
+      for (let j = 0; j < k; j++) {
+        const from = palms.length ? palms[j % palms.length].localToWorld(_c.copy(palms[j % palms.length].userData.top)) : u.head.getWorldPosition(_c);
+        const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (from.distanceTo(p.pos) / WHIRL.nutSpeed) * 0.6);
+        const d = _b.copy(at).sub(from).normalize().add(new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(WHIRL.nutSpread));
+        en.fireOrb(from, d, WHIRL.nutSpeed, WHIRL.nutDmg, j % 2 ? '#8a5a2a' : '#6a4422', 1.3).src = e;
+      }
+      m.volleys++;
+      m.puff = 0.4;
+      G.audio.tone(260, 0.12, { type: 'triangle', vol: 0.06, slide: -120 }); // thunk
+    },
+    // Where the Whirlpool opens: on open water where you'll be when it starts spinning (or a little either side).
+    spot(en, e, tell) {
+      const G = en.G, p = G.player, f = flatFwd(p, _a), side = sideOf(f, _b), sea = waterLine();
+      const ahead = p.speed * (tell + WHIRL.dive) * WHIRL.lead;
+      const deep = (x, z) => G.terrain.surfaceHeight(x, z) < sea - 4;
+      for (const off of [0, 40, -40, 80, -80]) {
+        const x = p.pos.x + f.x * ahead + side.x * off, z = p.pos.z + f.z * ahead + side.z * off;
+        if (deep(x, z) && deep(x + WHIRL.r * 0.7, z) && deep(x - WHIRL.r * 0.7, z) && deep(x, z + WHIRL.r * 0.7) && deep(x, z - WHIRL.r * 0.7)) return new THREE.Vector3(x, sea, z);
+      }
+      return null;
+    },
+    // The whirlpool's look: a spiral of foam arms on a dark-teal disc, a funnel under it, spinning (in the scene).
+    fx(en, e) {
+      const u = e.mesh.userData;
+      if (u.whirlFx) return u.whirlFx;
+      const g = new THREE.Group(), n = 64, rings = 8, pos = [], col = [], idx = [];
+      const deep = new THREE.Color('#0e4a5a'), foam = new THREE.Color('#e8fbff'), mid = new THREE.Color('#2a8aa0');
+      for (let r = 0; r <= rings; r++) for (let k = 0; k <= n; k++) {
+        const a = (k / n) * TAU, rr = 0.08 + (r / rings) * 0.92;
+        pos.push(Math.cos(a) * rr, 0, Math.sin(a) * rr);
+        const arm = 0.5 + 0.5 * Math.sin(a * 4 + rr * 9); // four foam arms spiralling in
+        const c = deep.clone().lerp(mid, rr).lerp(foam, arm ** 6 * (0.3 + 0.7 * rr));
+        col.push(c.r, c.g, c.b);
+      }
+      for (let r = 0; r < rings; r++) for (let k = 0; k < n; k++) {
+        const a = r * (n + 1) + k, b = a + n + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      geo.setIndex(idx);
+      const disc = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+      const funnel = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.7, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#0a3440', transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
+      funnel.rotation.x = Math.PI; // point down
+      funnel.position.y = -0.35;
+      g.add(disc, funnel);
+      g.visible = false;
+      en.G.scene.add(g);
+      u.whirlFx = g;
+      g.userData = { disc, funnel };
+      return g;
+    },
+    // Her tell is over: she dives.
+    dive(en, e) {
+      const m = e.mv;
+      m.pool = { at: m.at.clone(), t: 0, phase: 'dive', caught: false, hurt: false };
+      m.whirls++;
+      e.shield = 0;
+      dodgeStart(en, e);
+      en.G.fx.emit(_b.copy(e.pos).setY(waterLine() + 1), 24, { colors: SPLASH, speed: 18, life: 1.2, size: 6, up: 12 });
+      en.G.audio.noise(0.8, { vol: 0.1, freq: 350 });
+    },
+    // Every frame (animate): the nap and the wake, the paddling, the head following you, the rear-up, the dive, the
+    // Whirlpool's pull and its look, the burst back up.
+    pose(en, e, dt) {
+      const u = e.mesh.userData, m = e.mv, G = en.G, p = G.player, sea = waterLine(), s = e.mesh.scale.x;
+      const { rig, neck, head, jaw, lids, flippers, gulls, foam, patch } = u;
+      if (m?.tell > 0 && (m.tell -= dt) <= 0) { m.tell = 0; MOVES.whirl.dive(en, e); }
+      const P = m?.pool;
+      let under = 0; // how far she's down (model units), 0 at the surface
+      if (P) {
+        P.t += dt;
+        const fx = MOVES.whirl.fx(en, e);
+        if (P.phase === 'dive') {
+          under = WHIRL.deep * Math.min(1, P.t / WHIRL.dive);
+          if (P.t >= WHIRL.dive) { P.phase = 'spin'; P.t = 0; e.pos.x = P.at.x; e.pos.z = P.at.z; }
+        } else if (P.phase === 'spin') {
+          under = WHIRL.deep;
+          MOVES.whirl.pull(en, e, P, dt);
+          if (P.t >= WHIRL.spin) MOVES.whirl.burst(en, e, P);
+        } else { // 'up': she bursts out of the middle
+          const k = Math.min(1, P.t / WHIRL.up);
+          under = WHIRL.deep * (1 - k) - Math.sin(k * Math.PI) * 1.6;
+          if (k >= 1) m.pool = null;
+        }
+        const grow = P.phase === 'dive' ? Math.min(1, P.t / WHIRL.dive) : P.phase === 'spin' ? 1 : Math.max(0, 1 - P.t / WHIRL.up);
+        fx.visible = grow > 0.01;
+        fx.position.set(P.at.x, sea + 0.3, P.at.z);
+        fx.scale.setScalar(WHIRL.r * (0.3 + 0.7 * grow));
+        fx.userData.funnel.scale.set(1, 1 + grow * 0.6, 1);
+        fx.userData.disc.rotation.y -= dt * (1.2 + 2.2 * grow);
+        fx.userData.disc.material.opacity = 0.85 * grow;
+        if (P.phase === 'spin' && Math.random() < dt * 30) { // foam spinning in
+          const a = Math.random() * TAU, r = WHIRL.r * (0.5 + Math.random() * 0.5);
+          G.fx.emit(_a.set(P.at.x + Math.cos(a) * r, sea + 1, P.at.z + Math.sin(a) * r), 1, { colors: SPLASH, speed: 6, life: 0.8, size: 4 });
+        }
+      } else if (u.whirlFx) u.whirlFx.visible = false;
+      // The nap: k 1 asleep .. 0 awake (head and flippers out, up in the water).
+      const N = u.nap, k = N ? 1 : Math.max(0, (u.napK ?? 1) - dt * 1.2);
+      u.napK = k;
+      u.sw = (u.sw || 0) + dt * (N ? 0.4 : 2.2);
+      const sw = u.sw, tell = m?.tell > 0 ? Math.min(1, (m.tell0 - m.tell) / 0.4) : 0;
+      const rear = P?.phase === 'up' ? 0.6 * Math.sin(Math.min(1, P.t / WHIRL.up) * Math.PI) : tell;
+      rig.visible = under < WHIRL.deep * 0.98;
+      rig.position.y = -0.55 - 0.9 * k - under + (N ? 0 : 0.12 * Math.sin(sw * 2));
+      rig.rotation.x = -0.3 * rear + (P?.phase === 'dive' ? 0.35 * Math.min(1, P.t / 0.3) : 0) + 0.02 * Math.sin(sw);
+      rig.rotation.z = THREE.MathUtils.lerp(rig.rotation.z, -(m?.rate || 0) * 0.35 + 0.02 * Math.sin(sw * 0.7), 1 - Math.exp(-dt * 3));
+      neck.position.z = 5.4 - 2.2 * k;
+      neck.scale.setScalar(1 - 0.45 * k);
+      // Her head follows you (within a wide arc), higher while she rears.
+      _a.copy(p.pos);
+      neck.parent.worldToLocal(_a);
+      const yaw = THREE.MathUtils.clamp(Math.atan2(_a.x, _a.z - neck.position.z), -0.8, 0.8) * (1 - k);
+      const pitch = THREE.MathUtils.clamp(Math.atan2(_a.y - neck.position.y, Math.hypot(_a.x, _a.z)), -0.3, 0.6) * (1 - k);
+      neck.rotation.y += (yaw - neck.rotation.y) * (1 - Math.exp(-dt * 3));
+      neck.rotation.x += (-pitch * 0.5 - 0.35 * rear - neck.rotation.x) * (1 - Math.exp(-dt * 3));
+      head.rotation.x = -pitch * 0.4;
+      if (m?.puff > 0) m.puff -= dt;
+      jaw.rotation.x = THREE.MathUtils.lerp(jaw.rotation.x, rear > 0.2 || m?.puff > 0 ? 0.55 : 0.04 * (1 + Math.sin(sw * 0.5)), 1 - Math.exp(-dt * 8));
+      const blink = N ? 1 : (Math.sin(e.t * 0.9) > 0.985 ? 1 : 0);
+      for (const lid of lids) lid.rotation.x = -0.5 + 0.85 * blink;
+      // Flippers: a slow power stroke (front pair), a paddle (rear pair); raised high in the rear-up; tucked asleep.
+      for (const f of flippers) {
+        const { sd, front } = f.userData;
+        const flap = front ? Math.sin(sw) : Math.sin(sw + Math.PI);
+        f.rotation.z = (front ? sd * (0.12 + 0.45 * flap) * (1 - rear) + sd * 0.95 * rear : sd * 0.1 * flap) * (1 - k) - sd * 0.15 * k;
+        f.rotation.y = (front ? -sd * 0.45 * Math.cos(sw) : sd * 0.5 * flap) * (1 - k) + sd * (front ? 0.9 : -0.9) * k;
+        f.scale.setScalar(1 - 0.4 * k);
+      }
+      // Gulls circle the islet while she naps; when she wakes they lift off and are gone.
+      if (gulls.visible) {
+        u.wake = N ? 0 : (u.wake || 0) + dt;
+        gulls.children.forEach((gl, i) => {
+          const d = gl.userData, a = d.a + e.t * (0.6 + i * 0.12), r = d.r + u.wake * 6;
+          gl.position.set(Math.cos(a) * r, d.h + Math.sin(e.t * 1.3 + i) * 0.3 + u.wake * 5, Math.sin(a) * r);
+          gl.rotation.set(0, -a, Math.sin(e.t * 6 + i) * 0.25);
+        });
+        if (u.wake > 3) gulls.visible = false;
+      }
+      u.lantern.material.color.setScalar(0.85 + 0.15 * Math.sin(e.t * 7.3) * Math.sin(e.t * 3.1));
+      // Foam at the water line round her (and a wake behind while she swims), the dark water under her.
+      foam.visible = patch.visible = under < 1.5;
+      foam.position.y = patch.position.y = (sea - e.pos.y) / s + 0.04;
+      foam.material.opacity = 0.35 + 0.15 * Math.sin(sw * 2);
+      const moving = e.vel.lengthSq() > 4;
+      foam.scale.set(5.6 * (moving ? 1.06 : 1), 6.7 * (moving ? 1.12 : 1), 1);
+      if (moving && Math.random() < dt * 14) {
+        e.mesh.updateMatrixWorld();
+        const back = e.mesh.localToWorld(_b.set(rand(-4, 4), 0, -7));
+        G.fx.emit(back.setY(sea + 0.5), 1, { colors: SPLASH, speed: 4, life: 1.6, size: 5 });
+        const bow = e.mesh.localToWorld(_b.set(rand(-3, 3), 0, 7.5));
+        G.fx.emit(bow.setY(sea + 0.8), 1, { colors: SPLASH, speed: 8, life: 0.7, size: 4, up: 4 });
+      }
+    },
+    // The pull: in, round and down, fading with height; a dip to the water splashes you clear (once).
+    pull(en, e, P, dt) {
+      const G = en.G, p = G.player, sea = waterLine();
+      if (p.dead || p.landed || P.hurt) return; // splashed: thrown clear, no more pull this time
+      const dx = P.at.x - p.pos.x, dz = P.at.z - p.pos.z, d = Math.hypot(dx, dz), h = p.pos.y - sea;
+      if (d > WHIRL.r || h > WHIRL.safe) return;
+      const k = (1 - h / WHIRL.safe) * (0.35 + 0.65 * (1 - d / WHIRL.r));
+      const ix = dx / (d || 1), iz = dz / (d || 1);
+      p.gust.set(ix * WHIRL.pull * k - iz * WHIRL.swirl * k, 0, iz * WHIRL.pull * k + ix * WHIRL.swirl * k);
+      p.gustDecay = 3;
+      if (!P.caught) { P.caught = true; e.mv.catches++; G.ui.notify('Caught in the whirlpool! Pull up and out!', 'bad', 2); }
+      if (!P.hurt) p.pos.y = Math.max(p.pos.y - WHIRL.sink * k * dt, sea + WHIRL.touch - 0.5);
+      if (!P.hurt && p.pos.y - sea < WHIRL.touch) {
+        P.hurt = true;
+        e.mv.splashes++;
+        p.damage(WHIRL.splash);
+        p.pos.y = sea + WHIRL.touch + 8; // thrown clear
+        p.gust.set(-ix * 25, 0, -iz * 25);
+        G.fx.emit(_a.copy(p.pos).setY(sea + 1), 26, { colors: SPLASH, speed: 20, life: 1.1, size: 6, up: 14 });
+        G.audio.noise(0.5, { vol: 0.12, freq: 600 });
+        G.shake?.(0.35, 0.3);
+      }
+      if (Math.random() < dt * 8) G.shake?.(0.08, 0.15);
+    },
+    // Up she comes, beak first, from the middle: a snap at anything close, a tower of spray.
+    burst(en, e, P) {
+      const G = en.G, p = G.player, sea = waterLine();
+      P.phase = 'up';
+      P.t = 0;
+      e.mv.puff = WHIRL.up;
+      e.shield = 1; // out of the water: she can be hit again
+      p.gustDecay = 2.2; // the player's own default
+      G.fx.emit(_a.copy(P.at).setY(sea + 2), 40, { colors: SPLASH, speed: 30, life: 1.6, size: 7, up: 30 });
+      G.audio.noise(0.9, { vol: 0.14, freq: 300 });
+      G.audio.tone(160, 0.2, { type: 'square', vol: 0.06, slide: -80 }); // the snap
+      if (!p.dead && p.pos.distanceTo(_a.copy(P.at).setY(sea + 8)) < WHIRL.snapR) { e.mv.snaps++; p.damage(WHIRL.snap); }
+      if (P.caught) dodgeEnd(en, e); else e.mv.dodge = null; // flying nowhere near it isn't a dodge
+    },
+    // A breakaway or reset: back to the surface, the whirlpool gone.
+    hide(e) {
+      const u = e.mesh.userData;
+      if (u.whirlFx) u.whirlFx.visible = false;
+      u.rig.visible = true;
+      e.shield = 1;
+    },
   },
 
   // Count Ribbiton (ground, hop): sits on his giant toadstool, then bounds after you across the ground, one big

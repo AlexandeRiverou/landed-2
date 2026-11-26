@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -388,6 +388,21 @@ export const BOSSES = {
     taunts: ['Duchess Brûlée: "This castle has a strict no-fly zone. I AM the zone."', 'Duchess Brûlée: "I prefer my pilots lightly caramelized."', 'Duchess Brûlée: "My Dragonlings told me EVERYTHING."'],
     rage: ['Duchess Brûlée has flipped her tiara.', 'She is now medium-well furious.'],
   },
+  // Land boss for the island seas: she starts asleep, looking like a little palm island (see NAP), then wakes and swims
+  // the surface round you (sea: like the carrier, she spawns on open water and stays on it), lobbing coconuts from her
+  // palms; every 3rd attack (2nd enraged) a foam ring opens on the sea ahead of you, she dives, and a Whirlpool there
+  // pulls low planes in and down before she bursts up from its middle (see WHIRL). Her palms are breakable (fewer
+  // coconuts), her pale throat is soft.
+  islandTurtle: {
+    make: makeIslandTurtle, scale: 4, crownY: 0.9, crownZ: 0.6, crownS: 0.5, radius: 26, hp: 95, speed: 22, orbit: 0, dmg: 20,
+    face: 'none', ground: true, sea: true, markerUp: 40, // her move turns her
+    lands: ['Tropical Archipelago'],
+    name: 'Grandma Atolla, the Island Turtle', short: 'Grandma Atolla', noun: 'Grandma Atolla',
+    move: 'whirl',
+    desc: 'A sea turtle so old an island grew on her back: palm trees, a beach hut, the lot. She naps among the islands until you get close, then paddles after you lobbing coconuts. When a ring of foam opens on the sea ahead and she rears up, she dives and the sea there spins into a whirlpool that drags low planes in and down: climb or swing wide. Knock her palms off for fewer coconuts; her pale throat is soft.',
+    taunts: ['Grandma Atolla: "Back in my day, islands stayed put."', 'Grandma Atolla: "I am three hundred years old. I have outlived worse pilots than you."', 'Grandma Atolla: "Mind the hut. My hermit crab rents it."', 'Grandma Atolla: "Slow and steady. Mostly steady."'],
+    rage: ['Grandma Atolla has put her reading glasses away. Uh oh.', 'The tide has turned. So has Grandma.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -474,6 +489,7 @@ const BOSS_BREAK_TEXT = {
   tuft: 'Ear tuft plucked! Her gusts are narrower now.',
   crest: 'Crest popped! Count Ribbiton puffs fewer spores now.',
   dragonHorn: 'Horn snapped off! Duchess Brûlée\'s flames are shorter now.',
+  palm: 'Palm tree down! Grandma Atolla has fewer coconuts to throw.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -933,6 +949,10 @@ export class Enemies {
         cd = 2.8; // bonbon volleys; every 3rd attack (2nd enraged) a rear-up and a Rake instead (see the rake move)
         BOSS_MOVES.rake.attack(this, e, n);
         break;
+      case 'islandTurtle':
+        cd = 2.6; // coconut volleys; every 3rd attack (2nd enraged) a Whirlpool instead (see the whirl move)
+        BOSS_MOVES.whirl.attack(this, e, n);
+        break;
       case 'harvestOwl':
         cd = 2.8; // acorn volleys; every 3rd attack (2nd enraged) a rear-up and a gust instead (see the gust move)
         BOSS_MOVES.gust.attack(this, e, n);
@@ -1292,6 +1312,7 @@ export class Enemies {
       const above = e.def.deck && p.pos.y > e.pos.y + e.def.deck.y * e.mesh.scale.x;
       const touching = p.landed?.deck === e ? false
         : e.def.swim ? BOSS_MOVES.breach.touches(e, p.pos, 4 * p.sizeScale)
+        : e.mesh.userData.turtle && e.mv?.pool ? false // Grandma Atolla under her Whirlpool (her snap does the biting)
         : e.def.boxes ? dist < e.radius * 1.8 && this.inHull(e, p.pos, 4 * p.sizeScale, above ? e.def.deck.solid : e.def.boxes) : dist < e.radius + 4 * p.sizeScale;
       if (e.def.boxes && touching && !p.dead && !calm) this.bumpOffHull(e);
       if (!p.dead && !calm && touching && e.contactCd <= 0) {
@@ -1444,6 +1465,7 @@ export class Enemies {
       case 'tuft': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'crest': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'dragonHorn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'palm': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -2040,6 +2062,7 @@ export class Enemies {
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
     if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
+    if (u.turtle) BOSS_MOVES.whirl.pose(this, e, dt); // Grandma Atolla's nap, paddling, rear-up and her Whirlpool
     if (u.dragon) BOSS_MOVES.rake.pose(this, e, dt); // Duchess Brûlée's rear-up, her Rake and its curtain, her wings
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
     if (u.puff) { const s = u.puff.scale.x, k = e.puffT > 0 ? 1.7 : 1; u.puff.scale.setScalar(s + (k - s) * (1 - Math.exp(-dt * 6))); }

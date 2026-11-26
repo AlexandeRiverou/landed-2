@@ -1163,6 +1163,60 @@ try {
       r.volleys = r.volleys.slice(0, 4);
       return r;
     };
+    // Grandma Atolla: asleep at first (an island: low in the water, gulls round her palms), awake once you're near, afloat
+    // and paddling; coconut volleys (5, then 2 with her three palms down); and her Whirlpool, with the plane held inside
+    // its ring at a height: pulled at 30 m (and out unhurt: a dodge), splashed at the water line, untouched up at 100 m.
+    const turtleChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, sea = () => G.world.seaLevel, r = { volleys: [], nap: !!u.nap, gulls: u.gulls.visible, flip: [9, -9] }, mv = () => e.mv || {};
+      const park = () => {
+        const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        if (d.lengthSq() < 1) d.set(1, 0, 0);
+        p.pos.copy(e.pos).addScaledVector(d.normalize(), 150).setY(sea() + 40); p.prevPos.copy(p.pos);
+      };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          const shots0 = new Set(G.enemies.shots), v0 = mv().volleys;
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
+          r.afloat = Math.abs(e.pos.y - sea()) < 0.01;
+          if (!u.nap) { const z = u.flippers[0].rotation.z; r.flip = [Math.min(r.flip[0], z), Math.max(r.flip[1], z)]; }
+          if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
+          if (until()) return true;
+        }
+        return false;
+      };
+      r.woke = fly(30 * 4, () => !u.nap);
+      // The next Whirlpool, with the plane held `up` m over the sea, 40 m from its middle, while it spins.
+      const whirl = (up) => {
+        if (!fly(30 * 40, () => mv().tell > 0)) return null;
+        const l = { tell: +mv().tell0.toFixed(2), gust: 0 };
+        if (!fly(30 * 4, () => mv().pool?.phase === 'spin')) return l;
+        const m = mv(), P = m.pool, c = m.catches, sp = m.splashes, hull = p.health;
+        l.under = !u.rig.visible && e.shield === 0;
+        for (let i = 0; i < 30 * 6 && m.pool === P && P.phase === 'spin'; i++) {
+          const out = new V(1, 0, 0);
+          p.pos.set(P.at.x + 40, sea() + up, P.at.z); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), out); p.updateAxes(); // flying out of it
+          G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); // only the whirlpool can touch it here
+          G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+          p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
+          l.gust = Math.max(l.gust, Math.round(p.gust.length()));
+        }
+        Object.assign(l, { caught: m.catches - c, splash: m.splashes - sp, hull: +(hull - p.health).toFixed(1), dazed: +(e.dazed || 0).toFixed(1) });
+        for (let i = 0; i < 30 * 2 && m.pool === P; i++) { p.invuln = 99; park(); G.step(1 / 30); } // she bursts up
+        l.back = u.rig.visible && e.shield === 1;
+        p.invuln = 99; p.health = p.maxHealth;
+        return l;
+      };
+      r.mid = whirl(30);
+      r.low = whirl(7.9);
+      r.high = whirl(100);
+      for (const c of u.parts.filter((x) => x.name === 'palm')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.palmHits = n; }
+      const v0 = r.volleys.length;
+      fly(30 * 12, () => r.volleys.length > v0);
+      r.after = r.volleys[v0] ?? null;
+      r.volleys = r.volleys.slice(0, 3);
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1270,6 +1324,7 @@ try {
       if (kind === 'harvestOwl' && e.kind === kind) out.owl = owlChecks(e);
       if (kind === 'toadBaron' && e.kind === kind) out.toad = toadChecks(e);
       if (kind === 'castleDragon' && e.kind === kind) out.dragon = dragonChecks(e);
+      if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1335,6 +1390,14 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'castleDragon'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Princess Kingdom');
       L.dragonHome = draw();
+      // Grandma Atolla in the island seas (on open water: she's a sea boss).
+      seaUp();
+      O.bossDeck = ['islandTurtle', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.turtleElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'islandTurtle'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Tropical Archipelago');
+      L.turtleHome = draw();
       G.zones.index = saved.zone;
       Object.assign(O, { bossDeck: saved.deck, bossLevel: saved.level });
       Object.assign(G.world, { amp: saved.amp, seaLevel: saved.seaLevel }); G.terrain.rebuildAll(); step(30);
@@ -1462,6 +1525,7 @@ try {
           if (e.mv?.gusts !== undefined) S.gust = e.mv.gusts;
           if (e.mv?.hops !== undefined) S.hops = e.mv.hops;
           if (kind === 'castleDragon') Object.assign(S, { rakes: e.mv?.rakes || 0, tells: e.rakeTells || 0 });
+          if (kind === 'islandTurtle') Object.assign(S, { whirls: e.mv?.whirls || 0, tells: e.whirlTells || 0 });
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -5302,6 +5366,8 @@ try {
     [(({ toadHop: h }) => h && h.tree && h.perched && h.rooted && h.hops >= 1 && h.apex[0] >= 30 && h.apex[1] <= 112 && h.feet < 0.6 && h.wet === 0 && h.airAttacks === 0 && h.shadow !== null && Math.abs(h.shadow - 0.6) < 0.05)(report), `Count Ribbiton: he starts on top of his giant toadstool (rooted in the ground), then hops after you: arcs 30 m+ high, lands feet first on dry ground, never attacks in the air, and casts a shadow on the ground (${JSON.stringify(report.toadHop)})`],
     [(({ dragon: d }) => d?.volleys?.length >= 1 && d.volleys.every((n) => n === 5) && d.on?.tell >= 1.3 && d.on.len === 180 && d.on.hit === 1 && d.on.hull > 0 && d.over?.hit === 0 && d.over.hull === 0 && d.over.dazed >= 1 && d.hornHits >= 1 && d.hornHits <= 12 && d.horns?.len === 90 && d.horns.linger === 0)(report), `Duchess Brûlée: 5-bonbon volleys; a 1.3 s+ sparkle line, then a 180 m sweep of fire along it that burns a plane on the line and spares one 30 m over it (a dodge: she's dazed); with both horns snapped the curtain is 90 m and doesn't linger (${JSON.stringify(report.dragon)})`],
     [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
+    [(({ turtle: t }) => t && t.nap && t.gulls && t.woke && t.afloat && t.flip[1] - t.flip[0] > 0.3 && t.volleys.length >= 1 && t.volleys.every((n) => n === 5) && t.mid?.tell >= 1.4 && t.mid.under && t.mid.caught === 1 && t.mid.gust > 0 && t.mid.splash === 0 && t.mid.hull === 0 && t.mid.dazed >= 1 && t.mid.back && t.low?.splash === 1 && t.low.hull > 0 && t.high?.caught === 0 && t.high.gust === 0 && t.high.dazed === 0 && t.palmHits >= 1 && t.palmHits <= 12 && t.after === 2)(report), `Grandma Atolla: she starts asleep like an island (gulls round her palms), wakes when you come near, floats and paddles; 5-coconut volleys, 2 with her palms down; her Whirlpool (1.4 s+ tell, she's under and can't be hurt) pulls a plane 30 m up without hurting it (a dodge: she's dazed), splashes one at the water line, and leaves one 100 m up alone (${JSON.stringify(report.turtle)})`],
+    [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.toadElsewhere === 'gooseQueen' && l.toadHome === 'toadBaron')(report.serpent || {}), `Count Ribbiton only comes in the mushroom lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.owlElsewhere === 'gooseQueen' && l.owlHome === 'harvestOwl')(report.serpent || {}), `Lady Hootrude only comes in the woods lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -5318,6 +5384,7 @@ try {
         seagullSteven: (s) => s.diveVy < -40, gooseQueen: (s) => s.joust > 60, garyPrime: (s) => s.roll >= 1.45 && s.roll < 3,
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
         auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes + s.tells >= 1, // (a sparkle line drawn counts: the window may end before the fire)
+        islandTurtle: (s) => s.whirls + s.tells >= 1, // (a foam ring drawn counts)
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
