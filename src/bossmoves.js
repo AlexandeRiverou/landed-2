@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET, makeDragonTower, DRAGON_FEET } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -52,6 +52,23 @@ export const GUST = { tell: 1.2, first: 1.8, tellRage: 1, width: 70, widthTuft: 
 // In flight (MOVES.gust.fly): a few wingbeats at `flap` Hz (`flapUp` taking off or climbing), then a glide of `glide` s;
 // she banks up to `bank` rad into turns and pitches up to `pitch` rad.
 export const PERCH = { near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 1.1, flapUp: 1.6, beats: 3, glide: [1, 1.8], bank: 0.6, pitch: 0.35 };
+// Duchess Brûlée's tower and flight (enemy-time s, m, enemy-unit m/s): like Lady Hootrude's PERCH, she starts curled on
+// top of her castle tower (scaled `scale`; on a cloud bank where there's no dry ground; none under a roof) and takes
+// off with a roar when you come within `near` m, when hit, or after `wait` s; the tower goes when it's `gone` m behind
+// you. In flight (MOVES.rake.fly) she's heavier than the owl: `beats` wingbeats at `flap` Hz (`flapUp` taking off or
+// climbing), then a glide of `glide` s, banking up to `bank` rad and pitching up to `pitch` rad.
+export const ROOST = { wide: 1.55, near: 260, wait: 1.7, hop: 24, scale: [0.7, 1], gone: 2500, flap: 0.8, flapUp: 1.4, beats: 2, glide: [1.2, 2], bank: 0.7, pitch: 0.35 };
+// Her Rake (enemy-time s, m): every 3rd attack (every 2nd enraged), with you `near`-`far` m off and not landed, she
+// hovers and rears up for `tell` s (`first` the first time, with a tip; `tellRage` enraged), throat and belly glowing.
+// A dotted sparkle line (and its twin on the ground under it) lies across your path at your height, where you'll be
+// when it fires (at least `ahead` m in front of you; `lead` ≈ 1/PACE), following you until `lock` s before it fires.
+// Then a jet of candy-pink fire sweeps it from her end to the far end in `sweep` s, leaving a curtain `len` m long
+// (with 0 / 1 / 2 horns shot off), `height` m tall and `depth` m deep that hangs `linger` s and fades in `fade` s.
+// Flying through it costs `dmg`, once a Rake; climbing or diving more than `height`/2 m off the line clears it (+25 Dodge!).
+// One she couldn't do (you were too far, or landed) comes at the next attack in range. Other attacks: `bonbons` hot
+// bonbons, `bonbonDmg` each.
+export const RAKE = { tell: 1.3, first: 1.9, tellRage: 1, lock: 0.4, ahead: 50, lead: 1.15, sweep: 0.9, len: [180, 130, 90], linger: [1.2, 0.7, 0], fade: 0.4, height: 16, depth: 8, dmg: 20, near: 0, far: 260, dots: 36, flames: 54, bonbons: 5, bonbonSpeed: 70, bonbonDmg: 9, bonbonSpread: 0.1, colors: ['#ff6ac8', '#f2c23a'] };
+const RAKE_FX = ['#ff6ac8', '#ffb0e0', '#ffe08a', '#ffffff'];
 // Count Ribbiton's hops and tongue (enemy-time s, m, enemy-unit m/s). He starts on his giant toadstool (scaled `stool`)
 // and hops off when you come within `near` m, when hit, or after `perch` s. A hop: a `crouch`, then an arc to dry, gentle,
 // roofless ground on a ring `ring` m round a point `ahead` m in front of you, `turn` rad further round you, at most `reach`
@@ -344,6 +361,7 @@ export function endMoves(en, e) {
   popGuards(en, e);
   if (e.mesh.userData.mirages) MOVES.mirage.hide(e);
   if (e.mesh.userData.owl) MOVES.gust.hide(e);
+  if (e.mesh.userData.dragon) MOVES.rake.hide(e);
   if (e.mesh.userData.toad) MOVES.leap.hide(e);
   e.mv = null;
 }
@@ -356,7 +374,9 @@ export function dropBoss(en, e) {
   const u = e.mesh.userData;
   if (u.free) for (const o of [...u.mirages, u.shadow]) { en.G.scene.remove(o); disposeTree(o); } // they live in the scene
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
-  if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool
+  if (u.rakeFx) { for (const x of Object.values(u.rakeFx)) { en.G.scene.remove(x); disposeTree(x); if (x.dispose) x.dispose(); } u.rakeFx = null; } // Duchess Brûlée's sparkle line, flames and jet
+  if (u.dragon) e.mesh.traverse((o) => o.isInstancedMesh && o.dispose()); // her scales' instance buffers (disposeTree frees only geometry and material)
+  if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
   if (u.tongueFx) { // Count Ribbiton's aim line and tongue (the tongue and its tip share a material)
     const fx = Object.values(u.tongueFx);
@@ -1386,6 +1406,297 @@ export const MOVES = {
       return (u.leaves = mesh);
     },
     hide(e) { if (e.mesh.userData.leaves) e.mesh.userData.leaves.visible = false; },
+  },
+
+  // Duchess Brûlée (orbit): curled on her castle tower until you come near, then circles you lobbing hot bonbons; every
+  // 3rd attack (2nd enraged) she hovers and rears up, a sparkle line crosses your path, and she rakes it with fire that
+  // hangs there a moment (see RAKE). Attacks wait from the rear-up until the curtain is gone.
+  rake: {
+    step(en, e, c) {
+      const m = e.mv ||= { tell: 0, rakes: 0, hits: 0, volleys: 0 }, P = e.mesh.userData.perch;
+      if (P) { // on her tower, till you come near, hit her, or she tires of waiting
+        P.t += c.dt;
+        if (c.dist > ROOST.near && P.t < ROOST.wait && e.hp >= P.hp) { e.vel.set(0, 0, 0); e.pos.copy(P.at); return true; }
+        MOVES.rake.launch(en, e);
+        return true;
+      }
+      if (!(m.tell > 0) && !m.fire) return false; // the plain orbit
+      park(e, c.dt, 4); // she hovers, back-beating, while she aims and breathes
+      return true;
+    },
+    hold: (e) => e.mv?.tell > 0 || !!e.mv?.fire || !!e.mesh.userData.perch,
+    // At spawn: her tower rises under her (themed for the land; on a cloud bank with no dry ground) and she lies on top.
+    spawn(en, e) {
+      const G = en.G, u = e.mesh.userData, { x, z } = e.pos, ground = G.terrain.surfaceHeight(x, z);
+      if (Number.isFinite(G.terrain.ceilingHeight(x, z, e.pos.y))) return; // under a roof she just flies
+      const zone = G.zones.current.name, theme = /Candy/.test(zone) ? 'candy' : /Cloud/.test(zone) ? 'cloud' : 'princess';
+      const dry = Number.isFinite(ground) && ground > waterLine() + 2;
+      const base = dry ? ground - 1 : Math.max(Number.isFinite(ground) ? ground : -Infinity, waterLine()) + 4;
+      if (!Number.isFinite(base)) return;
+      const tower = makeDragonTower(theme, !dry), feet = DRAGON_FEET * e.mesh.scale.x, top = tower.userData.perchY;
+      const k = THREE.MathUtils.clamp((e.pos.y - feet - base) / top, ROOST.scale[0], ROOST.scale[1]);
+      tower.scale.set(ROOST.wide, k, ROOST.wide); // as wide as she is long, whatever its height: all four feet on the stone
+      tower.position.set(x, base, z);
+      const yaw = Math.atan2(G.player.pos.x - x, G.player.pos.z - z);
+      tower.rotation.y = yaw + Math.PI / 2; // the turret off to her side
+      G.scene.add(tower);
+      u.tree = tower;
+      e.pos.y = base + top * k + feet;
+      u.perch = { at: e.pos.clone(), t: 0, hp: e.hp, yaw, top: base + top * k };
+    },
+    // Off her tower: a roar, a hard push up and toward you, stone dust off the battlements, wings beating hard.
+    launch(en, e) {
+      const G = en.G, u = e.mesh.userData, P = u.perch;
+      if (!P) return;
+      u.perch = null;
+      _a.copy(G.player.pos).sub(e.pos).setY(0);
+      if (_a.lengthSq() > 1) _a.normalize();
+      e.vel.set(0, ROOST.hop, 0).addScaledVector(_a, ROOST.hop * 0.6);
+      G.fx.emit(_b.set(e.pos.x, P.top, e.pos.z), 24, { colors: ['#d8cce6', '#b8b0c4', '#ffffff', '#ff9ad6'], speed: 26, life: 1.3, size: 5 });
+      G.audio.tone(140, 0.7, { type: 'sawtooth', vol: 0.07, slide: -60 }); // the roar
+      G.audio.noise(0.5, { vol: 0.08, freq: 300 });
+      (e.dragon ||= {}).launch = 1.2;
+      (e.dragon.flap ||= 0);
+    },
+    attack(en, e, n) {
+      const m = e.mv ||= { tell: 0, rakes: 0, hits: 0, volleys: 0 };
+      const G = en.G, p = G.player;
+      if (m.tell > 0 || m.fire) return;
+      const dist = e.pos.distanceTo(p.pos);
+      const due = m.due || n % (e.enraged ? 2 : 3) === 0;
+      if (due && !p.landed && !p.dead && dist > RAKE.near && dist < RAKE.far) {
+        m.due = false;
+        m.locked = false;
+        e.rakeTells = (e.rakeTells || 0) + 1; // (on her, not the move: a breakaway clears the move)
+        m.tell = m.tell0 = !e.rakeTip ? RAKE.first : e.enraged ? RAKE.tellRage : RAKE.tell;
+        if (!e.rakeTip) { e.rakeTip = true; G.ui.notify('Dragon breath! A sparkle line means fire. Climb or dive off the line.', 'warn', 4, 1); }
+        MOVES.rake.aim(en, e);
+        G.audio.tone(110, m.tell, { type: 'sawtooth', vol: 0.045, slide: 220 }); // a rising growl
+        return;
+      }
+      m.due = due; // a Rake you were too close (or too far) for comes at the next attack you're in range for
+      const from = e.mesh.userData.snout.getWorldPosition(_c);
+      const at = _a.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / RAKE.bonbonSpeed) * 0.6);
+      for (let j = 0; j < RAKE.bonbons; j++) {
+        const d = _b.copy(at).sub(from).normalize().add(new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(RAKE.bonbonSpread));
+        en.fireOrb(from, d, RAKE.bonbonSpeed, RAKE.bonbonDmg, RAKE.colors[j % 2], 1.2).src = e;
+      }
+      m.volleys++;
+      m.puff = 0.35;
+      G.audio.tone(420, 0.16, { type: 'triangle', vol: 0.06, slide: -200 });
+    },
+    // Where the line lies: across your path, where you'll be when it fires, at your height; it starts at her end.
+    aim(en, e) {
+      const m = e.mv, p = en.G.player, f = flatFwd(p, _a);
+      const ahead = Math.max(RAKE.ahead, p.speed * (m.tell + RAKE.sweep * 0.5) * RAKE.lead);
+      const mid = (m.mid ||= new THREE.Vector3()).copy(p.pos).addScaledVector(f, ahead);
+      const side = (m.side ||= new THREE.Vector3()).set(-f.z, 0, f.x);
+      if (side.dot(_b.subVectors(e.pos, mid)) > 0) side.negate(); // sweep from her side across
+      (m.fwd ||= new THREE.Vector3()).copy(f);
+      const k = Math.min(2, e.broken?.dragonHorn || 0);
+      m.len = RAKE.len[k];
+      m.linger = RAKE.linger[k];
+    },
+    // Fire! The sweep starts at her end of the line.
+    breathe(en, e) {
+      const m = e.mv;
+      m.fire = { t: 0, hit: false, prev: null, len: m.len, linger: m.linger };
+      m.rakes++;
+      dodgeStart(en, e);
+      en.G.audio.noise(1.2, { vol: 0.14, freq: 900 });
+      en.G.shake?.(0.25, 0.4);
+    },
+    // A point on the line, s from its start (0 .. len).
+    at(m, s, out) { return out.copy(m.mid).addScaledVector(m.side, s - m.len / 2); },
+    // Every frame (animate): the tell, the line, the sweep and the curtain, the hit test, her shadow and her pose.
+    pose(en, e, dt) {
+      const u = e.mesh.userData, m = e.mv, G = en.G, p = G.player, fx = MOVES.rake.fx(en, e);
+      if (m?.tell > 0) {
+        if (m.tell > RAKE.lock) MOVES.rake.aim(en, e); // the line follows you until just before it fires
+        else if (!m.locked) { m.locked = true; G.audio.tone(880, 0.08, { type: 'square', vol: 0.05 }); } // locked: a click, and the sparkles hold still
+        if (Math.random() < dt * 20) G.fx.emit(u.snout.getWorldPosition(_a), 1, { colors: RAKE_FX, speed: 8, life: 0.7, size: 3 });
+        if ((m.tell -= dt) <= 0) { m.tell = 0; MOVES.rake.breathe(en, e); }
+      }
+      const F = m?.fire, show = !!(m && (m.tell > 0 || F));
+      fx.dots.visible = fx.ground.visible = show && !(F && F.t > RAKE.sweep);
+      if (fx.dots.visible) {
+        const swept = F ? Math.min(1, F.t / RAKE.sweep) : 0;
+        for (let k = 0; k < RAKE.dots; k++) {
+          const s = ((k + 0.5) / RAKE.dots) * m.len, on = s >= swept * m.len;
+          MOVES.rake.at(m, s, _o.position);
+          _o.rotation.set(e.t * 3 + k, e.t * 2, 0);
+          _o.scale.setScalar(!on ? 0.001 : m.locked || F ? 1.5 : 1.1 + 0.5 * Math.sin(e.t * 9 + k * 1.7));
+          _o.updateMatrix();
+          fx.dots.setMatrixAt(k, _o.matrix);
+          const gy = Math.max(G.terrain.surfaceHeight(_o.position.x, _o.position.z, _o.position.y), waterLine());
+          _o.position.y = Number.isFinite(gy) && gy < _o.position.y ? gy + 0.8 : -1e5;
+          _o.rotation.set(0, e.t + k, 0);
+          _o.scale.set(on ? 1.6 : 0.001, 0.2, on ? 1.6 : 0.001);
+          _o.updateMatrix();
+          fx.ground.setMatrixAt(k, _o.matrix);
+        }
+        fx.dots.instanceMatrix.needsUpdate = fx.ground.instanceMatrix.needsUpdate = true;
+        fx.dots.material.opacity = F || m.locked ? 1 : 0.35 + 0.5 * Math.min(1, (m.tell0 - m.tell) / 0.4);
+      }
+      fx.fire.visible = fx.jet.visible = false;
+      if (F) {
+        F.t += dt;
+        const T = RAKE.sweep, end = T + F.linger + RAKE.fade, swept = Math.min(1, F.t / T) * F.len;
+        const fade = F.t <= T + F.linger ? 1 : Math.max(0, 1 - (F.t - T - F.linger) / RAKE.fade);
+        // The curtain: flames stacked over the swept part of the line, flickering.
+        fx.fire.visible = fade > 0;
+        for (let k = 0; k < RAKE.flames; k++) {
+          const s = ((k % 18) + 0.5) / 18 * F.len, row = Math.floor(k / 18), lit = s <= swept;
+          MOVES.rake.at(m, s, _o.position).y += (row - 1) * RAKE.height * 0.33 + Math.sin(e.t * 7 + k) * 1.2;
+          const gy = G.terrain.surfaceHeight(_o.position.x, _o.position.z, _o.position.y);
+          if (Number.isFinite(gy) && _o.position.y < gy + 2) _o.position.y = gy + 2; // clipped at the ground
+          _o.rotation.set(0, e.t * 2 + k, 0);
+          const w = lit ? (0.75 + 0.35 * Math.sin(e.t * 13 + k * 2.3)) * fade : 0.001;
+          _o.scale.set(w * 6, w * RAKE.height * 0.32, w * RAKE.depth * 0.6);
+          _o.updateMatrix();
+          fx.fire.setMatrixAt(k, _o.matrix);
+        }
+        fx.fire.instanceMatrix.needsUpdate = true;
+        fx.fire.material.opacity = 0.75 * fade;
+        // The jet, from her snout to the head of the sweep, while it sweeps.
+        if (F.t <= T) {
+          const from = u.snout.getWorldPosition(_a), to = MOVES.rake.at(m, swept, _b), d = _c.subVectors(to, from), len = d.length();
+          fx.jet.visible = true;
+          fx.jet.position.copy(from).addScaledVector(d, 0.5);
+          fx.jet.quaternion.setFromUnitVectors(Y, d.normalize());
+          fx.jet.scale.set(3 + Math.sin(e.t * 30), len, 3 + Math.sin(e.t * 30));
+          if (Math.random() < dt * 30) G.fx.emit(to, 2, { colors: RAKE_FX, speed: 18, life: 0.8, size: 4, up: 6 });
+        }
+        // The hit: inside the burning stretch, at its height, through its depth (or across it since the last frame).
+        if (!F.hit && !p.dead && F.t <= T + F.linger) { // (not once the curtain is fading out)
+          _a.subVectors(p.pos, m.mid);
+          const along = _a.dot(m.side) + F.len / 2, across = _a.dot(m.fwd), up = p.pos.y - m.mid.y;
+          const thru = Math.abs(across) < RAKE.depth / 2 || (F.prev != null && Math.sign(F.prev) !== Math.sign(across) && Math.abs(F.prev - across) < 40);
+          if (along >= 0 && along <= swept && Math.abs(up) < RAKE.height / 2 && thru) {
+            F.hit = true;
+            m.hits++;
+            p.damage(RAKE.dmg);
+            G.fx.emit(p.pos, 18, { colors: RAKE_FX, speed: 20, life: 0.9, size: 4 });
+            if (!(en.rakeNews > G.time)) { en.rakeNews = G.time + 6; G.ui.notify('Lightly caramelized!', 'bad', 2); }
+          }
+          F.prev = across;
+        }
+        if (F.t >= end) { m.fire = null; dodgeEnd(en, e); }
+      }
+      if (m) m.puff = Math.max(0, (m.puff || 0) - dt);
+      if (u.perch && e.chase) MOVES.rake.launch(en, e); // a break pulls her off her tower too
+      if (!e.dead) {
+        MOVES.rake.fly(en, e, dt);
+        shade(en, e, e.radius * 0.8);
+        const sh = u.groundShadow; // long, like her: stretched along her body and turned with her
+        if (sh?.visible) { const s = sh.scale.x; sh.scale.set(s * 1.4, s * 2.4, 1); sh.rotation.z = e.mesh.rotation.y; }
+      }
+      if (u.tree) {
+        u.tree.userData.flag.rotation.y = Math.sin(e.t * 2.3) * 0.35 + (u.perch ? 0 : Math.sin(e.t * 9) * 0.2);
+        if (!u.perch && u.tree.position.distanceToSquared(p.pos) > ROOST.gone ** 2) MOVES.gust.fell(en, e);
+      }
+    },
+    // Her body language, every frame. She faces you (turned a little toward where she's going, or turning to fly that way
+    // when she's heading well off), banks into turns and pitches with her climb. Wings: perched folded back along her
+    // flanks; in flight a couple of heavy beats then a glide; in a rear-up spread wide and back-beating; breathing held
+    // out. Her neck follows her head with a lag, her head stays on you (on the line while she breathes), her tail
+    // swishes in a wave, her legs tuck in flight and grip while perched, her jaw opens, her throat and belly glow.
+    fly(en, e, dt) {
+      const u = e.mesh.userData, m = e.mv, o = (e.dragon ||= {}), p = en.G.player, tell = m?.tell > 0, fire = !!m?.fire && m.fire.t <= RAKE.sweep, sit = !!u.perch;
+      const ease = (r) => 1 - Math.exp(-dt * r), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a)), clamp = THREE.MathUtils.clamp;
+      if (!o.init) Object.assign(o, { init: true, yaw: u.perch?.yaw ?? Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z), away: false, roll: 0, pitch: 0, ph: 0, beats: 0, glide: 0, w: 1, acc: new THREE.Vector3(), v0: e.vel.clone(), blink: rand(2, 5), launch: o.launch || 0, smoke: 1 });
+      e.mesh.rotation.order = 'YXZ';
+      const toYaw = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z), sp = Math.hypot(e.vel.x, e.vel.z), hold = sit || tell || fire;
+      if (dt > 0) { _a.subVectors(e.vel, o.v0).divideScalar(dt); o.acc.lerp(_a, ease(4)); o.v0.copy(e.vel); }
+      const velYaw = Math.atan2(e.vel.x, e.vel.z), off = wrap(velYaw - toYaw);
+      if (hold || sp < 8) o.away = false;
+      else if (Math.abs(off) > 1.1) o.away = true;
+      else if (Math.abs(off) < 0.9) o.away = false;
+      const lead = hold || sp < 8 ? 0 : clamp(off, -ROOST.bank, ROOST.bank) * Math.min(1, sp / 25);
+      if (!sit) o.yaw += wrap((o.away ? velYaw : toYaw + lead) - o.yaw) * ease(3);
+      const lat = o.acc.x * Math.cos(o.yaw) - o.acc.z * Math.sin(o.yaw);
+      o.roll += ((hold ? 0 : clamp(-lat / 26, -ROOST.bank, ROOST.bank)) - o.roll) * ease(2.5);
+      o.pitch += ((sit ? 0 : tell || fire ? -0.25 : clamp(-e.vel.y / 70, -ROOST.pitch, ROOST.pitch)) - o.pitch) * ease(2.5);
+      e.mesh.rotation.set(o.pitch, o.yaw, o.roll);
+      // The wingbeat: two heavy strokes, then a glide unless she needs the lift.
+      o.launch = Math.max(0, (o.launch || 0) - dt);
+      const lift = o.launch > 0 || e.vel.y > 5 || e.vel.length() < 18;
+      if (o.glide > 0) { o.glide -= dt; if (lift) o.glide = 0; }
+      const flapping = !sit && o.glide <= 0;
+      if (flapping || tell || fire) {
+        const rate = tell || fire ? 1.6 : lift ? ROOST.flapUp : ROOST.flap, ph = o.ph + dt * TAU * rate;
+        if (!tell && !fire && Math.floor(ph / TAU) > Math.floor(o.ph / TAU) && ++o.beats >= ROOST.beats && !lift) { o.beats = 0; o.glide = rand(...ROOST.glide); }
+        o.ph = ph;
+      }
+      o.w += ((flapping ? 1 : 0) - o.w) * ease(5);
+      const S = Math.sin(o.ph), S2 = Math.sin(o.ph - 0.8);
+      // [arm lift, arm sweep back, hand fold, hand lift]: folded / rear-up back-beat / breathing / flight (beat <-> glide).
+      const W = sit ? [0.9, 0.7, 1.2, -0.5, 5]
+        : tell ? [0.55 + 0.18 * S, -0.15, 0.1, 0.25 + 0.25 * S2, 10]
+        : fire ? [0.3 + 0.1 * S, -0.05, 0.05, 0.15 + 0.15 * S2, 10]
+        : [0.08 * (1 - o.w) + (0.1 + 0.62 * S) * o.w, 0.05 * (1 - o.w) + 0.12 * Math.cos(o.ph) * o.w, -0.05 + 0.25 * o.w * Math.max(0, -S), 0.05 * (1 - o.w) + 0.45 * S2 * o.w, 14];
+      u.wings.forEach((wg, k) => {
+        const sd = k ? 1 : -1, h = u.hands[k];
+        wg.rotation.order = h.rotation.order = 'YZX';
+        wg.rotation.z += (sd * W[0] - wg.rotation.z) * ease(W[4]);
+        wg.rotation.y += (sd * W[1] - wg.rotation.y) * ease(W[4]);
+        h.rotation.y += (sd * W[2] - h.rotation.y) * ease(W[4]);
+        h.rotation.z += (sd * W[3] - h.rotation.z) * ease(W[4]);
+      });
+      u.rig.position.y = flapping ? -0.25 * S * o.w : sit ? 0 : 0.1 * Math.sin(e.t * 1.2);
+      // Head and neck: the head turns to you (or to the head of the sweep); each neck segment takes a share, lagging.
+      let hy = clamp(wrap(toYaw - o.yaw), -1.5, 1.5), hp = 0;
+      if (sit && e.pos.distanceTo(p.pos) > 500) hy = Math.sin(e.t * 0.5) * 0.9; // perched and you're far: she looks about
+      if (fire) {
+        const to = MOVES.rake.at(m, Math.min(1, m.fire.t / RAKE.sweep) * m.fire.len, _b);
+        hy = clamp(wrap(Math.atan2(to.x - e.pos.x, to.z - e.pos.z) - o.yaw), -1.5, 1.5);
+        hp = clamp(Math.atan2(e.pos.y - to.y, Math.hypot(to.x - e.pos.x, to.z - e.pos.z)), -0.6, 0.6);
+      }
+      const rear = tell ? -0.45 : fire ? 0.15 : sit ? 0.1 : 0;
+      const base = [-0.75, -0.25, 0.55];
+      u.neck.forEach((n, k) => {
+        n.rotation.y += (hy / 3 - n.rotation.y) * ease(5 - k * 1.2);
+        n.rotation.x += (base[k] + (k === 0 ? rear : k === 2 ? hp * 0.5 - rear * 0.6 : 0) + (flapping ? 0.06 * Math.sin(o.ph + 0.6 + k * 0.5) * o.w : 0.03 * Math.sin(e.t * 1.1 + k)) - n.rotation.x) * ease(4 - k);
+        n.rotation.z += (-o.roll * 0.25 - n.rotation.z) * ease(3);
+      });
+      u.head.rotation.x += (0.45 + hp * 0.5 + (sit ? 0.15 : 0) - u.head.rotation.x) * ease(5);
+      u.jaw.rotation.x += ((fire ? 0.65 : tell ? 0.25 : (m?.puff || 0) > 0 ? 0.4 : 0.04 + 0.03 * Math.sin(e.t * 1.7)) - u.jaw.rotation.x) * ease(8);
+      if ((o.blink -= dt) <= 0) o.blink = rand(2.5, 5);
+      u.lids.forEach((l) => { l.visible = o.blink < 0.13 && !fire; });
+      // Glows: her throat swells pink then white in a rear-up; the mouth glows while she breathes; the belly breathes.
+      const k0 = tell ? 1 - m.tell / m.tell0 : 0, hot = fire ? 1 : k0;
+      u.throat.material.opacity += (hot * 0.85 - u.throat.material.opacity) * ease(6);
+      u.throat.material.color.setRGB(1, 0.42 + 0.58 * Math.max(0, k0 * 2 - 1) * (fire ? 0 : 1), 0.78 + 0.22 * Math.max(0, k0 * 2 - 1));
+      u.mouth.material.opacity += ((fire ? 0.95 : tell ? 0.4 * k0 : 0) - u.mouth.material.opacity) * ease(8);
+      u.stripe.material.opacity = 0.15 + 0.15 * (0.5 + 0.5 * Math.sin(e.t * TAU / 3)) + 0.6 * hot; // quiet, brighter only as she breathes
+      // Smoke from her nostrils now and then (perched, more often).
+      if ((o.smoke -= dt) <= 0) { o.smoke = sit ? rand(1, 2) : rand(2.5, 5); en.G.fx.emit(u.snout.getWorldPosition(_a), 3, { colors: ['#ffc8e8', '#ffffff', '#f0b0d8'], speed: 4, life: 1.4, size: 4, up: 4 }); }
+      // Tail: a slow wave down its length, curled down the stonework when perched, swung against her banks in flight.
+      u.tail.forEach((t, k) => {
+        const yw = (sit ? 0.12 : 0.28) * Math.sin(e.t * (sit ? 0.8 : 1.6) - k * 0.75) + (sit ? 0 : o.roll * 0.15);
+        const xw = sit ? (k === 0 ? -0.95 : -0.22) : (k ? -0.04 : -0.15) + 0.05 * Math.sin(o.ph - k * 0.6) * o.w + o.pitch * 0.12; // (negative: down)
+        t.rotation.y += (yw - t.rotation.y) * ease(4);
+        t.rotation.x += (xw - t.rotation.x) * ease(4);
+      });
+      // Legs: standing on the stone perched, tucked back in flight, reaching forward in a rear-up.
+      u.fore.forEach((l) => { l.rotation.x += ((sit ? 0 : tell ? -0.55 : 1.0) - l.rotation.x) * ease(5); });
+      u.hind.forEach((l) => { l.rotation.x += ((sit ? 0 : tell ? 0.2 : 1.15) - l.rotation.x) * ease(5); });
+    },
+    // The line's sparkles (and their twins on the ground), the curtain's flames and the jet: made once per boss.
+    fx(en, e) {
+      const u = e.mesh.userData;
+      if (u.rakeFx) return u.rakeFx;
+      const G = en.G, col = new THREE.Color();
+      const dots = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false }), RAKE.dots);
+      const ground = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshBasicMaterial({ color: '#ff6ac8', transparent: true, opacity: 0.45, depthWrite: false }), RAKE.dots);
+      const fire = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }), RAKE.flames);
+      for (let k = 0; k < RAKE.dots; k++) dots.setColorAt(k, col.set(k % 3 ? '#ff8ad0' : '#ffe08a'));
+      for (let k = 0; k < RAKE.flames; k++) fire.setColorAt(k, col.set(pick(['#ff5ab8', '#ff8ad0', '#ffb0e0', '#ffd8a0'])));
+      const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.25, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: '#ffb0e0', transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+      for (const x of [dots, ground, fire, jet]) { x.frustumCulled = false; x.visible = false; G.scene.add(x); }
+      return (u.rakeFx = { dots, ground, fire, jet });
+    },
+    hide(e) { const fx = e.mesh.userData.rakeFx; if (fx) for (const x of Object.values(fx)) x.visible = false; },
   },
 
   // Count Ribbiton (ground, hop): sits on his giant toadstool, then bounds after you across the ground, one big
