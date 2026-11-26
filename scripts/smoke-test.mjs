@@ -2541,7 +2541,7 @@ try {
           G.input.keys.clear();
           out.roofWarns = notes.filter((n) => n.text === 'Roof! Pull harder!').map((n) => +(n.t - t0).toFixed(2));
         } else {
-          // 4 s inverted flies on well past the dome, where the roof may come down again: up to 3 domes, one miss allowed.
+          // 4 s inverted flies on well past the dome, where the roof may come down again: up to 3 domes, the last must make it.
           out.inverted.fly = [];
           for (let k = 0, e = d; k < 3 && e; k++) {
             place(e.tg, e.dir);
@@ -5326,7 +5326,7 @@ try {
       [['loop', 'inverted'].every((k) => c[k] && c[k].dist >= 200 && c[k].dist <= 650 && c[k].chamber >= 120 && c[k].above >= 25 && c[k].above <= 45 && !c[k].virtual), `cave loops: a loop or upside-down objective targets a dome 200-650 m ahead, with >= 120 m from floor to roof over the loop and the start 25-45 m up (${JSON.stringify({ loop: c.loop && { ...c.loop, hints: undefined }, inverted: c.inverted && { ...c.inverted, hints: undefined, fly: undefined } })})`],
       [c.signFade?.at === 0 && c.signFade.far === 1, `cave loops: the LOOP HERE sign is fully shown from 200 m out and gone once you're at the dome (${JSON.stringify(c.signFade)})`],
       [c.loopW?.done && !c.loopW.crashed && c.loopW.tucked && c.loopBoost?.done && !c.loopBoost.crashed, `cave loops: from the dome, holding W loops under the roof (tucked), and so does a boosted loop (${JSON.stringify([c.loopW, c.loopBoost])})`],
-      [c.inverted?.fly?.at(-1)?.done && c.inverted.fly.length <= 2, `cave loops: from the dome, pulling up and letting go flies 4 s inverted without touching the roof (${JSON.stringify(c.inverted?.fly)})`],
+      [c.inverted?.fly?.at(-1)?.done && c.inverted.fly.length <= 3 && c.inverted.fly.every((f) => f.tucked && f.secs >= 4 || f.done), `cave loops: from the dome, pulling up and letting go flies 4 s inverted without touching the roof (${JSON.stringify(c.inverted?.fly)})`],
       [c.loop?.hints.includes('In here, NO boost. Speed makes the loop bigger and the roof is not negotiable.') && c.loop.hints.includes('Fly to the glowing crystal dome, stay low, then hold W.') && !c.loop.hints.some((h) => /Shift/.test(h))
         && c.inverted?.hints.includes('Under the tall dome, pull up until you\'re upside down, then LET GO.') && !c.inverted.hints.some((h) => /climb/i.test(h)), 'cave loops: the hints say no boost and point at the dome, and never suggest boosting (loop) or climbing (inverted)'],
       [c.easier?.length === 4 && c.easier.slice(1).every((e, i) => e.tuck === [1.75, 2, 2.2][i] && e.req === 1 && e.done && !e.crashed && e.climb <= c.easier[i].climb - 2 && /roomier/.test(e.text)) && c.tuckAfter === 1.5, `cave loops: each easier() tightens the tuck (+0.25, to 2.2 at most) and makes the loop at least 2 m shorter; the requirement stays 360°, and dispose resets the tuck (${JSON.stringify(c.easier?.map((e) => [e.tuck, e.climb]))})`],
