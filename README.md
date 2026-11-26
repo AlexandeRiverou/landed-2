@@ -397,6 +397,22 @@ doesn't by itself, but flying on from where it put you does.
   you're in it; climb or dive off the line and it's a dodge (+25, and she's dazed for a moment). Each horn she loses
   (2 hp, 4% of her hp) shortens the flames: 130 m lingering 0.7 s with one gone, 90 m and no linger with both. Her
   glowing belly is the weak spot. 95 hp.
+- Grandma Atolla, the Island Turtle (a sea boss of the Tropical Archipelago; the deck brings her only there, and first
+  there once the two openers are done): a sea turtle so old that an island grew on her domed, barnacled, mossy shell,
+  with three palm trees, a driftwood beach hut with a lit lantern, and seaweed hanging off the rim. Like the carrier she
+  appears on open water ahead and never leaves it. She starts asleep, head and flippers in and low in the water, gulls
+  circling her palms, so she looks like one more island; she wakes with a bellow and a splash when you come within
+  260 m, when you hit her, or after 2.5 s, and the gulls fly off. Then she paddles the surface (slow power strokes of her
+  big front flippers, a foam ring round her, a bow wave and a wake), keeping about 150 m off you and steering round
+  islands, her head following you. Most attacks are a volley of 5 coconuts (9 each) from her palms. Every 3rd attack
+  (every 2nd enraged; or the next one that fits), when you're within 340 m and under 160 m over the sea, a pale foam
+  ring 80 m across opens on open water where you're heading and she rears up for 1.4 s (2 s the first time, with a tip;
+  1.1 s enraged). Then she dives (she can't be hurt under the water) and the sea in the ring spins for 3.2 s: a plane
+  inside it and under 70 m is pulled in toward the middle (up to 18 m/s), round it (9 m/s) and down (11 m/s), all
+  fading with height and toward the rim. Dropping to 8 m over the water in it costs 18 hull and throws you clear. Then
+  she bursts up from the middle with a beak snap (22 hull within 32 m). Caught by the pull and out unhurt: a dodge
+  (+25, and she's dazed). Each palm she loses (1.5 hp, 4% of her hp) means one coconut fewer (5, 4, 3, 2). Her pale
+  throat is the weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
