@@ -5039,14 +5039,16 @@ try {
       for (let k = 0; k <= 40; k++) { put(0, a.spring * 0.6, -20 + k); clear(); G.step(1 / 30); } // back through: no second bonus
       out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
       hits.length = 0;
-      // A leg that stands clear of the ground: on a slope a leg can be half buried, and a plane put inside the buried
-      // part is lifted out of the ground above the curve's start, where the ring shoves it instead of the leg.
+      // A spot in a leg above the ground and the water: an arch can stand on a slope or in a lake, and a plane put
+      // below either is lifted clear (right after a land change, the game moves you up instead of crashing you) to
+      // above the curve's start, where the ring shoves it instead of the leg.
       let b = null, side = 1, ly = 0, low = Infinity;
       for (const c of SP.archList) {
         const ccs = Math.cos(c.yaw), csn = Math.sin(c.yaw);
         for (const s of [1, -1]) {
-          const g = G.terrain.surfaceHeight(c.pos.x + s * c.R * ccs, c.pos.z - s * c.R * csn) - c.pos.y;
-          if (g < low && g + 10 < c.spring - 4) { low = g; b = c; side = s; ly = (g + 10 + c.spring - 4) / 2; }
+          const x = c.pos.x + s * c.R * ccs, z = c.pos.z - s * c.R * csn;
+          const g = Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel) - c.pos.y; // the floor under the leg
+          if (g < low && g + 3 < c.spring - 3) { low = g; b = c; side = s; ly = (g + c.spring) / 2; }
         }
       }
       // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
@@ -5061,16 +5063,10 @@ try {
         const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(b, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
         trace.push(loc());
         SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
-        const parts = { player: p, pullup: G.pullup, terrain: G.terrain, enemies: G.enemies, objectives: G.objectives, persuasion: G.persuasion, powerups: G.powerups, finds: G.finds };
-        const ys = [], st = { grace: +p.grace.toFixed(2), invuln: +p.invuln.toFixed(2), landed: !!p.landed, ground: +(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) - b.pos.y).toFixed(2), roof: +(G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y) - b.pos.y).toFixed(2) };
-        const keep = new Map();
-        for (const [k, o] of Object.entries(parts)) { const f = o.update; keep.set(o, Object.prototype.hasOwnProperty.call(o, 'update') ? f : null); o.update = function (...args) { const r = f.apply(this, args); ys.push(k + ':' + (p.pos.y - b.pos.y).toFixed(1)); return r; }; }
         G.step(1 / 30);
-        for (const [o, f] of keep) { if (f) o.update = f; else delete o.update; }
-        trace.push(ys, st);
         delete SP.updateArches; // back to the class method
         const L = SP.archLocal(b, p.pos.clone());
-        out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - b.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - b.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +b.R.toFixed(2), spring: +b.spring.toFixed(2), ground: +low.toFixed(2), trace };
+        out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - b.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - b.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +b.R.toFixed(2), spring: +b.spring.toFixed(2), floor: +low.toFixed(2), trace };
       } else out.leg = { noLegClear: SP.archList.map((c) => +c.spring.toFixed(1)) };
       p.speed = v0; p.wind.copy(w0);
     }
