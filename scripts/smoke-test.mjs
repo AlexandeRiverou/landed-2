@@ -3307,6 +3307,25 @@ try {
     const G = window.G, p = G.player, r = (v) => +v.toFixed(3);
     return { time: r(G.time), pos: [r(p.pos.x), r(p.pos.y), r(p.pos.z)], fwd: [r(p.forward.x), r(p.forward.y), r(p.forward.z)], zone: G.zones.index, enemies: G.enemies.list.map((e) => e.type).join(','), shots: G.enemies.shots.length, chunks: G.terrain.chunks.size, stale: G.terrain.stale, obj: G.objectives.current?.type ?? null, score: G.score, dead: p.dead, landed: !!p.landed, lives: p.lives, power: [...G.powerups.active.keys()].join('+'), seed: G.world.seed, fx: G.fx.live?.length ?? G.fx.particles?.length ?? null };
   })));
+  // ...and each block of them starts from the same world on every run. The sections before them run on live frames
+  // (stunts, the developer menu, typing secrets, the Game Over card), so the plane, the clock, the objective and the
+  // craters it left differed a little from run to run, and a check far downstream met a different sky. Settle puts
+  // all of that back to fixed values: same time, same spot and heading, a fresh landscape for the same zone.
+  const settle = (time) => page.evaluate((time) => {
+    const G = window.G, p = G.player, E = G.enemies;
+    E.list.slice().forEach((e) => E.removeEnemy(e));
+    E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.powerups.active.clear();
+    G.input.keys.clear(); G.input.mouseFire = false; G.input.clearKeyTaps?.();
+    G.hitStop = 0;
+    G.time = time; // later than any run gets here: the clock only ever jumps forward
+    G.zones.enter(G.zones.index, { instant: true });
+    G.terrain.rebuildAll();
+    p.spawn(12000, -17000, 0);
+    G.terrain.update(p.pos, 999);
+  }, time);
+  await settle(2500);
   await probe('rush');
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
@@ -4733,6 +4752,7 @@ try {
   // lands. A spitter under the lava can't be hurt, comes up, spits a fan of fireballs and sinks again; a charger winds
   // up, then charges; a bat flares, then swoops into you.
   await page.evaluate(() => { window.__smokeFrames.hold = true; }); // held again for the simulated land-enemy and set-piece checks
+  await settle(3200);
   await probe('landEnemies');
   report.landEnemies = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
