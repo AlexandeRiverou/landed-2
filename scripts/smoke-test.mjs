@@ -3298,6 +3298,10 @@ try {
   // shot down) and the five newer regular enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth).
   // Simulated, with nothing else around; world changes for completing an objective are held back, and score, lives and
   // god mode are put back afterwards.
+  // Simulated checks (the rush, the globe boss, the land enemies, the set pieces) run on held frames: a real-time frame
+  // between two of them would step the game by however long the machine took, so each check began from a different
+  // world (a kite pair gone, a squirrel already peeling off, ground under a trestle leg rebuilt) and failed at random.
+  await page.evaluate(() => { window.__smokeFrames.hold = true; }); // no real-time frames until the Game Over checks
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { CEILING, WAVES, GARY } = await import('./src/enemies.js');
@@ -4594,6 +4598,7 @@ try {
   // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
   // mends slowly (nothing in the first 10 s after a hit), a promotion repairs it, and losing the last life shows the
   // Game Over card and freezes the game. "Fly again" (a real click, then Enter) starts a fresh run in place.
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // live frames for the Game Over card, clicks and key locks below
   const L = {};
   L.run = await page.evaluate(() => {
     const G = window.G, p = G.player, out = {};
@@ -4720,6 +4725,7 @@ try {
   // Land enemies (Nov 2026): Ember Bats and Magma Spitters spawn only in Volcano Land, Comet Chargers only in the space
   // lands. A spitter under the lava can't be hurt, comes up, spits a fan of fireballs and sinks again; a charger winds
   // up, then charges; a bat flares, then swoops into you.
+  await page.evaluate(() => { window.__smokeFrames.hold = true; }); // held again for the simulated land-enemy and set-piece checks
   report.landEnemies = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { ZONES } = await import('./src/zones.js');
@@ -5235,6 +5241,7 @@ try {
   // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
   // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
   // after the jump, so this doesn't depend on whether the reload wins the race.
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // live frames again: the clock checks below need them
   const jump0 = await page.evaluate(() => {
     const G = window.G, dm = G.devmenu, update = dm.update.bind(dm);
     window.framesSeen = 0;
