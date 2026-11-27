@@ -1799,11 +1799,13 @@ export class SetPieces {
       c.ds = s - c.s;
       c.s = s;
       c.x = t.x0 + t.dx * s; c.z = t.z0 + t.dz * s;
-      const y = h(c.x, c.z), yf = h(c.x + t.dx * 2.2, c.z + t.dz * 2.2), yb = h(c.x - t.dx * 2.2, c.z - t.dz * 2.2);
+      const L = 2.5 * T.scale, W = 1.2 * T.scale, y = h(c.x, c.z), yf = h(c.x + t.dx * L, c.z + t.dz * L), yb = h(c.x - t.dx * L, c.z - t.dz * L);
+      const yr = h(c.x + t.dz * W, c.z - t.dx * W), yl = h(c.x - t.dz * W, c.z + t.dx * W); // its right (+x) and left
       c.group.position.set(c.x, y, c.z);
       c.group.rotation.set(0, t.yaw, 0);
       c.group.scale.setScalar(T.scale);
-      c.body.rotation.x = -Math.atan2(yf - yb, 4.4) * 0.8; // nose up a rising dune
+      c.body.rotation.x = -Math.atan2(yf - yb, 2 * L); // nose up a rising dune
+      c.roll = Math.atan2(yr - yl, 2 * W); // and leaning with the slope across it
     });
   }
 
@@ -1825,7 +1827,18 @@ export class SetPieces {
       c.legs[1].rotation.x = -sw; c.legs[2].rotation.x = -sw;
       c.neck.rotation.x = c.walking ? Math.sin(c.phase * 2) * 0.12 : Math.sin(G.time * 0.6 + c.phase) * 0.08;
       c.head.rotation.y = c.walking ? 0 : Math.sin(G.time * 0.4 + c.phase) * 0.5;
-      c.body.rotation.z = Math.sin(c.phase) * 0.04 * w;
+      c.body.rotation.z = (c.roll || 0) + Math.sin(c.phase) * 0.04 * w;
+      // Each leg reaches down (or folds up) to the sand under its own hoof, so none floats or sinks on a rough dune.
+      if (near) {
+        for (let pass = 0; pass < 2; pass++) { // twice: a tilted leg reaches a little less far than it stretches
+          c.group.updateMatrixWorld(true);
+          c.hooves.forEach((hf, i) => {
+            hf.getWorldPosition(_q);
+            const gap = _q.y - (G.terrain.surfaceHeight(_q.x, _q.z) + 0.2 * T.scale), leg = c.legs[i];
+            leg.scale.y = Math.min(1.7, Math.max(0.5, leg.scale.y - gap / (T.leg * T.scale)));
+          });
+        }
+      }
       if (c.walking && near && (c.dustT -= dt) <= 0) {
         c.dustT = 0.35;
         G.fx.emit(c.group.position, 2, { colors: ['#e8c890', '#d8b070', '#f0dcb0'], speed: 3, life: 1.3, size: 2.5, gravity: 1, drag: 1.2 });

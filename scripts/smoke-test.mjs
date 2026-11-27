@@ -5195,10 +5195,14 @@ try {
       const cs = Math.cos(cv.yaw), sn = Math.sin(cv.yaw), lead = cv.camels[0];
       const put = (c, lx, ly, lz) => { const q = c.group.position; p.pos.set(q.x + lx * cs + lz * sn, q.y + ly, q.z - lx * sn + lz * cs); };
       const above = () => { put(lead, 0, 500, 0); p.grace = 1; clear(); };
-      const _h = new p.pos.constructor(), shod = () => cv.camels.every((c) => { c.group.updateMatrixWorld(true); return c.hooves.every((hf) => { hf.getWorldPosition(_h); const g = G.terrain.surfaceHeight(_h.x, _h.z); return _h.y > g - 1.5 && _h.y < g + 1.2; }); }); // every hoof on the sand
-      out.caravanGrounded = cv.camels.length === CARAVAN.camels && shod();
+      // Every hoof on the sand: on average within 0.6 m of its sole's spot, none far off it even on a rough dune.
+      const _h = new p.pos.constructor(), shod = () => {
+        const gaps = cv.camels.flatMap((c) => { c.group.updateMatrixWorld(true); return c.hooves.map((hf) => { hf.getWorldPosition(_h); return _h.y - G.terrain.surfaceHeight(_h.x, _h.z) - 0.2 * CARAVAN.scale; }); });
+        return gaps.reduce((a, g) => a + Math.abs(g), 0) / gaps.length < 0.6 && gaps.every((g) => Math.abs(g) < 2.5);
+      };
       cv.s = CARAVAN.spacing * (CARAVAN.camels - 1);
-      above(); G.step(1 / 30); above();
+      above(); G.step(1 / 30); above(); // close enough to watch: the legs fit the sand
+      out.caravanGrounded = cv.camels.length === CARAVAN.camels && shod();
       const x0 = lead.x, z0 = lead.z;
       for (let k = 0; k < 30; k++) { G.step(1 / 30); above(); }
       out.caravanWalk = { moved: +Math.hypot(lead.x - x0, lead.z - z0).toFixed(2), walking: lead.walking, grounded: shod() };
