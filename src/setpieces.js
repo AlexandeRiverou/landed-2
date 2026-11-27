@@ -1,7 +1,7 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
-// the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle and the Candy Kingdom's
-// gumball machine.
+// the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's
+// gumball machine and the Dune Sea's camel caravan.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -180,6 +180,25 @@ export const GUMBALL = {
   score: 10,
   dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
 };
+// The camel caravan (Dune Sea): a line of camels plods across the dunes ahead, a robed rider on the lead camel, rugs
+// and packs on the rest, legs swinging, necks nodding, kicking up little puffs of sand. Each camel follows the dunes
+// underfoot, tilting up and down their slopes, and the caravan rests at the end of its route. Buzzing low past the
+// lead camel is "+25 Buzzing the caravan!", once per caravan. The camels are solid: a bump costs a little hull at most
+// once a second and shoves you clear, never a wreck.
+export const CARAVAN = {
+  near: 500, far: 850,   // a new caravan appears this far ahead, crossing your way
+  drop: 1500,
+  route: 360,            // m it walks before it stops to rest
+  camels: 5,
+  spacing: 13,           // m between camels
+  scale: 1.5,            // the camels are a bit larger than life, so you see them from the air
+  speed: 2.6,            // m/s
+  swing: 0.32,           // rad each leg swings fore and aft (the pace follows the ground covered, so feet never skate)
+  leg: 3.8,              // hip to hoof, unscaled
+  close: 15,             // m from the lead camel's middle: buzzing it
+  score: 25,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+};
 const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
 
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
@@ -224,6 +243,10 @@ export class SetPieces {
     this.gumTip = false;
     this.gumBumpTip = false;
     this.gumMats = null; // made with the first machine, like the mill's
+    this.caravan = null;
+    this.caravanT = 0;
+    this.caravanTip = false;
+    this.caravanMats = null; // made with the first caravan, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -277,6 +300,8 @@ export class SetPieces {
     this.trestleT = 0;
     this.dropGumball();
     this.gumT = 0;
+    this.dropCaravan();
+    this.caravanT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -363,6 +388,7 @@ export class SetPieces {
     if (this.kind === 'windmill') { this.updateMill(dt); return; }
     if (this.kind === 'trestle') { this.updateTrestle(dt); return; }
     if (this.kind === 'gumball') { this.updateGumball(dt); return; }
+    if (this.kind === 'caravan') { this.updateCaravan(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -1647,6 +1673,208 @@ export class SetPieces {
         G.fx.emit(p.pos, 18, { colors: ['#d8202e', '#f0c040', '#ffffff'], speed: 18, life: 0.8, size: 4 });
         if (!this.gumBumpTip) { this.gumBumpTip = true; G.ui.notify('The gumball machine is solid! Shoot the gumballs it rolls out for points.', 'warn', 4, 1); }
       }
+    }
+  }
+  // ---- Dune Sea: the camel caravan ---------------------------------------------------------------------------------
+  get caravanInfo() { return this.caravan; }
+
+  dropCaravan() {
+    if (!this.caravan) return;
+    this.G.scene.remove(this.caravan.group);
+    for (const geo of this.caravan.geos) geo.dispose();
+    this.caravan = null;
+  }
+
+  // A dry route ahead, roughly across your way: every point of it on sand above the sea.
+  placeCaravan() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0), T = CARAVAN;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 6; tries++) {
+      const d = rand(T.near, T.far), s = rand(-0.3, 0.3) * d, a = Math.atan2(-f.z, f.x) + Math.PI / 2 + rand(-0.5, 0.5) + (Math.random() < 0.5 ? 0 : Math.PI);
+      const dx = Math.cos(a), dz = -Math.sin(a); // the way it walks
+      const mx = p.pos.x + f.x * d - f.z * s, mz = p.pos.z + f.z * d + f.x * s;
+      const x0 = mx - dx * T.route / 2, z0 = mz - dz * T.route / 2;
+      let dry = true;
+      for (let k = -2; k <= 10 && dry; k++) dry = G.terrain.surfaceHeight(x0 + dx * T.route * k / 8, z0 + dz * T.route * k / 8) > G.world.seaLevel + 2;
+      if (!dry) continue;
+      return this.buildCaravan(x0, z0, Math.atan2(dx, dz));
+    }
+    return null;
+  }
+
+  // One camel (its local +z is forward), on its own group so it can follow the ground. lead: with a rider.
+  buildCamel(M, mesh, k, lead) {
+    const c = new THREE.Group(), body = new THREE.Group();
+    c.add(body);
+    const ball = (sx, sy, sz, mat, x, y, z, parent = body) => { const o = mesh(new THREE.SphereGeometry(1, 10, 8), mat, parent); o.scale.set(sx, sy, sz); o.position.set(x, y, z); return o; };
+    const box = (w, h, d, mat, x, y, z, parent = body) => { const o = mesh(new THREE.BoxGeometry(w, h, d), mat, parent); o.position.set(x, y, z); return o; };
+    ball(1.35, 1.1, 2.5, M.camel, 0, 4.3, 0);
+    ball(1.05, 1.0, 1.3, M.camel, 0, 5.4, -0.4); // the hump
+    // Legs: hips at the corners, swinging from there; knobbly knees, dark hooves.
+    const legs = [], hooves = [];
+    for (const [lx, lz] of [[-0.8, 1.6], [0.8, 1.6], [-0.8, -1.7], [0.8, -1.7]]) {
+      const hip = new THREE.Group();
+      hip.position.set(lx, 3.9, lz);
+      body.add(hip);
+      box(0.55, 2.1, 0.6, M.camel, 0, -1, 0, hip);
+      ball(0.36, 0.36, 0.36, M.camel, 0, -2.1, 0, hip);
+      box(0.42, 1.8, 0.45, M.camel, 0, -3, 0, hip);
+      hooves.push(box(0.7, 0.3, 0.8, M.hoof, 0, -3.8, 0.1, hip));
+      legs.push(hip);
+    }
+    // The long neck curving up and forward to the head; it nods as it walks.
+    const neck = new THREE.Group();
+    neck.position.set(0, 4.6, 2.2);
+    body.add(neck);
+    const n1 = box(0.8, 2.6, 0.9, M.camel, 0, 1.0, 0.6, neck);
+    n1.rotation.x = 0.7;
+    const head = new THREE.Group();
+    head.position.set(0, 2.2, 1.6);
+    neck.add(head);
+    box(0.8, 0.85, 1.7, M.camel, 0, 0, 0.5, head);
+    box(0.62, 0.55, 0.5, M.hoof, 0, -0.15, 1.35, head); // the muzzle
+    for (const ex of [-0.42, 0.42]) { box(0.12, 0.22, 0.22, M.dark, ex, 0.18, 0.7, head); box(0.18, 0.4, 0.18, M.camel, ex * 0.7, 0.55, -0.1, head); } // eyes, ears
+    box(0.3, 1.1, 0.3, M.camel, 0, 3.9, -2.6).rotation.x = 0.35; // the tail
+    // Tack: a striped rug over the hump; packs on the followers; the lead carries its rider.
+    const rug = M.rugs[k % M.rugs.length];
+    box(2.9, 0.25, 2.2, rug, 0, 5.75, 0.9);
+    for (const sx of [-1, 1]) box(0.25, 1.4, 2.2, rug, sx * 1.45, 5.0, 0.9);
+    box(3.0, 0.3, 0.3, M.gold, 0, 5.95, 2.05);
+    if (lead) {
+      const rider = new THREE.Group();
+      rider.position.set(0, 6, 0.9);
+      body.add(rider);
+      mesh(new THREE.ConeGeometry(0.9, 2.8, 10), M.robe, rider).position.y = 1.2;
+      ball(0.5, 0.55, 0.5, M.skin, 0, 2.9, 0, rider);
+      ball(0.62, 0.42, 0.62, M.indigo, 0, 3.25, 0, rider); // the turban
+      box(0.9, 0.9, 0.12, M.indigo, 0, 2.7, 0.45, rider); // the face veil
+      for (const sx of [-1, 1]) box(0.3, 0.3, 1.6, M.robe, sx * 0.55, 2.1, 0.6, rider).rotation.x = 0.5; // arms on the reins
+      box(0.06, 0.06, 3.2, M.dark, 0, 1.6, 1.8, rider).rotation.x = 0.35; // the reins
+    } else {
+      for (const sx of [-1, 1]) {
+        box(0.9, 1.6, 1.6, M.pack, sx * 1.85, 4.4, -0.5);
+        box(0.95, 0.2, 1.7, M.dark, sx * 1.85, 4.9, -0.5);
+      }
+      mesh(new THREE.CylinderGeometry(0.5, 0.5, 2.6, 8), M.rugs[(k + 1) % M.rugs.length], body).rotation.z = Math.PI / 2; // a rolled rug
+      body.children[body.children.length - 1].position.set(0, 6.2, -0.9);
+    }
+    return { group: c, body, legs, hooves, lead, x: 0, z: 0, s: 0, ds: 0, neck, head, phase: rand(0, 6), walking: false, dustT: rand(0, 0.3) };
+  }
+
+  buildCaravan(x0, z0, yaw) {
+    const T = CARAVAN;
+    const M = (this.caravanMats ||= {
+      camel: new THREE.MeshLambertMaterial({ color: '#c8965a', flatShading: true }),
+      hoof: new THREE.MeshLambertMaterial({ color: '#6a4a30', flatShading: true }),
+      dark: new THREE.MeshLambertMaterial({ color: '#2a1e18' }),
+      robe: new THREE.MeshLambertMaterial({ color: '#f2ece0', flatShading: true }),
+      indigo: new THREE.MeshLambertMaterial({ color: '#2e3f8a', flatShading: true }),
+      skin: new THREE.MeshLambertMaterial({ color: '#a8704a', flatShading: true }),
+      gold: new THREE.MeshLambertMaterial({ color: '#e8b830', flatShading: true }),
+      pack: new THREE.MeshLambertMaterial({ color: '#8a6a44', flatShading: true }),
+      rugs: ['#c0302a', '#2a6ab0', '#d88a20', '#7a2a7a'].map((c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true })),
+    });
+    const G = this.G, g = new THREE.Group(), geos = [];
+    const mesh = (geo, mat, parent) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    const camels = [];
+    for (let k = 0; k < T.camels; k++) {
+      const c = this.buildCamel(M, mesh, k, k === 0);
+      g.add(c.group);
+      camels.push(c);
+    }
+    G.scene.add(g);
+    this.caravan = { group: g, geos, camels, x0, z0, yaw, dx: Math.sin(yaw), dz: Math.cos(yaw), s: T.spacing * (T.camels - 1), buzzed: false, bumpT: 0 };
+    this.placeCamels(0);
+    return this.caravan;
+  }
+
+  // Walk the caravan on by dt and set every camel on the ground underfoot, tilted to the slope.
+  placeCamels(dt) {
+    const t = this.caravan, T = CARAVAN, G = this.G, h = (x, z) => G.terrain.surfaceHeight(x, z);
+    t.s = Math.min(T.route, t.s + T.speed * dt);
+    t.camels.forEach((c, k) => {
+      const s = Math.max(0, t.s - k * T.spacing);
+      c.walking = dt > 0 && s > c.s + 1e-6;
+      c.ds = s - c.s;
+      c.s = s;
+      c.x = t.x0 + t.dx * s; c.z = t.z0 + t.dz * s;
+      const L = 2.5 * T.scale, W = 1.2 * T.scale, y = h(c.x, c.z), yf = h(c.x + t.dx * L, c.z + t.dz * L), yb = h(c.x - t.dx * L, c.z - t.dz * L);
+      const yr = h(c.x + t.dz * W, c.z - t.dx * W), yl = h(c.x - t.dz * W, c.z + t.dx * W); // its right (+x) and left
+      c.group.position.set(c.x, y, c.z);
+      c.group.rotation.set(0, t.yaw, 0);
+      c.group.scale.setScalar(T.scale);
+      c.body.rotation.x = -Math.atan2(yf - yb, 2 * L); // nose up a rising dune
+      c.roll = Math.atan2(yr - yl, 2 * W); // and leaning with the slope across it
+    });
+  }
+
+  updateCaravan(dt) {
+    const G = this.G, p = G.player, T = CARAVAN;
+    const lead0 = this.caravan?.camels[0];
+    if (lead0 && Math.hypot(lead0.x - p.pos.x, lead0.z - p.pos.z) > T.drop) this.dropCaravan();
+    if (!this.caravan && !G.terrain.stale && (this.caravanT -= dt) <= 0) { this.caravanT = 0.5; this.placeCaravan(); }
+    const t = this.caravan;
+    if (!t) return;
+    this.placeCamels(dt);
+    const near = p.pos.distanceToSquared(t.camels[0].group.position) < 800 * 800;
+    for (const c of t.camels) {
+      // Legs swing in diagonal pairs, the neck nods, the body sways; at rest they stand and look about.
+      if (c.walking) c.phase += c.ds / (T.swing * T.leg * T.scale); // a stance hoof moves back as fast as the ground goes by
+      const w = c.walking ? 1 : 0, sw = Math.sin(c.phase) * T.swing * w;
+      c.body.position.y = -T.leg * (1 - Math.cos(sw)); // dips as the legs swing out, so the hooves stay on the sand
+      c.legs[0].rotation.x = sw; c.legs[3].rotation.x = sw;
+      c.legs[1].rotation.x = -sw; c.legs[2].rotation.x = -sw;
+      c.neck.rotation.x = c.walking ? Math.sin(c.phase * 2) * 0.12 : Math.sin(G.time * 0.6 + c.phase) * 0.08;
+      c.head.rotation.y = c.walking ? 0 : Math.sin(G.time * 0.4 + c.phase) * 0.5;
+      c.body.rotation.z = (c.roll || 0) + Math.sin(c.phase) * 0.04 * w;
+      // Each leg reaches down (or folds up) to the sand under its own hoof, so none floats or sinks on a rough dune.
+      if (near) {
+        for (let pass = 0; pass < 2; pass++) { // twice: a tilted leg reaches a little less far than it stretches
+          c.group.updateMatrixWorld(true);
+          c.hooves.forEach((hf, i) => {
+            hf.getWorldPosition(_q);
+            const gap = _q.y - (G.terrain.surfaceHeight(_q.x, _q.z) + 0.2 * T.scale), leg = c.legs[i];
+            leg.scale.y = Math.min(1.7, Math.max(0.5, leg.scale.y + gap / (T.leg * T.scale))); // too high: a longer leg
+          });
+        }
+      }
+      if (c.walking && near && (c.dustT -= dt) <= 0) {
+        c.dustT = 0.35;
+        G.fx.emit(c.group.position, 2, { colors: ['#e8c890', '#d8b070', '#f0dcb0'], speed: 3, life: 1.3, size: 2.5, gravity: 1, drag: 1.2 });
+      }
+    }
+    t.bumpT = Math.max(0, t.bumpT - dt);
+    if (p.dead) return;
+    const r = 2.5 * (p.sizeScale || 1), cs = Math.cos(t.yaw), sn = Math.sin(t.yaw);
+    let hit = false;
+    for (const c of t.camels) {
+      // Into the camel's own frame: x across, y up from its feet, z forward.
+      const q = c.group.position, k = T.scale, dx = (p.pos.x - q.x) / k, dz = (p.pos.z - q.z) / k, rr = r / k;
+      const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs, ly = (p.pos.y - q.y) / k; // in the unscaled camel's metres
+      const hx = (c.lead ? 1.6 : 2.4) + rr, z0 = -3.4 - rr, z1 = (ly > 4 ? 6.2 : 3.2) + rr, y1 = 6.6 + (c === t.camels[0] ? 3.5 : 0) + rr;
+      if (Math.abs(lx) >= hx || lz <= z0 || lz >= z1 || ly >= y1 || ly <= -rr) continue;
+      // Out along the shallowest way: sideways, ahead or behind, or up.
+      const ox = (lx >= 0 ? hx : -hx) - lx, oz = (lz >= 0 ? z1 : z0) - lz, oy = y1 - ly;
+      const m = Math.min(Math.abs(ox), Math.abs(oz), oy);
+      let mx = 0, mz = 0;
+      if (m === Math.abs(ox)) mx = ox * k; else if (m === Math.abs(oz)) mz = oz * k; else p.pos.y += oy * k;
+      p.pos.x += mx * cs + mz * sn; p.pos.z += -mx * sn + mz * cs;
+      hit = true;
+    }
+    // Low past the lead camel: buzzing the caravan.
+    const lead = t.camels[0].group.position;
+    if (!hit && !t.buzzed && !p.landed && Math.hypot(p.pos.x - lead.x, p.pos.y - lead.y - 4 * T.scale, p.pos.z - lead.z) < T.close) {
+      t.buzzed = true;
+      G.score += T.score;
+      G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${T.score} Buzzing the caravan!`);
+      G.fx.emit(p.pos, 30, { colors: ['#e8c890', '#c0302a', '#2a6ab0', '#e8b830'], speed: 16, life: 1.4, size: 3, gravity: -5 });
+    }
+    if (hit && t.bumpT <= 0) {
+      t.bumpT = T.bumpEvery;
+      p.damage(T.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#c8965a', '#e8c890', '#f2ece0'], speed: 18, life: 0.8, size: 4 });
+      if (!this.caravanTip) { this.caravanTip = true; G.ui.notify('Camels are solid! Buzz low past the lead camel for points.', 'warn', 4, 1); }
     }
   }
 }
