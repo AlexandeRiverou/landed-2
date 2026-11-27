@@ -5061,7 +5061,13 @@ try {
         const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(b, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
         trace.push(loc());
         SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
+        const parts = { player: p, pullup: G.pullup, terrain: G.terrain, enemies: G.enemies, objectives: G.objectives, persuasion: G.persuasion, powerups: G.powerups, finds: G.finds };
+        const ys = [], st = { grace: +p.grace.toFixed(2), invuln: +p.invuln.toFixed(2), landed: !!p.landed, ground: +(G.terrain.surfaceHeight(p.pos.x, p.pos.z, p.pos.y) - b.pos.y).toFixed(2), roof: +(G.terrain.ceilingHeight(p.pos.x, p.pos.z, p.pos.y) - b.pos.y).toFixed(2) };
+        const keep = new Map();
+        for (const [k, o] of Object.entries(parts)) { const f = o.update; keep.set(o, Object.prototype.hasOwnProperty.call(o, 'update') ? f : null); o.update = function (...args) { const r = f.apply(this, args); ys.push(k + ':' + (p.pos.y - b.pos.y).toFixed(1)); return r; }; }
         G.step(1 / 30);
+        for (const [o, f] of keep) { if (f) o.update = f; else delete o.update; }
+        trace.push(ys, st);
         delete SP.updateArches; // back to the class method
         const L = SP.archLocal(b, p.pos.clone());
         out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - b.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - b.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +b.R.toFixed(2), spring: +b.spring.toFixed(2), ground: +low.toFixed(2), trace };
