@@ -3302,6 +3302,12 @@ try {
   // between two of them would step the game by however long the machine took, so each check began from a different
   // world (a kite pair gone, a squirrel already peeling off, ground under a trestle leg rebuilt) and failed at random.
   await page.evaluate(() => { window.__smokeFrames.hold = true; }); // no real-time frames until the Game Over checks
+  // Where the world stands as a simulated check begins (printed, not checked): two runs that differ here started apart.
+  const probe = async (name) => console.log('PROBE', name, JSON.stringify(await page.evaluate(() => {
+    const G = window.G, p = G.player, r = (v) => +v.toFixed(3);
+    return { time: r(G.time), pos: [r(p.pos.x), r(p.pos.y), r(p.pos.z)], fwd: [r(p.forward.x), r(p.forward.y), r(p.forward.z)], zone: G.zones.index, enemies: G.enemies.list.map((e) => e.type).join(','), shots: G.enemies.shots.length, chunks: G.terrain.chunks.size, stale: G.terrain.stale, obj: G.objectives.current?.type ?? null, score: G.score, dead: p.dead, landed: !!p.landed, lives: p.lives, power: [...G.powerups.active.keys()].join('+'), seed: G.world.seed, fx: G.fx.live?.length ?? G.fx.particles?.length ?? null };
+  })));
+  await probe('rush');
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { CEILING, WAVES, GARY } = await import('./src/enemies.js');
@@ -3711,6 +3717,7 @@ try {
         p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z) + 150;
         p.prevPos.copy(p.pos);
         const k = E.spawn('kites', ahead(120)), kp = k.pair;
+        const start = p.pos.clone();
         p.health = p.maxHealth;
         const r = { ahead: [Infinity, -Infinity], windAt: null, snapAt: null, hitAt: null, lost: 0, red: false, rolled: false };
         for (let i = 0; i < 30 * 12; i++) {
@@ -3718,7 +3725,7 @@ try {
           G.step(1 / 30);
           const t = (i + 1) / 30;
           // What the pair and the sky were doing 3 s in, kept in the report so a failure says why the pair fell behind.
-          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
+          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), why: kp.kites.map((x) => `${x.dead ? 'dead' : 'alive'}/${x.hp}/${Math.round(x.pos.distanceTo(p.pos))}m`).join(' '), moved: Math.round(p.pos.distanceTo(start)), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
           if (kp.phase === 'park' && !kp.back && t > 2 && r.windAt === null) {
             const a = Math.round(kp.centre.clone().sub(p.pos).dot(p.forward));
             r.ahead = [Math.min(r.ahead[0], a), Math.max(r.ahead[1], a)];
@@ -4726,6 +4733,7 @@ try {
   // lands. A spitter under the lava can't be hurt, comes up, spits a fan of fireballs and sinks again; a charger winds
   // up, then charges; a bat flares, then swoops into you.
   await page.evaluate(() => { window.__smokeFrames.hold = true; }); // held again for the simulated land-enemy and set-piece checks
+  await probe('landEnemies');
   report.landEnemies = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { ZONES } = await import('./src/zones.js');
@@ -4905,6 +4913,7 @@ try {
   // Land set pieces: Volcano Land keeps a few fire geysers on dry rock round the player (none in other lands). A vent
   // idles, rumbles, then blows a pillar of fire: flying through it scorches once per eruption, skimming past is a
   // "Toasty!" near miss worth a few points.
+  await probe('setPieces');
   report.setPieces = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, SP = G.zones.setPieces, out = {};
     const { ZONES } = await import('./src/zones.js');
