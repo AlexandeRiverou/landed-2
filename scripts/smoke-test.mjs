@@ -5046,9 +5046,14 @@ try {
       const gust0 = p.gust.length();
       p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
       put(a.R, a.spring * 0.5, 0); // inside a leg
+      const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(a, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
+      trace.push(loc());
+      SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
       G.step(1 / 30);
+      delete SP.updateArches; // back to the class method
+      trace.push(loc());
       const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead };
+      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +a.R.toFixed(2), spring: +a.spring.toFixed(2), arches: SP.archList.length, trace };
       p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
