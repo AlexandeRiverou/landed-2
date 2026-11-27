@@ -5039,21 +5039,33 @@ try {
       for (let k = 0; k <= 40; k++) { put(0, a.spring * 0.6, -20 + k); clear(); G.step(1 / 30); } // back through: no second bonus
       out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
       hits.length = 0;
-      a.bumpT = 0;
+      // A leg that stands clear of the ground: on a slope a leg can be half buried, and a plane put inside the buried
+      // part is lifted out of the ground above the curve's start, where the ring shoves it instead of the leg.
+      let b = null, side = 1, ly = 0, low = Infinity;
+      for (const c of SP.archList) {
+        const ccs = Math.cos(c.yaw), csn = Math.sin(c.yaw);
+        for (const s of [1, -1]) {
+          const g = G.terrain.surfaceHeight(c.pos.x + s * c.R * ccs, c.pos.z - s * c.R * csn) - c.pos.y;
+          if (g < low && g + 10 < c.spring - 4) { low = g; b = c; side = s; ly = (g + 10 + c.spring - 4) / 2; }
+        }
+      }
       // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
       // back into the leg after the shove.
       const v0 = p.speed, w0 = p.wind.clone();
       const gust0 = p.gust.length();
-      p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
-      put(a.R, a.spring * 0.5, 0); // inside a leg
-      const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(a, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
-      trace.push(loc());
-      SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
-      G.step(1 / 30);
-      delete SP.updateArches; // back to the class method
-      trace.push(loc());
-      const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +a.R.toFixed(2), spring: +a.spring.toFixed(2), arches: SP.archList.length, trace };
+      if (b) {
+        b.bumpT = 0;
+        p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
+        const bcs = Math.cos(b.yaw), bsn = Math.sin(b.yaw);
+        p.pos.set(b.pos.x + side * b.R * bcs, b.pos.y + ly, b.pos.z - side * b.R * bsn); // inside a leg
+        const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(b, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
+        trace.push(loc());
+        SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
+        G.step(1 / 30);
+        delete SP.updateArches; // back to the class method
+        const L = SP.archLocal(b, p.pos.clone());
+        out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - b.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - b.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +b.R.toFixed(2), spring: +b.spring.toFixed(2), ground: +low.toFixed(2), trace };
+      } else out.leg = { noLegClear: SP.archList.map((c) => +c.spring.toFixed(1)) };
       p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
