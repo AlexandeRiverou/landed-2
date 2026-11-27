@@ -5039,8 +5039,10 @@ try {
       const jump = (w, f) => { for (let k = 0; k < 30 * 10 && SP.whaleList.includes(w); k++) { if (w.state === 'air' && apex(w) < 0.6) f(); else p.pos.set(t.x, t.y + 400, t.z); p.grace = 1; clear(); G.step(1 / 30); } }; // grace: no crashing into the sea beside it
       hits.length = 0;
       const s4 = G.score, w = SP.spawnWhale(t.x, t.z, 1.2), side = new t.constructor(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
-      jump(w, () => p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8));
-      out.whaleWhy = { zone: G.zones.current.name, kind: SP.kind, dead: p.dead, stale: !!G.terrain.stale, sea: G.world.seaLevel };
+      const landed0 = !!p.landed;
+      let skims = 0, nearest = Infinity;
+      jump(w, () => { if (skims++) nearest = Math.min(nearest, p.pos.distanceTo(w.pos)); p.landed = null; p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8); }); // nearest: where the last frame left it
+      out.whaleWhy = { zone: G.zones.current.name, kind: SP.kind, dead: p.dead, stale: !!G.terrain.stale, sea: G.world.seaLevel, landed: landed0, skims, nearest: +nearest.toFixed(1) };
       out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length, downed: out.whaleDead };
       hits.length = 0;
       const w2 = SP.spawnWhale(t.x, t.z, 1.2);
