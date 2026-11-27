@@ -37,7 +37,7 @@ export const ZONES = [
   {
     name: 'Dune Sea', blurb: 'Endless golden dunes. Somewhere out here, a cactus is very lonely.',
     world: { palette: 'dunes', tempBias: 1.3, amp: 0.2, roughness: 1.8, terrace: 0, mesa: 0.3, canyon: 0, spikes: 0.1, seaLevel: -40, propDensity: 0.5, floatingIslands: 0 },
-    sky: 'noon', weather: 'dust', clouds: ['#fff8e8', 10], fog: 0.85, mood: 'day', lock: [...LOCK, 'weather', 'sea'],
+    sky: 'noon', weather: 'dust', clouds: ['#fff8e8', 10], fog: 0.85, mood: 'day', setPiece: 'caravan', lock: [...LOCK, 'weather', 'sea'],
   },
   {
     name: 'Frozen Peaks', blurb: 'Jagged ice-cold mountains. The snowmen here are judgmental.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
