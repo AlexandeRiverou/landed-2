@@ -1835,7 +1835,7 @@ export class SetPieces {
           c.hooves.forEach((hf, i) => {
             hf.getWorldPosition(_q);
             const gap = _q.y - (G.terrain.surfaceHeight(_q.x, _q.z) + 0.2 * T.scale), leg = c.legs[i];
-            leg.scale.y = Math.min(1.7, Math.max(0.5, leg.scale.y - gap / (T.leg * T.scale)));
+            leg.scale.y = Math.min(1.7, Math.max(0.5, leg.scale.y + gap / (T.leg * T.scale))); // too high: a longer leg
           });
         }
       }
