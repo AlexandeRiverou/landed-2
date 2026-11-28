@@ -2531,21 +2531,23 @@ try {
         G.zones.enter(ZONES.findIndex((z) => z.name === name));
         step(60);
         for (const kind of ['seagullSteven', 'pigeonDon', 'megaUfo', 'kingDrone']) {
+          ownRolls(`${name}/${kind}`); // each run rolls from its own stream, so earlier checks can't shift where it blinks or perches
           tidy();
           G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
           if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
           G.objectives.start(G.objectives.makeBoss(kind, { mod: null, duo: false }), 'boss');
           const e = G.enemies.list.find((x) => x.boss);
-          let outside = 0, sat = false;
+          let outside = 0, sat = false, gap = Infinity;
           for (let i = 0; i < 30 * 12; i++) {
             G.player.grace = 1; G.player.health = G.player.maxHealth; e.hp = e.maxHp;
             G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
             step(1);
             const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y), floor = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
             if (e.pos.y > roof - e.radius + 1 || e.pos.y < floor) outside++;
+            gap = Math.min(gap, roof - floor);
             sat ||= !!e.mv?.sit;
           }
-          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks };
+          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks, gap: Number.isFinite(gap) ? Math.round(gap) : null, r: Math.round(e.radius) }; // (gap and r: for debugging)
           G.objectives.current.dispose(G);
           G.objectives.current = null;
           tidy();
