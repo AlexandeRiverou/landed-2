@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET, makeDragonTower, DRAGON_FEET } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET, makeDragonTower, DRAGON_FEET, SPIDER_FEET } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -98,6 +98,21 @@ export const LEAP = {
   lashRange: 200, tongue: 230, tell: 1.2, first: 1.6, tellRage: 1, lock: 0.35, out: 0.2, hold: 0.15, back: 0.3, width: 6, dmg: 18, slow: 10,
   dust: ['#c66cff', '#3fd6c6', '#e8e0d0', '#9dff6a'],
 };
+// Queen Quartzelle's walk and her Web Wall (enemy-time s, m, enemy-unit m/s). She walks upside down on the cave roof
+// (on the ground where there's no roof), `walk` m/s (`walkRage` enraged; a gait cycle per `stride` m), turning up to
+// `turn` rad/s, toward a spot `ahead` m in front of you and `side` m to one side (straight at you beyond `chase` m), and follows the rock up and down at up to `climb` m/s (`drop` when
+// she has a long way to go, like dropping off a roof that ends). Attacks: `shards` crystal shards, `shardDmg` each. Every
+// 3rd (2nd enraged), with you within `far` m and not landed: she rears up, front legs high, for `tell` s (`first` the
+// first time, with a tip; `tellRage` enraged) while a web spins up across your path, where you'll be `lead` s after it
+// sets (following you until `lock` s before), facing the way you fly. Then it hangs, solid, for `hold` s: `R` m round
+// (with 0 / 1 / 2 / 3 back crystals shot off), anchored to the roof and floor. Flying through it costs `dmg` and `slow`
+// m/s of speed (it tears); getting by it untouched within `pass` m of its edge, or barrel-rolling through it, is +25 Dodge!
+export const WEB = {
+  walk: 46, walkRage: 54, turn: 1.6, ahead: 80, side: 60, near: 12, chase: 220, stride: 18, climb: 60, drop: 110, tilt: 0.35, far: 300,
+  tell: 1.3, first: 1.9, tellRage: 1, lock: 0.8, lead: 0.9, hold: 3, R: [24, 20, 16, 12], pass: 40, dmg: 16, slow: 14,
+  shards: 5, shardSpeed: 75, shardDmg: 9, spread: 0.1, colors: ['#b48cff', '#e6d8ff'], spokes: 12, turns: 6,
+};
+const SILK = ['#ffffff', '#e6d8ff', '#b48cff', '#7affff'];
 const SAC = new THREE.Color('#ff9ad6'), SAC_HOT = new THREE.Color('#fff0a0');
 const BEAM_LINE = new THREE.CylinderGeometry(1.1, 1.1, 1, 6, 1, true);
 // A world mesh of height 1 along +Y stretched from `from` along unit `dir` for `len` m (an aim line, a tongue).
@@ -376,6 +391,7 @@ export function endMoves(en, e) {
   if (e.mesh.userData.dragon) MOVES.rake.hide(e);
   if (e.mesh.userData.toad) MOVES.leap.hide(e);
   if (e.mesh.userData.turtle) { MOVES.whirl.hide(e); en.G.player.gustDecay = 2.2; }
+  if (e.mesh.userData.spider) MOVES.web.hide(e);
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -389,6 +405,8 @@ export function dropBoss(en, e) {
   if (u.leaves) { en.G.scene.remove(u.leaves); disposeTree(u.leaves); u.leaves.dispose(); u.leaves = null; } // Lady Hootrude's gust leaves
   if (u.rakeFx) { for (const x of Object.values(u.rakeFx)) { en.G.scene.remove(x); disposeTree(x); if (x.dispose) x.dispose(); } u.rakeFx = null; } // Duchess Brûlée's sparkle line, flames and jet
   if (u.dragon) e.mesh.traverse((o) => o.isInstancedMesh && o.dispose()); // her scales' instance buffers (disposeTree frees only geometry and material)
+  if (e.markerOwn) { e.marker.material.dispose(); e.markerOwn = false; } // Queen Quartzelle's flipped marker
+  if (u.webFx) { en.G.scene.remove(u.webFx.group); u.webFx.disc.geometry.dispose(); u.webFx.disc.children[0].geometry.dispose(); u.webFx.silk.dispose(); u.webFx.fill.dispose(); u.webFx = null; } // Queen Quartzelle's web (its threads share BEAM_LINE)
   if (u.whirlFx) { en.G.scene.remove(u.whirlFx); disposeTree(u.whirlFx); u.whirlFx = null; } // Grandma Atolla's whirlpool
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
@@ -2200,6 +2218,227 @@ export const MOVES = {
       return (u.tongueFx = { line, tongue, tip });
     },
     hide(e) { const f = e.mesh.userData.tongueFx; if (f) for (const x of [f.line, f.tongue, f.tip]) x.visible = false; },
+  },
+
+  // Queen Quartzelle (Crystal Caverns): walks the cave roof upside down (the ground where there's no roof) toward a spot
+  // beside your path, firing crystal shards; every 3rd attack (2nd enraged) she rears up and spins a Web Wall across
+  // your path (see WEB). She sets her own height (hop) and turns herself (pose).
+  web: {
+    spawn(en, e) {
+      const m = (e.mv = MOVES.web.fresh(e));
+      MOVES.web.surface(en, e, m, e.pos.x, e.pos.z);
+      e.pos.y = m.goalY;
+      e.flipK = m.roof ? 1 : 0;
+      e.yaw = Math.atan2(en.G.player.pos.x - e.pos.x, en.G.player.pos.z - e.pos.z);
+    },
+    fresh: (e) => ({ roof: (e.flipK || 0) > 0.5, goalY: e.pos.y, side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, webs: 0, snares: 0, passes: 0, volleys: 0, walked: 0, plan: null, web: null }),
+    // What she stands on at (x, z): the roof over it if there is one (m.roof), else the ground; m.goalY her height there.
+    surface(en, e, m, x, z) {
+      const T = en.G.terrain, feet = SPIDER_FEET * e.mesh.scale.x, floor = T.surfaceHeight(x, z, e.pos.y);
+      const roof = T.ceilingHeight(x, z, m.roof ? e.pos.y : floor + 5);
+      m.roof = Number.isFinite(roof) && roof - floor > feet * 3;
+      m.goalY = m.roof ? roof - feet : Math.max(floor, waterLine()) + feet;
+      return m.roof ? roof : floor;
+    },
+    step(en, e, c) {
+      const G = en.G, p = c.p, dt = c.dt, m = (e.mv ||= MOVES.web.fresh(e));
+      e.vel.set(0, 0, 0);
+      MOVES.web.spin(en, e, c);
+      // Walk toward her spot beside your path (not while rearing up), turning a little at a time.
+      const f = flatFwd(p, _a), off = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > WEB.chase ? 0 : WEB.side * m.side;
+      const tx = p.pos.x + f.x * WEB.ahead - f.z * off, tz = p.pos.z + f.z * WEB.ahead + f.x * off;
+      const dx = tx - e.pos.x, dz = tz - e.pos.z, d = Math.hypot(dx, dz), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+      e.yaw ??= Math.atan2(dx, dz);
+      let go = 0;
+      if (m.tell <= 0 && d > WEB.near) {
+        const turn = wrap(Math.atan2(dx, dz) - e.yaw);
+        e.yaw += THREE.MathUtils.clamp(turn, -WEB.turn * dt, WEB.turn * dt);
+        go = (e.enraged ? WEB.walkRage : WEB.walk) * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4))) * Math.min(1, d / 40);
+        const nx = e.pos.x + Math.sin(e.yaw) * go * dt, nz = e.pos.z + Math.cos(e.yaw) * go * dt;
+        // Only where there's rock to hold on to: under a roof if she's on one (no stepping off its edge on purpose), on
+        // dry land if she's on the ground. Blocked, she turns away from it.
+        const T = G.terrain, roofThere = Number.isFinite(T.ceilingHeight(nx, nz, m.roof ? e.pos.y : T.surfaceHeight(nx, nz) + 5));
+        const ok = m.roof ? roofThere : T.surfaceHeight(nx, nz) > waterLine() + 1;
+        if (ok) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { e.yaw += WEB.turn * dt * m.side; go = 0; }
+      }
+      m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
+      m.gait += (m.moving * dt) / WEB.stride;
+      // Follow the rock, and lean with it along her way.
+      const here = MOVES.web.surface(en, e, m, e.pos.x, e.pos.z), dy = m.goalY - e.pos.y, rate = Math.abs(dy) > 30 ? WEB.drop : WEB.climb;
+      e.pos.y += THREE.MathUtils.clamp(dy, -rate * dt, rate * dt);
+      const o = 4 * e.mesh.scale.x, sx = Math.sin(e.yaw) * o, sz = Math.cos(e.yaw) * o, T = G.terrain;
+      const at = (x, z) => (m.roof ? T.ceilingHeight(x, z, e.pos.y) : T.surfaceHeight(x, z, e.pos.y));
+      const ahead = at(e.pos.x + sx, e.pos.z + sz), back = at(e.pos.x - sx, e.pos.z - sz);
+      const slope = Number.isFinite(ahead) && Number.isFinite(back) && Number.isFinite(here) ? -Math.atan2(ahead - back, 2 * o) : 0;
+      m.pitch += (THREE.MathUtils.clamp(slope, -WEB.tilt, WEB.tilt) - m.pitch) * (1 - Math.exp(-dt * 4));
+      if (m.walked > 400) { m.walked = 0; m.side = -m.side; } // now and then she crosses to your other side
+      return true;
+    },
+    hold: (e) => e.mv?.tell > 0,
+    attack(en, e, n) {
+      const m = e.mv, G = en.G, p = G.player;
+      if (!m || m.tell > 0) return;
+      const from = MOVES.web.mouth(e, new THREE.Vector3()), dist = from.distanceTo(p.pos);
+      if (n % (e.enraged ? 2 : 3) === 0 && !m.web && dist < WEB.far && !p.landed && !p.dead) {
+        m.tell = m.tell0 = !e.webTip ? WEB.first : e.enraged ? WEB.tellRage : WEB.tell;
+        if (!e.webTip) { e.webTip = true; G.ui.notify('Web Wall! When she rears up, a web spins across your path. Once it stops following you, turn hard round its edge.', 'warn', 4, 1); }
+        m.plan = { c: new THREE.Vector3(), n: new THREE.Vector3(), R: MOVES.web.size(e) };
+        MOVES.web.aim(en, e, m, p, 1);
+        G.audio.tone(520, m.tell, { type: 'triangle', vol: 0.03, slide: 380 }); // a rising crystal hum
+        return;
+      }
+      const lead = _b.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / WEB.shardSpeed) * 0.6);
+      for (let j = 0; j < WEB.shards; j++) {
+        const d = _c.copy(lead).sub(from).normalize().add(_a.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(WEB.spread));
+        en.fireOrb(from, d, WEB.shardSpeed, WEB.shardDmg, WEB.colors[j % 2], 1.1).src = e;
+      }
+      m.volleys++;
+      m.snap = 0.35;
+      G.audio.tone(1500, 0.12, { type: 'triangle', vol: 0.05, slide: -500 }); // tink
+    },
+    size: (e) => WEB.R[Math.min(3, e.broken?.gem || 0)],
+    // Between her fangs.
+    mouth: (e, out) => { const h = e.mesh.userData.head; h.updateWorldMatrix(true, false); return h.localToWorld(out.set(0, -0.6, 0.7)); },
+    // Where the web goes: where you'll be `lead` s after it sets, facing your way, and clear of the floor and the roof.
+    aim(en, e, m, p, pace) {
+      const P = m.plan, f = flatFwd(p, _a), T = en.G.terrain;
+      P.n.copy(f);
+      P.c.copy(p.pos).addScaledVector(f, p.speed * (m.tell / pace + WEB.lead));
+      const floor = Math.max(T.surfaceHeight(P.c.x, P.c.z, p.pos.y), waterLine()), roof = T.ceilingHeight(P.c.x, P.c.z, p.pos.y);
+      const lo = floor + P.R + 2, hi = Number.isFinite(roof) ? roof - P.R - 2 : Infinity; // (the whole disc clear of the rock, unless the cave's too low)
+      P.c.y = lo > hi ? (floor + roof) / 2 : THREE.MathUtils.clamp(p.pos.y, lo, hi);
+      P.floor = floor;
+      P.roof = roof;
+    },
+    // The tell (the web spinning up, following you), the web setting, you crossing it (or round it), its end.
+    spin(en, e, c) {
+      const m = e.mv, G = en.G, p = c.p, dt = c.dt;
+      m.snap = Math.max(0, (m.snap || 0) - dt);
+      if (m.tell > 0) {
+        if (m.tell > WEB.lock) MOVES.web.aim(en, e, m, p, c.pace || 1);
+        if ((m.tell -= dt) <= 0) {
+          m.tell = 0;
+          m.web = Object.assign(m.plan, { t: 0, near: false });
+          m.plan = null;
+          m.webs++;
+          dodgeStart(en, e);
+          G.audio.tone(260, 0.3, { type: 'sine', vol: 0.06, slide: -60 }); // thrum
+        }
+      }
+      const W = m.web;
+      if (!W) return;
+      W.t += dt;
+      if (!p.dead && !p.landed) {
+        if (p.pos.distanceTo(W.c) < W.R + WEB.pass) W.near = true; // close by it (turned off it, or round its edge)
+        const s0 = _a.subVectors(p.prevPos, W.c).dot(W.n), s1 = _b.subVectors(p.pos, W.c).dot(W.n);
+        if (s0 * s1 <= 0 && s0 !== s1) {
+          const k = s0 / (s0 - s1), r = _c.lerpVectors(p.prevPos, p.pos, k).distanceTo(W.c);
+          if (r < W.R + 3 * (p.sizeScale || 1)) return MOVES.web.tear(en, e, m, _c, !(p.invuln > 0) && !p.dodging);
+          if (r < W.R + WEB.pass) W.near = true;
+        }
+      }
+      if (W.t >= WEB.hold) {
+        m.web = null;
+        if (W.near) { m.passes++; dodgeEnd(en, e); } else m.dodge = null;
+      }
+    },
+    tear(en, e, m, at, hurt) {
+      const G = en.G, p = G.player;
+      m.web = null;
+      G.fx.emit(at.clone(), 34, { colors: SILK, speed: 34, life: 1, size: 4 });
+      if (p.dodging) dodgeEnd(en, e); // rolled through it: that's a dodge too
+      m.dodge = null;
+      if (!hurt) return;
+      m.snares++;
+      p.damage(WEB.dmg);
+      p.speed = Math.max(p.baseSpeed * 0.5, p.speed - WEB.slow);
+      if (!(en.webNews > G.time)) { en.webNews = G.time + 6; G.ui.notify('Webbed! Sticky crystal silk.', 'bad', 2); }
+      G.audio.tone(180, 0.25, { type: 'sawtooth', vol: 0.05, slide: -80 });
+    },
+    // Every frame (animate): her facing and lean, turning over onto the roof, her gait, the rear-up, fangs and feelers,
+    // the crystals' glow, her glint on the rock, the web (spinning up, then solid) and its threads.
+    pose(en, e, dt) {
+      if (e.dead) return MOVES.web.hide(e);
+      const u = e.mesh.userData, m = e.mv, G = en.G, ease = (r) => 1 - Math.exp(-dt * r), t = e.t;
+      if (!m) return;
+      e.flipK = (e.flipK ?? (m.roof ? 1 : 0)) + ((m.roof ? 1 : 0) - (e.flipK ?? 0)) * ease(3); // (on e: a breakaway's fresh move keeps it)
+      e.mesh.rotation.order = 'YXZ';
+      e.mesh.rotation.set(m.pitch, e.yaw ?? 0, 0);
+      u.flip.rotation.z = e.flipK * Math.PI;
+      const tell = m.tell > 0, rear = tell ? 1 : 0, k = tell ? 1 - m.tell / m.tell0 : 0;
+      u.rig.rotation.x += (-0.3 * rear - u.rig.rotation.x) * ease(6);
+      u.rig.position.y = Math.abs(Math.sin(m.gait * TAU)) * 0.08 * Math.min(1, m.moving / 10);
+      const stride = Math.min(1, m.moving / 12);
+      for (const hip of u.spiderLegs) {
+        const h = hip.userData, ph = m.gait * TAU + h.ph, lift = hip.children[0];
+        const up = h.k === 0 && rear ? 0.95 + 0.12 * Math.sin(t * 9 + h.sd) : Math.max(0, Math.cos(ph)) * 0.4 * stride;
+        hip.rotation.y += (h.base - h.sd * Math.sin(ph) * 0.28 * stride * (h.k === 0 && rear ? 0 : 1) - hip.rotation.y) * ease(12); // (-sd: both sides step forward)
+        lift.rotation.z += (up - lift.rotation.z) * ease(12);
+      }
+      const bite = tell ? 0.35 + 0.15 * Math.sin(t * 14) : m.snap > 0 ? 0.5 : 0.05 * Math.sin(t * 2);
+      for (const f of u.fangs) f.rotation.z += (f.userData.sd * bite - f.rotation.z) * ease(14);
+      for (const pp of u.palps) pp.rotation.x = Math.sin(t * 3 + pp.userData.sd) * 0.25 - rear * 0.4;
+      u.gemMat.emissiveIntensity = 1 + 0.35 * Math.sin(t * 2.2) + 2.2 * k + (m.snap > 0 ? 1 : 0);
+      u.glint.position.y = (m.roof ? 1 : -1) * SPIDER_FEET;
+      u.glint.material.opacity = 0.1 + 0.05 * Math.sin(t * 1.7) + 0.25 * k;
+      // The web: a world mesh facing you, spun up (faint, growing) in the tell, then solid; threads to the roof and floor.
+      const W = m.web || m.plan, fx = W ? MOVES.web.webMesh(en, e) : u.webFx;
+      if (!fx) return;
+      fx.group.visible = !!W;
+      if (!W) return;
+      const grow = m.web ? 1 : 0.25 + 0.75 * k, R = W.R * grow;
+      fx.disc.position.copy(W.c);
+      fx.disc.quaternion.setFromUnitVectors(_a.set(0, 0, 1), W.n);
+      fx.disc.scale.setScalar(R);
+      fx.silk.opacity = m.web ? 0.85 + 0.12 * Math.sin(t * 6) * (1 - W.t / WEB.hold) : 0.2 + 0.35 * k;
+      fx.fill.opacity = m.web ? 0.09 : 0.03;
+      const side = _b.set(-W.n.z, 0, W.n.x);
+      fx.threads.forEach((th, j) => {
+        const up = j < 2, end = up ? W.roof : W.floor;
+        const from = _c.copy(W.c).addScaledVector(side, (j % 2 ? 1 : -1) * R * 0.7).add(_a.set(0, (up ? 1 : -1) * R * 0.7, 0));
+        const len = up ? end - from.y : from.y - end;
+        th.visible = Number.isFinite(end) && len > 0 && len < 400;
+        if (!th.visible) return;
+        place(th, from, _a.set(0, up ? 1 : -1, 0), len);
+        th.scale.x = th.scale.z = 0.28;
+      });
+      // Her line to it, from her spinnerets.
+      u.rig.updateWorldMatrix(true, false);
+      const tail = u.rig.localToWorld(_c.set(0, 0.1, -5.3)), to = _a.subVectors(W.c, tail), len = to.length();
+      fx.line.visible = len > 5 && len < 600;
+      if (fx.line.visible) { place(fx.line, tail, to.normalize(), Math.max(1, len - R * 0.9)); fx.line.scale.x = fx.line.scale.z = 0.22; }
+    },
+    webMesh(en, e) {
+      const u = e.mesh.userData;
+      if (u.webFx) return u.webFx;
+      const group = new THREE.Group(), silk = new THREE.MeshBasicMaterial({ color: '#efe6ff', transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide });
+      const fill = new THREE.MeshBasicMaterial({ color: '#b48cff', transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+      const disc = new THREE.Mesh(MOVES.web.webGeo(), silk);
+      disc.add(new THREE.Mesh(new THREE.CircleGeometry(1, 24), fill));
+      const threads = [0, 1, 2, 3].map(() => new THREE.Mesh(BEAM_LINE, silk));
+      const line = new THREE.Mesh(BEAM_LINE, silk);
+      for (const x of [disc, line, ...threads]) { x.frustumCulled = false; group.add(x); }
+      en.G.scene.add(group);
+      return (u.webFx = { group, disc, threads, line, silk, fill });
+    },
+    // A unit orb-web in the XY plane: WEB.spokes spokes and a spiral of WEB.turns turns, as thin flat strips.
+    webGeo() {
+      const pos = [], w = 0.018;
+      const strip = (ax, ay, bx, by) => {
+        const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, nx = (-dy / l) * w, ny = (dx / l) * w;
+        pos.push(ax + nx, ay + ny, 0, ax - nx, ay - ny, 0, bx + nx, by + ny, 0, bx + nx, by + ny, 0, ax - nx, ay - ny, 0, bx - nx, by - ny, 0);
+      };
+      for (let s = 0; s < WEB.spokes; s++) { const a = (s / WEB.spokes) * TAU; strip(0, 0, Math.cos(a), Math.sin(a)); }
+      const steps = WEB.spokes * WEB.turns;
+      for (let s = 0; s < steps; s++) {
+        const a0 = (s / WEB.spokes) * TAU, a1 = ((s + 1) / WEB.spokes) * TAU, r0 = 0.08 + 0.92 * (s / steps), r1 = 0.08 + 0.92 * ((s + 1) / steps);
+        strip(Math.cos(a0) * r0, Math.sin(a0) * r0, Math.cos(a1) * r1, Math.sin(a1) * r1);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      return geo;
+    },
+    hide(e) { const f = e.mesh.userData.webFx; if (f) f.group.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.

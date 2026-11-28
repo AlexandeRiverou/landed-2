@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, makeCrystalSpider, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -403,6 +403,20 @@ export const BOSSES = {
     taunts: ['Grandma Atolla: "Back in my day, islands stayed put."', 'Grandma Atolla: "I am three hundred years old. I have outlived worse pilots than you."', 'Grandma Atolla: "Mind the hut. My hermit crab rents it."', 'Grandma Atolla: "Slow and steady. Mostly steady."'],
     rage: ['Grandma Atolla has put her reading glasses away. Uh oh.', 'The tide has turned. So has Grandma.'],
   },
+  // Land boss for the caves: walks the cave roof upside down (the ground where there's no roof) toward a spot beside your
+  // path, firing crystal shards; every 3rd attack (2nd enraged) she rears up and spins a Web Wall across your path that
+  // hangs there a moment (see WEB). She sets her own height (hop) and turns herself. Her three big back crystals are
+  // breakable (a smaller web), her eight eyes are soft.
+  crystalSpider: {
+    make: makeCrystalSpider, scale: 4, crownY: 1.5, crownZ: -0.3, crownS: 0.45, radius: 22, hp: 95, speed: 0, orbit: 0, dmg: 20,
+    face: 'none', ground: true, hop: true, markerUp: 30, // her move turns her (and over, on the roof)
+    lands: ['Crystal Caverns'],
+    name: 'Queen Quartzelle, the Crystal Spider', short: 'Queen Quartzelle', noun: 'Queen Quartzelle',
+    move: 'web',
+    desc: 'An enormous amethyst spider whose back has grown a glittering crystal garden. She walks the cave roof upside down, running alongside you and firing crystal shards. When she rears up with her front legs high, a web spins across your path: once it stops following you, turn hard round its edge (or roll through it). Shatter her back crystals for a smaller web; her eight glowing eyes are soft.',
+    taunts: ['Queen Quartzelle: "Mind the ceiling, dear. It is my floor."', 'Queen Quartzelle: "Eight eyes, and every one of them is on you."', 'Queen Quartzelle: "Do come into my parlour. Everyone does, eventually."', 'Queen Quartzelle: "I spin silk out of starlight and spite."'],
+    rage: ['Queen Quartzelle is hanging by a thread. A very angry thread.', 'All eight eyes just narrowed.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -490,6 +504,7 @@ const BOSS_BREAK_TEXT = {
   crest: 'Crest popped! Count Ribbiton puffs fewer spores now.',
   dragonHorn: 'Horn snapped off! Duchess Brûlée\'s flames are shorter now.',
   palm: 'Palm tree down! Grandma Atolla has fewer coconuts to throw.',
+  gem: 'Back crystal shattered! Queen Quartzelle\'s webs are smaller now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -953,6 +968,10 @@ export class Enemies {
         cd = 2.6; // coconut volleys; every 3rd attack (2nd enraged) a Whirlpool instead (see the whirl move)
         BOSS_MOVES.whirl.attack(this, e, n);
         break;
+      case 'crystalSpider':
+        cd = 2.4; // crystal shard volleys; every 3rd attack (2nd enraged) a rear-up and a Web Wall instead (see the web move)
+        BOSS_MOVES.web.attack(this, e, n);
+        break;
       case 'harvestOwl':
         cd = 2.8; // acorn volleys; every 3rd attack (2nd enraged) a rear-up and a gust instead (see the gust move)
         BOSS_MOVES.gust.attack(this, e, n);
@@ -1300,7 +1319,11 @@ export class Enemies {
       }
       this.animate(e, dt);
       if (e.marker) {
-        e.marker.position.set(e.pos.x, e.pos.y + (e.def.markerUp ?? e.radius * (e.mesh.scale.x || 1)) + 6, e.pos.z);
+        const up = (e.def.markerUp ?? e.radius * (e.mesh.scale.x || 1)) + 6;
+        const hang = !!(e.mv?.roof && e.mesh.userData.spider);
+        e.marker.position.set(e.pos.x, e.pos.y + (hang ? -up - 6 : up), e.pos.z); // (under Queen Quartzelle on the roof, pointing up at her)
+        if (hang && !e.markerOwn) { e.marker.material = e.marker.material.clone(); e.markerOwn = true; }
+        if (e.markerOwn) e.marker.material.rotation = hang ? Math.PI : 0;
         e.marker.visible = dist > 70 && !calm && !(e.mv?.mir > 0); // (no marker on the real Sun Beetle among its mirages)
       }
 
@@ -1466,6 +1489,7 @@ export class Enemies {
       case 'crest': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'dragonHorn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'palm': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'gem': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -2062,6 +2086,7 @@ export class Enemies {
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
     if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
+    if (u.spider) BOSS_MOVES.web.pose(this, e, dt); // Queen Quartzelle's walk, turning over onto the roof, rear-up and her Web Wall
     if (u.turtle) BOSS_MOVES.whirl.pose(this, e, dt); // Grandma Atolla's nap, paddling, rear-up and her Whirlpool
     if (u.dragon) BOSS_MOVES.rake.pose(this, e, dt); // Duchess Brûlée's rear-up, her Rake and its curtain, her wings
     if (u.segs) BOSS_MOVES.breach.lay(this, e, dt); // Magmadora's body follows her head, in and out of the lava
