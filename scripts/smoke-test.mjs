@@ -1682,7 +1682,7 @@ try {
       if (kind === 'crystalSpider' && e.kind === kind) out.spider = spiderChecks(e);
       if (kind === 'boomboxMech' && e.kind === kind) out.mech = mechChecks(e);
       if (kind === 'hermitKing' && e.kind === kind) out.hermit = hermitChecks(e);
-      if (e.mv) out.loopAt[kind].blocked = e.mv.blocked || 0;
+      if (e.mv) Object.assign(out.loopAt[kind], { blocked: e.mv.blocked || 0, why: e.mv.why, wl: G.world.underwater ? null : G.world.seaLevel, g: Math.round(G.terrain.surfaceHeight(e.pos.x, e.pos.z)), by: Math.round(e.pos.y), py: Math.round(G.player.pos.y) });
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };

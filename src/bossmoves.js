@@ -131,11 +131,11 @@ const WALL_N = 64, _neonA = new THREE.Color(NEON[0]), _neonB = new THREE.Color(N
 // at the eruption, `width` m across your way in `slots` slots `gap` m apart, following you until `lock` s before it
 // erupts. Sand puffs mark each column's spot, then the columns (radius `r`) roar up from the seabed to the surface in
 // `rise` s, hold `last` s and fizz out in `fade` s (harmless while fading). `gaps[k]` slots stay clear (k = claws lost),
-// one of them always `near` m off your line. Flying into a column costs `dmg` hull and `slow` m/s and bobs you up
+// one of them always `nearGap` m off your line. Flying into a column costs `dmg` hull and `slow` m/s and bobs you up
 // `shove` m/s; crossing the row through a gap (or rolling through a column) is a dodge (+25, he's dazed).
 export const GEYSER = {
   ...BEAT, sideways: true, walk: 38, walkRage: 46, stride: 10, tilt: 0.3, dash: 105, dashRage: 120,
-  tell: 1.3, first: 1.9, tellRage: 1, ringMax: 280, lead: 0.9, lock: 0.8, width: 252, slots: 15, gap: 18, r: 7, near: [15, 40],
+  tell: 1.3, first: 1.9, tellRage: 1, ringMax: 280, lead: 0.9, lock: 0.8, width: 252, slots: 15, gap: 18, r: 7, nearGap: [15, 40],
   rise: 0.5, last: 3, fade: 0.6, gaps: [3, 5, 7], dmg: 16, slow: 12, shove: 8, tall: 160,
   bubbles: 4, bubbleSpeed: 70, bubbleDmg: 9, spread: 0.09, colors: ['#e8fbff', '#9ae8ff'],
 };
@@ -505,7 +505,7 @@ function strideCycle(en, e, c, B, ground, tip) {
     // Only on dry land, and never down a cliff (steeper than `cliff`:1) or down to more than `reach` m below you (a pit
     // or a canyon floor would put him out of your reach): blocked, he turns away. Level or uphill is always fine.
     const gn = G.terrain.surfaceHeight(nx, nz), drop = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - gn;
-    if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= B.cliff * go * dt + 0.5 && gn > p.pos.y - B.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; m.blocked = (m.blocked || 0) + 1; }
+    if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= B.cliff * go * dt + 0.5 && gn > p.pos.y - B.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; m.blocked = (m.blocked || 0) + 1; const w = (m.why ||= { wet: 0, cliff: 0, deep: 0 }); if (!(gn > waterLine() + 1)) w.wet++; else if (drop > B.cliff * go * dt + 0.5) w.cliff++; else w.deep++; }
   }
   // He looks where he goes, except when keeping pace ahead of you: then he turns round to face you.
   // (B.sideways: a crab, trailing, walks side-on with his face turned your way.)
@@ -2823,9 +2823,9 @@ export const MOVES = {
       R.x = p.pos.x + f.x * ahead; R.z = p.pos.z + f.z * ahead; R.fx = f.x; R.fz = f.z;
       if (first) {
         const k = Math.min(2, e.broken?.pincer || 0), N = GEYSER.slots, mid = (N - 1) / 2, open = new Set();
-        // One gap a small nudge off your line (`near` m), the rest anywhere but dead ahead, so every row asks for a turn.
+        // One gap a small nudge off your line (`nearGap` m), the rest anywhere but dead ahead, so every row asks for a turn.
         const nearSlots = [];
-        for (let i = 0; i < N; i++) { const o = Math.abs(i - mid) * GEYSER.gap; if (o >= GEYSER.near[0] && o <= GEYSER.near[1]) nearSlots.push(i); }
+        for (let i = 0; i < N; i++) { const o = Math.abs(i - mid) * GEYSER.gap; if (o >= GEYSER.nearGap[0] && o <= GEYSER.nearGap[1]) nearSlots.push(i); }
         open.add(nearSlots[(Math.random() * nearSlots.length) | 0]);
         while (open.size < GEYSER.gaps[k]) { const i = (Math.random() * N) | 0; if (i !== mid) open.add(i); }
         R.cols = [];
