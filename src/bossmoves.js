@@ -112,8 +112,10 @@ export const WEB = {
   // Now and then (every `every` s, `everyRage` enraged, the first `opener` s in) she dashes past you at `dash`/`dashRage`
   // (faster than a boosting plane) to a spot `front` m ahead and `frontSide` m aside, gives up after `dashMax` s, then
   // keeps pace there `show` s, turned round to face you: your clear shot at her eyes (no Web Wall meanwhile). Then she
-  // drops back.
-  every: 12, everyRage: 8, opener: 5, dash: 115, dashRage: 130, dashTurn: 2.6, dashMax: 7, front: 140, frontSide: 25, show: 5,
+  // drops back. Every `dropEvery`th time, once ahead she lets go of the roof and drops on a silk line to the cave floor,
+  // walking there `floorTime` s (an easy target) before she climbs her line back up.
+  every: 6, everyRage: 4, opener: 3, dash: 115, dashRage: 130, dashTurn: 2.6, dashMax: 7, front: 140, frontSide: 25, show: 9,
+  dropEvery: 2, floorTime: 11,
   tell: 1.3, first: 1.9, tellRage: 1, lock: 0.8, lead: 0.9, hold: 3, R: [24, 20, 16, 12], pass: 40, dmg: 16, slow: 14,
   shards: 5, shardSpeed: 75, shardDmg: 9, spread: 0.1, colors: ['#b48cff', '#e6d8ff'], spokes: 12, turns: 6,
 };
@@ -412,6 +414,7 @@ export function dropBoss(en, e) {
   if (u.dragon) e.mesh.traverse((o) => o.isInstancedMesh && o.dispose()); // her scales' instance buffers (disposeTree frees only geometry and material)
   if (e.markerOwn) { e.marker.material.dispose(); e.markerOwn = false; } // Queen Quartzelle's flipped marker
   if (u.webFx) { en.G.scene.remove(u.webFx.group); u.webFx.disc.geometry.dispose(); u.webFx.disc.children[0].geometry.dispose(); u.webFx.silk.dispose(); u.webFx.fill.dispose(); u.webFx = null; } // Queen Quartzelle's web (its threads share BEAM_LINE)
+  if (u.dragFx) { en.G.scene.remove(u.dragFx); u.dragFx.material.dispose(); u.dragFx = null; } // and her drop line
   if (u.whirlFx) { en.G.scene.remove(u.whirlFx); disposeTree(u.whirlFx); u.whirlFx = null; } // Grandma Atolla's whirlpool
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
@@ -2236,12 +2239,12 @@ export const MOVES = {
       e.flipK = m.roof ? 1 : 0;
       e.yaw = Math.atan2(en.G.player.pos.x - e.pos.x, en.G.player.pos.z - e.pos.z);
     },
-    fresh: (e) => ({ roof: (e.flipK || 0) > 0.5, goalY: e.pos.y, side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, webs: 0, snares: 0, passes: 0, volleys: 0, walked: 0, plan: null, web: null, phase: 'trail', clock: WEB.opener, dashes: 0, head: null }),
+    fresh: (e) => ({ roof: (e.flipK || 0) > 0.5, goalY: e.pos.y, side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, webs: 0, snares: 0, passes: 0, volleys: 0, walked: 0, plan: null, web: null, phase: 'trail', clock: WEB.opener, dashes: 0, head: null, floorT: 0, drops: 0, line: false }),
     // What she stands on at (x, z): the roof over it if there is one (m.roof), else the ground; m.goalY her height there.
     surface(en, e, m, x, z) {
       const T = en.G.terrain, feet = SPIDER_FEET * e.mesh.scale.x, floor = T.surfaceHeight(x, z, e.pos.y);
       const roof = T.ceilingHeight(x, z, m.roof ? e.pos.y : floor + 5);
-      m.roof = Number.isFinite(roof) && roof - floor > feet * 3;
+      m.roof = !(m.floorT > 0) && Number.isFinite(roof) && roof - floor > feet * 3; // (not while she's dropped to the floor)
       m.goalY = m.roof ? roof - feet : Math.max(floor, waterLine()) + feet;
       return m.roof ? roof : floor;
     },
@@ -2259,9 +2262,15 @@ export const MOVES = {
         if (!e.dashTip) { e.dashTip = true; G.ui.notify('She scuttles ahead of you and turns round: now her eyes are in your sights!', 'info', 3, 1); }
       } else if (m.phase === 'dash' && (m.clock <= 0 || lead > WEB.front * 0.7)) {
         m.phase = 'show'; m.clock = WEB.show;
+        if (m.roof && m.dashes % WEB.dropEvery === 0) {
+          m.floorT = WEB.floorTime; m.drops++; m.line = true;
+          if (!e.dropTip) { e.dropTip = true; G.ui.notify('She drops to the cave floor on a silk line: hit her while she is down!', 'info', 3, 1); }
+        }
       } else if (m.phase === 'show' && m.clock <= 0) {
         m.phase = 'trail'; m.clock = e.enraged ? WEB.everyRage : WEB.every;
       }
+      if (m.floorT > 0) m.floorT -= dt;
+      if (m.line && m.floorT <= 0 && m.roof && Math.abs(m.goalY - e.pos.y) < 2) m.line = false; // back up her line
       const run = m.phase !== 'trail', far = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > WEB.chase;
       const spot = run ? WEB.front : WEB.ahead, off = run ? WEB.frontSide * m.side : far ? 0 : WEB.side * m.side;
       const tx = p.pos.x + f.x * spot - f.z * off, tz = p.pos.z + f.z * spot + f.x * off;
@@ -2304,7 +2313,11 @@ export const MOVES = {
       const m = e.mv, G = en.G, p = G.player;
       if (!m || m.tell > 0) return;
       const from = MOVES.web.mouth(e, new THREE.Vector3()), dist = from.distanceTo(p.pos);
-      if (n % (e.enraged ? 2 : 3) === 0 && !m.web && m.phase === 'trail' && dist < WEB.far && !p.landed && !p.dead) { // (not mid-dash: that's your window)
+      // A web due while she's ahead (your window) waits until she's trailing again.
+      const due = n % (e.enraged ? 2 : 3) === 0 || m.webDue;
+      if (due && m.phase !== 'trail') m.webDue = true;
+      else if (due && !m.web && dist < WEB.far && !p.landed && !p.dead) {
+        m.webDue = false;
         m.tell = m.tell0 = !e.webTip ? WEB.first : e.enraged ? WEB.tellRage : WEB.tell;
         if (!e.webTip) { e.webTip = true; G.ui.notify('Web Wall! When she rears up, a web spins across your path. Once it stops following you, turn hard round its edge.', 'warn', 4, 1); }
         m.plan = { c: new THREE.Vector3(), n: new THREE.Vector3(), R: MOVES.web.size(e) };
@@ -2407,6 +2420,15 @@ export const MOVES = {
       u.glint.position.y = (m.roof ? 1 : -1) * SPIDER_FEET;
       u.glint.material.opacity = 0.1 + 0.05 * Math.sin(t * 1.7) + 0.25 * k;
       // The web: a world mesh facing you, spun up (faint, growing) in the tell, then solid; threads to the roof and floor.
+      // Her drop line, from her spinnerets straight up to the roof, while she's down off it (and climbing back).
+      const dl = u.dragFx || (m.line ? (u.dragFx = MOVES.web.dragMesh(en)) : null);
+      if (dl) {
+        const roofY = m.line ? G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y) : Infinity;
+        u.rig.updateWorldMatrix(true, false);
+        const from = u.rig.localToWorld(_c.set(0, 0.1, -5.3)), len = roofY - from.y;
+        dl.visible = Number.isFinite(roofY) && len > 2 && len < 500;
+        if (dl.visible) { place(dl, from, _a.set(0, 1, 0), len); dl.scale.x = dl.scale.z = 0.25; }
+      }
       const W = m.web || m.plan, fx = W ? MOVES.web.webMesh(en, e) : u.webFx;
       if (!fx) return;
       fx.group.visible = !!W;
@@ -2463,7 +2485,14 @@ export const MOVES = {
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       return geo;
     },
-    hide(e) { const f = e.mesh.userData.webFx; if (f) f.group.visible = false; },
+    dragMesh(en) {
+      const line = new THREE.Mesh(BEAM_LINE, new THREE.MeshBasicMaterial({ color: '#efe6ff', transparent: true, opacity: 0.55, depthWrite: false }));
+      line.frustumCulled = false;
+      line.visible = false;
+      en.G.scene.add(line);
+      return line;
+    },
+    hide(e) { const u = e.mesh.userData; if (u.webFx) u.webFx.group.visible = false; if (u.dragFx) u.dragFx.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.

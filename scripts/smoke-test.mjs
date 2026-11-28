@@ -1249,16 +1249,16 @@ try {
       fly(30 * 6);
       r.walked = Math.round(r.walked);
       // A straight run along the cave with her starting 60 m behind you: she trails (a plane outruns her), but now and
-      // then dashes past and keeps pace ahead of you, turned round to face you.
+      // then dashes past and keeps pace ahead of you, turned round to face you; every 2nd time she drops to the floor.
       {
         const m = mv(), f0 = new V(p.forward.x, 0, p.forward.z);
         if (f0.lengthSq() < 0.01) f0.set(0, 0, -1);
         f0.normalize();
-        Object.assign(m, { phase: 'trail', clock: 3 });
+        Object.assign(m, { phase: 'trail', clock: 3, dashes: 1, floorT: 0 }); // (her next dash ends in a drop to the floor)
         const at = e.pos.clone().addScaledVector(f0, 60), dashes0 = m.dashes;
         const midY = (x, z) => { const fl = T.surfaceHeight(x, z, e.pos.y), ro = T.ceilingHeight(x, z, fl + 5); return Number.isFinite(ro) ? (fl + ro) / 2 : fl + 40; };
-        const R = { frames: 0, ahead: 0, shown: 0, aheadShown: 0, facing: 0, start: 0 };
-        for (let i = 0; i < 30 * 30; i++) {
+        const R = { frames: 0, ahead: 0, shown: 0, aheadShown: 0, facing: 0, start: 0, floor: 0, line: 0, back: 0 }, drops0 = m.drops;
+        for (let i = 0; i < 30 * 40; i++) {
           at.addScaledVector(f0, p.speed / 30);
           p.pos.set(at.x, midY(at.x, at.z), at.z); p.prevPos.copy(p.pos);
           p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
@@ -1267,6 +1267,9 @@ try {
           if (i === 0) R.start = Math.round(lead);
           R.frames++;
           if (lead > 0) R.ahead++;
+          if (!m.roof && Math.abs(e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) R.floor++; // walking the cave floor
+          if (u.dragFx?.visible) R.line = 1;
+          if (R.floor && m.roof && Math.abs(e.pos.y + feet - T.ceilingHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) R.back = 1; // up on the roof again
           if (m.phase === 'show') {
             R.shown++;
             if (lead > 0) R.aheadShown++;
@@ -1274,7 +1277,7 @@ try {
             if (to.x * Math.sin(e.yaw) + to.z * Math.cos(e.yaw) > 0.7) R.facing++;
           }
         }
-        r.race = { start: R.start, dashes: m.dashes - dashes0, ahead: +(R.ahead / R.frames).toFixed(2), shown: +(R.shown / 30).toFixed(1), aheadShown: R.shown ? +(R.aheadShown / R.shown).toFixed(2) : 0, facing: R.shown ? +(R.facing / R.shown).toFixed(2) : 0 };
+        r.race = { start: R.start, dashes: m.dashes - dashes0, ahead: +(R.ahead / R.frames).toFixed(2), shown: +(R.shown / 30).toFixed(1), aheadShown: R.shown ? +(R.aheadShown / R.shown).toFixed(2) : 0, facing: R.shown ? +(R.facing / R.shown).toFixed(2) : 0, drops: m.drops - drops0, floor: +(R.floor / 30).toFixed(1), line: R.line, back: R.back };
       }
       // The next Web Wall, with the plane flown through its plane `off` m from its middle (`off` 'edge': 25 m past its edge).
       const web = (off) => {
@@ -5568,7 +5571,7 @@ try {
     [(({ dragon: d }) => d?.volleys?.length >= 1 && d.volleys.every((n) => n === 5) && d.on?.tell >= 1.3 && d.on.len === 180 && d.on.hit === 1 && d.on.hull > 0 && d.over?.hit === 0 && d.over.hull === 0 && d.over.dazed >= 1 && d.hornHits >= 1 && d.hornHits <= 12 && d.horns?.len === 90 && d.horns.linger === 0)(report), `Duchess Brûlée: 5-bonbon volleys; a 1.3 s+ sparkle line, then a 180 m sweep of fire along it that burns a plane on the line and spares one 30 m over it (a dodge: she's dazed); with both horns snapped the curtain is 90 m and doesn't linger (${JSON.stringify(report.dragon)})`],
     [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
     [(({ turtle: t }) => t && t.nap && t.gulls && t.woke && t.afloat && t.flip[1] - t.flip[0] > 0.3 && t.volleys.length >= 1 && t.volleys.every((n) => n === 5) && t.mid?.tell >= 1.4 && t.mid.under && t.mid.caught === 1 && t.mid.gust > 0 && t.mid.splash === 0 && t.mid.hull === 0 && t.mid.dazed >= 1 && t.mid.back && t.low?.splash === 1 && t.low.hull > 0 && t.high?.caught === 0 && t.high.gust === 0 && t.high.dazed === 0 && t.palmHits >= 1 && t.palmHits <= 12 && t.after === 2)(report), `Grandma Atolla: she starts asleep like an island (gulls round her palms), wakes when you come near, floats and paddles; 5-coconut volleys, 2 with her palms down; her Whirlpool (1.4 s+ tell, she's under and can't be hurt) pulls a plane 30 m up without hurting it (a dodge: she's dazed), splashes one at the water line, and leaves one 100 m up alone (${JSON.stringify(report.turtle)})`],
-    [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 1 && s.race.ahead >= 0.15 && s.race.ahead <= 0.85 && s.race.shown >= 3 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead now and then and keeps pace there 3 s+ facing you; 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
+    [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.race.drops >= 1 && s.race.floor >= 3 && s.race.line === 1 && s.race.back === 1)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead often and keeps pace there 8 s+ facing you, dropping on a silk line to walk the floor 3 s+ (then back up); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
     [(({ lands: l }) => l && l.spiderElsewhere === 'gooseQueen' && l.spiderHome === 'crystalSpider')(report.serpent || {}), `Queen Quartzelle only comes in the Crystal Caverns, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
