@@ -1345,6 +1345,7 @@ try {
           r.frames++;
           const dy = e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
           if (Math.abs(dy) < 3) r.onGround++;
+          else { const O = (r.offGround ||= {}); const k = `${mv().phase}/${mv().tell > 0 ? 'tell' : mv().slam > 0 ? 'slam' : e.dazed > 0 ? 'dazed' : '-'}/${Math.round(mv().moving || 0) > 20 ? 'fast' : 'slow'}`; O[k] = (O[k] || 0) + 1; }
           // (what the fight looked like, for a failure's report)
           const D = (r.dbg ||= { dy: [1e9, -1e9], gone: 0, landed: 0, dead: 0, front: 0, phase: {}, far: 0, ring: 0, due: 0 });
           D.dy = [Math.min(D.dy[0], Math.round(dy)), Math.max(D.dy[1], Math.round(dy))];
@@ -1505,6 +1506,10 @@ try {
           p.pos.set(at.x, T.surfaceHeight(at.x, at.z) + 60, at.z); p.prevPos.copy(p.pos);
           p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
           p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1);
+          const D = (r.raceDbg ||= { maxMoving: 0, swaps: 0, tells: 0, dazed: 0, blocked0: m.blocked || 0, phases: {}, dEnd: 0, lead: [1e9, -1e9] });
+          D.maxMoving = Math.max(D.maxMoving, Math.round(m.moving || 0)); if (e.mv !== m) D.swaps++; if (m.tell > 0) D.tells++; if (e.dazed > 0) D.dazed++;
+          D.phases[m.phase] = (D.phases[m.phase] || 0) + 1; D.blocked = (m.blocked || 0) - D.blocked0; D.dEnd = Math.round(Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z));
+          const ld = Math.round((e.pos.x - p.pos.x) * f0.x + (e.pos.z - p.pos.z) * f0.z); D.lead = [Math.min(D.lead[0], ld), Math.max(D.lead[1], ld)];
           if (i < 60 || !(m.moving > 10)) continue; // (once he's turned side-on and under way)
           r.trail++;
           if (Math.abs(Math.cos(e.yaw - m.head)) < 0.5) r.sideOn++;
@@ -1569,8 +1574,9 @@ try {
       // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
-      // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so a
-      // spiky land (Volcano Land) or tall peaks the loop has reached can't throw their checks. And calm land has no spikes.
+      // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so tall
+      // peaks the loop has reached can't throw their checks. DJ Gigawatt and Baron Barnacle never step off a cliff, so
+      // their calm land has no rock pinnacles either (Volcano Land's aren't calmed by amp).
       const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes } = G.world;
       const ground = walks || kind === 'harvestOwl' || kind === 'castleDragon';
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
@@ -1580,7 +1586,7 @@ try {
       const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech' || kind === 'hermitKing') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
-      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: 0 }); G.terrain.rebuildAll(); step(30); }
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: kind === 'boomboxMech' || kind === 'hermitKing' ? 0 : spikes }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech' || kind === 'hermitKing') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
