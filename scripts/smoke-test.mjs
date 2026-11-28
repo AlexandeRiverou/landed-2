@@ -1654,6 +1654,7 @@ try {
       if (toadHop) { delete toadHop.a0; out.toadHop = toadHop; }
       if (dragonFly) out.dragonFly = dragonFly;
       const attacks = e.attacks;
+      (out.loopAt ||= {})[kind] = { zone: G.zones.current.name, speed: Math.round(G.player.speed), base: Math.round(G.player.baseSpeed), landed: !!G.player.landed, cave: G.world.cave, city: G.world.city, amp: G.world.amp, y: Math.round(G.player.pos.y - G.terrain.surfaceHeight(G.player.pos.x, G.player.pos.z)) }; // (where each boss's checks ran, for a failure's report)
       if (sea && kind === 'carrier' && e.kind === kind) out.carrier = carrierChecks(e, afloat); // the other sea boss (Grandma Atolla) has her own
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
@@ -1666,6 +1667,7 @@ try {
       if (kind === 'crystalSpider' && e.kind === kind) out.spider = spiderChecks(e);
       if (kind === 'boomboxMech' && e.kind === kind) out.mech = mechChecks(e);
       if (kind === 'hermitKing' && e.kind === kind) out.hermit = hermitChecks(e);
+      if (e.mv) out.loopAt[kind].blocked = e.mv.blocked || 0;
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };

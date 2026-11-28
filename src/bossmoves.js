@@ -505,7 +505,7 @@ function strideCycle(en, e, c, B, ground, tip) {
     // Only on dry land, and never down a cliff (steeper than `cliff`:1) or down to more than `reach` m below you (a pit
     // or a canyon floor would put him out of your reach): blocked, he turns away. Level or uphill is always fine.
     const gn = G.terrain.surfaceHeight(nx, nz), drop = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - gn;
-    if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= B.cliff * go * dt + 0.5 && gn > p.pos.y - B.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; }
+    if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= B.cliff * go * dt + 0.5 && gn > p.pos.y - B.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; m.blocked = (m.blocked || 0) + 1; }
   }
   // He looks where he goes, except when keeping pace ahead of you: then he turns round to face you.
   // (B.sideways: a crab, trailing, walks side-on with his face turned your way.)
