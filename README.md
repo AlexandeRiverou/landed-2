@@ -437,8 +437,8 @@ doesn't by itself, but flying on from where it put you does.
   there once the two openers are done): a giant retro boombox on stompy robot legs and chunky neon sneakers, with two
   pumping speakers, a cassette deck whose reels spin, a bouncing equalizer, a blinking antenna, pink and cyan neon trim
   and a visor of LED eyes. He stomps along the ground toward a spot 80 m ahead of you and 55 m to one side (straight at
-  you beyond 220 m), 40 m/s (48 enraged), his feet on the ground and leaning with the slope (never down into a pit more than
-  40 m below the ground under you), so a plane flying on outruns him. Every 6 s (4 s enraged; first 3 s in) the jets in his sneakers fire and he skates past you at 110 m/s
+  you beyond 220 m), 40 m/s (48 enraged), his feet on the ground and leaning with the slope (never down a cliff, nor down into a
+  pit more than 250 m below you), so a plane flying on outruns him. Every 6 s (4 s enraged; first 3 s in) the jets in his sneakers fire and he skates past you at 110 m/s
   (125 enraged) to a spot 140 m ahead and 25 m aside (giving up after 7 s), then keeps pace there for 9 s turned round
   to face you: your clear shot at his eyes. Most attacks are a volley of 4 neon notes (9 each). Every 3rd attack (every
   2nd enraged), while he's in front of you (not mid-dash; a due one waits) and within 280 m and you're not landed, he
