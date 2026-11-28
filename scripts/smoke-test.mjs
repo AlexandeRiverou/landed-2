@@ -3298,6 +3298,35 @@ try {
   // shot down) and the five newer regular enemies (Umbrella Goon, Grudge Rock, Sniper Owl, Kite Twins, Clingy Moth).
   // Simulated, with nothing else around; world changes for completing an objective are held back, and score, lives and
   // god mode are put back afterwards.
+  // Simulated checks (the rush, the globe boss, the land enemies, the set pieces) run on held frames: a real-time frame
+  // between two of them would step the game by however long the machine took, so each check began from a different
+  // world (a kite pair gone, a squirrel already peeling off, ground under a trestle leg rebuilt) and failed at random.
+  await page.evaluate(() => { window.__smokeFrames.hold = true; }); // no real-time frames until the Game Over checks
+  // Where the world stands as a simulated check begins (printed, not checked): two runs that differ here started apart.
+  const probe = async (name) => console.log('PROBE', name, JSON.stringify(await page.evaluate(() => {
+    const G = window.G, p = G.player, r = (v) => +v.toFixed(3);
+    return { time: r(G.time), pos: [r(p.pos.x), r(p.pos.y), r(p.pos.z)], fwd: [r(p.forward.x), r(p.forward.y), r(p.forward.z)], zone: G.zones.index, enemies: G.enemies.list.map((e) => e.type).join(','), shots: G.enemies.shots.length, chunks: G.terrain.chunks.size, stale: G.terrain.stale, obj: G.objectives.current?.type ?? null, score: G.score, dead: p.dead, landed: !!p.landed, lives: p.lives, power: [...G.powerups.active.keys()].join('+'), seed: G.world.seed, fx: G.fx.live?.length ?? G.fx.particles?.length ?? null };
+  })));
+  // ...and each block of them starts from the same world on every run. The sections before them run on live frames
+  // (stunts, the developer menu, typing secrets, the Game Over card), so the plane, the clock, the objective and the
+  // craters it left differed a little from run to run, and a check far downstream met a different sky. Settle puts
+  // all of that back to fixed values: same time, same spot and heading, a fresh landscape for the same zone.
+  const settle = (time) => page.evaluate((time) => {
+    const G = window.G, p = G.player, E = G.enemies;
+    E.list.slice().forEach((e) => E.removeEnemy(e));
+    E.shots.splice(0).forEach((s) => G.scene.remove(s.mesh));
+    if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
+    G.powerups.active.clear();
+    G.input.keys.clear(); G.input.mouseFire = false; G.input.clearKeyTaps?.();
+    G.hitStop = 0;
+    G.time = time; // later than any run gets here: the clock only ever jumps forward
+    G.zones.enter(G.zones.index, { instant: true });
+    G.terrain.rebuildAll();
+    p.spawn(12000, -17000, 0);
+    G.terrain.update(p.pos, 999);
+  }, time);
+  await settle(2500);
+  await probe('rush');
   const RUSH = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { CEILING, WAVES, GARY } = await import('./src/enemies.js');
@@ -3707,6 +3736,7 @@ try {
         p.pos.y = G.terrain.surfaceHeight(p.pos.x, p.pos.z) + 150;
         p.prevPos.copy(p.pos);
         const k = E.spawn('kites', ahead(120)), kp = k.pair;
+        const start = p.pos.clone();
         p.health = p.maxHealth;
         const r = { ahead: [Infinity, -Infinity], windAt: null, snapAt: null, hitAt: null, lost: 0, red: false, rolled: false };
         for (let i = 0; i < 30 * 12; i++) {
@@ -3714,7 +3744,7 @@ try {
           G.step(1 / 30);
           const t = (i + 1) / 30;
           // What the pair and the sky were doing 3 s in, kept in the report so a failure says why the pair fell behind.
-          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
+          if (i === 89) r.at3 = { kites: kp.kites.map((x) => (E.list.includes(x) ? x.state || 'ok' : 'gone')), why: kp.kites.map((x) => `${x.dead ? 'dead' : 'alive'}/${x.hp}/${Math.round(x.pos.distanceTo(p.pos))}m`).join(' '), moved: Math.round(p.pos.distanceTo(start)), paired: kp.kites.every((x) => x.pair === kp), calm: +E.calmTimer.toFixed(2), scale: G.powerups.enemyTimeScale(), active: [...G.powerups.active.keys()].join('+'), frenzy: !!E.frenzy, relax: G.relax, dead: p.dead, speed: Math.round(p.speed), obj: G.objectives.current?.type || null, others: E.list.filter((x) => !kp.kites.includes(x)).map((x) => x.type).join('+') };
           if (kp.phase === 'park' && !kp.back && t > 2 && r.windAt === null) {
             const a = Math.round(kp.centre.clone().sub(p.pos).dot(p.forward));
             r.ahead = [Math.min(r.ahead[0], a), Math.max(r.ahead[1], a)];
@@ -4594,6 +4624,7 @@ try {
   // Lives and Game Over: each crash costs a life and respawns with a full hull (Relax Mode crashes are free), the hull
   // mends slowly (nothing in the first 10 s after a hit), a promotion repairs it, and losing the last life shows the
   // Game Over card and freezes the game. "Fly again" (a real click, then Enter) starts a fresh run in place.
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // live frames for the Game Over card, clicks and key locks below
   const L = {};
   L.run = await page.evaluate(() => {
     const G = window.G, p = G.player, out = {};
@@ -4720,6 +4751,9 @@ try {
   // Land enemies (Nov 2026): Ember Bats and Magma Spitters spawn only in Volcano Land, Comet Chargers only in the space
   // lands. A spitter under the lava can't be hurt, comes up, spits a fan of fireballs and sinks again; a charger winds
   // up, then charges; a bat flares, then swoops into you.
+  await page.evaluate(() => { window.__smokeFrames.hold = true; }); // held again for the simulated land-enemy and set-piece checks
+  await settle(3200);
+  await probe('landEnemies');
   report.landEnemies = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, out = {};
     const { ZONES } = await import('./src/zones.js');
@@ -4899,6 +4933,7 @@ try {
   // Land set pieces: Volcano Land keeps a few fire geysers on dry rock round the player (none in other lands). A vent
   // idles, rumbles, then blows a pillar of fire: flying through it scorches once per eruption, skimming past is a
   // "Toasty!" near miss worth a few points.
+  await probe('setPieces');
   report.setPieces = await page.evaluate(async () => {
     const G = window.G, p = G.player, E = G.enemies, SP = G.zones.setPieces, out = {};
     const { ZONES } = await import('./src/zones.js');
@@ -5004,16 +5039,35 @@ try {
       for (let k = 0; k <= 40; k++) { put(0, a.spring * 0.6, -20 + k); clear(); G.step(1 / 30); } // back through: no second bonus
       out.thread = { threaded: a.threaded, score: G.score - s3, hits: hits.filter((n) => n === ARCH.dmg).length };
       hits.length = 0;
-      a.bumpT = 0;
+      // A spot in a leg above the ground and the water: an arch can stand on a slope or in a lake, and a plane put
+      // below either is lifted clear (right after a land change, the game moves you up instead of crashing you) to
+      // above the curve's start, where the ring shoves it instead of the leg.
+      let b = null, side = 1, ly = 0, low = Infinity;
+      for (const c of SP.archList) {
+        const ccs = Math.cos(c.yaw), csn = Math.sin(c.yaw);
+        for (const s of [1, -1]) {
+          const x = c.pos.x + s * c.R * ccs, z = c.pos.z - s * c.R * csn;
+          const g = Math.max(G.terrain.surfaceHeight(x, z), G.world.seaLevel) - c.pos.y; // the floor under the leg
+          if (g < low && g + 3 < c.spring - 3) { low = g; b = c; side = s; ly = (g + c.spring) / 2; }
+        }
+      }
       // Nearly still for the one step, so the plane's own flight (whatever heading the world left it on) can't carry it
       // back into the leg after the shove.
       const v0 = p.speed, w0 = p.wind.clone();
       const gust0 = p.gust.length();
-      p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
-      put(a.R, a.spring * 0.5, 0); // inside a leg
-      G.step(1 / 30);
-      const L = SP.archLocal(a, p.pos.clone());
-      out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - a.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - a.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead };
+      if (b) {
+        b.bumpT = 0;
+        p.speed = 0.001; p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
+        const bcs = Math.cos(b.yaw), bsn = Math.sin(b.yaw);
+        p.pos.set(b.pos.x + side * b.R * bcs, b.pos.y + ly, b.pos.z - side * b.R * bsn); // inside a leg
+        const trace = [], ua = SP.updateArches, loc = () => { const q = SP.archLocal(b, p.pos.clone()); return [+q.x.toFixed(2), +q.y.toFixed(2), +q.z.toFixed(2)]; };
+        trace.push(loc());
+        SP.updateArches = function (dt) { trace.push(loc()); const r = ua.call(this, dt); trace.push(loc()); return r; };
+        G.step(1 / 30);
+        delete SP.updateArches; // back to the class method
+        const L = SP.archLocal(b, p.pos.clone());
+        out.leg = { hits: hits.filter((n) => n === ARCH.dmg).length, off: Math.abs(Math.abs(L.x) - b.R) >= ARCH.thick * 1.3 - 0.01, gap: +(Math.abs(L.x) - b.R).toFixed(2), gust0: +gust0.toFixed(1), size: p.sizeScale, dead: p.dead, R: +b.R.toFixed(2), spring: +b.spring.toFixed(2), floor: +low.toFixed(2), trace };
+      } else out.leg = { noLegClear: SP.archList.map((c) => +c.spring.toFixed(1)) };
       p.speed = v0; p.wind.copy(w0);
     }
     // Tropical Archipelago: whales breach out of the sea ahead. Skimming past one in the air is +25 once; the whale is
@@ -5033,8 +5087,10 @@ try {
       const jump = (w, f) => { for (let k = 0; k < 30 * 10 && SP.whaleList.includes(w); k++) { if (w.state === 'air' && apex(w) < 0.6) f(); else p.pos.set(t.x, t.y + 400, t.z); p.grace = 1; clear(); G.step(1 / 30); } }; // grace: no crashing into the sea beside it
       hits.length = 0;
       const s4 = G.score, w = SP.spawnWhale(t.x, t.z, 1.2), side = new t.constructor(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
-      jump(w, () => p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8));
-      out.whaleWhy = { zone: G.zones.current.name, kind: SP.kind, dead: p.dead, stale: !!G.terrain.stale, sea: G.world.seaLevel };
+      const landed0 = !!p.landed;
+      let skims = 0, nearest = Infinity;
+      jump(w, () => { if (skims++) nearest = Math.min(nearest, p.pos.distanceTo(w.pos)); p.landed = null; p.pos.copy(w.pos).addScaledVector(side, WHALE.radius * w.s + 8); }); // nearest: where the last frame left it
+      out.whaleWhy = { zone: G.zones.current.name, kind: SP.kind, dead: p.dead, stale: !!G.terrain.stale, sea: G.world.seaLevel, landed: landed0, skims, nearest: +nearest.toFixed(1) };
       out.pass = { passed: w.passed, splashed: w.splashed, gone: !SP.whaleList.includes(w), score: G.score - s4, hits: hits.filter((n) => n === WHALE.dmg).length, downed: out.whaleDead };
       hits.length = 0;
       const w2 = SP.spawnWhale(t.x, t.z, 1.2);
@@ -5235,6 +5291,7 @@ try {
   // A clock that jumps back mid-flight (the fake April-1 clock below sets performance.now() back to about 0): live
   // frames keep running across it, never step time backwards, and the plane stays finite. Two frames always run
   // after the jump, so this doesn't depend on whether the reload wins the race.
+  await page.evaluate(() => { window.__smokeFrames.hold = false; }); // live frames again: the clock checks below need them
   const jump0 = await page.evaluate(() => {
     const G = window.G, dm = G.devmenu, update = dm.update.bind(dm);
     window.framesSeen = 0;
