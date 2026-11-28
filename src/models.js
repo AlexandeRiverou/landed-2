@@ -2967,3 +2967,158 @@ export function makeIslandTurtle(hat) {
   if (hat) partyHat(head, 1);
   return g;
 }
+
+// Queen Quartzelle, the Crystal Spider (Crystal Caverns boss): a big amethyst-and-violet spider whose abdomen has grown
+// a cluster of glowing crystals, with a little crystal tiara, eight glowing eyes (her soft spot), fangs and feelers.
+// Built standing: feet SPIDER_FEET under her middle. bossmoves turns `flip` upside down when she walks on a cave roof,
+// and works the legs (hip yaw `swing`, `lift`), fangs, feelers and the crystals' glow. Her three big back crystals are
+// breakable (a smaller web). Model units (scaled 4 as a boss).
+export const SPIDER_FEET = 2.1;
+export function makeCrystalSpider(hat) {
+  const g = new THREE.Group(), body = new THREE.Group(), flip = new THREE.Group(), rig = new THREE.Group();
+  g.add(body); // (animateBoss squashes children[0]; `flip` under it is free to turn over)
+  body.add(flip);
+  flip.add(rig);
+  const T = {
+    shell: '#3a2458', shell2: '#2a1844', band: '#d8a83a', band2: '#a87a22', belly: '#5a3a80', hair: '#6a4a90',
+    gem: '#b48cff', gem2: '#8a5ce0', gem3: '#e6d8ff', gem4: '#6a3ac8', eye: '#7affff', eye2: '#c0ffff', fang: '#f0e8ff', leg: '#30204c', joint: '#c89a36',
+  };
+  const hr = (i, k) => { const v = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+  const skin = lam('#ffffff', { vertexColors: true, emissive: '#0c0616' });
+  const gemMat = lam('#ffffff', { vertexColors: true, emissive: '#2a1060', transparent: true, opacity: 0.92 });
+  const glow = basic('#ffffff', { vertexColors: true });
+  const mesh = (parent, parts, mat, t = {}) => add(parent, M(parts), mat, t);
+  // A segment from a to b (in a plane through the y axis, or anywhere): a tapered hex rod.
+  const seg = (a, b, r0, r1, col, s = 6) => {
+    const v = new THREE.Vector3().subVectors(b, a), len = v.length(), geo = P(Cyl(r1, r0, len, s), col);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
+    geo.applyMatrix4(new THREE.Matrix4().compose(a.clone().addScaledVector(v, 0.5), q, new THREE.Vector3(1, 1, 1)));
+    return geo;
+  };
+  // A crystal: a hex prism with a pointed cap, standing along `n` from `at`.
+  const crystal = (out, at, n, h, r, col, cap) => {
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().normalize()), one = new THREE.Vector3(1, 1, 1);
+    const body = P(Cyl(r, r * 0.85, h, 6), col);
+    body.applyMatrix4(new THREE.Matrix4().compose(at.clone().addScaledVector(n, h * 0.5), q, one));
+    const tip = P(Cone(r, h * 0.45, 6), cap);
+    tip.applyMatrix4(new THREE.Matrix4().compose(at.clone().addScaledVector(n, h + h * 0.22), q, one));
+    out.push(body, tip);
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // ---- the body: a domed cephalothorax with gold banding and a big round abdomen ----
+  const B = [];
+  B.push(P(Sph(1, 16, 10), T.shell, { y: 0.15, z: 0.9, sx: 1.35, sy: 0.82, sz: 1.45 })); // cephalothorax
+  B.push(P(Sph(1, 12, 6), T.shell2, { y: -0.2, z: 0.9, sx: 1.2, sy: 0.55, sz: 1.3 })); // its underside (sternum)
+  B.push(P(Tor(1.25, 0.08, 4, 18), T.band, { y: 0.2, z: 0.9, rx: PI / 2, sx: 1.05, sy: 1.12 })); // the gold rim round it
+  for (let k = 0; k < 6; k++) { // the radial grooves on top
+    const a = -1.1 + k * 0.44;
+    B.push(P(Box(0.07, 0.05, 1.1), T.band2, { x: Math.sin(a) * 0.55, y: 0.92, z: 0.75 + Math.cos(a) * 0.35, ry: a }));
+  }
+  B.push(P(Cyl(0.55, 0.7, 0.6, 10), T.shell2, { y: 0.2, z: -0.55, rx: PI / 2 })); // the waist (pedicel)
+  const AZ = -2.65;
+  B.push(P(Sph(1, 20, 14), T.shell, { y: 0.65, z: AZ, sx: 2.05, sy: 1.75, sz: 2.35 })); // abdomen
+  B.push(P(Sph(1, 14, 8), T.belly, { y: 0.2, z: AZ, sx: 1.7, sy: 1.35, sz: 2.1 })); // its paler belly
+  for (let k = 0; k < 4; k++) B.push(P(Tor(1, 0.07, 4, 22), k % 2 ? T.band2 : T.band, { y: 0.65 + 0.12 * k, z: AZ - 1.2 + k * 0.8, sx: 2.0 * Math.sqrt(1 - ((k * 0.8 - 1.2) / 2.35) ** 2), sy: 1.7 * Math.sqrt(1 - ((k * 0.8 - 1.2) / 2.35) ** 2) })); // gold chevron bands
+  for (let k = 0; k < 40; k++) { // bristles
+    const a = hr(k, 1) * PI * 2, b = hr(k, 2) * 0.9 + 0.1;
+    const n = V(Math.cos(a) * Math.sin(b * PI * 0.5) * 2.05, Math.cos(b * PI * 0.5) * 1.75, Math.sin(a) * Math.sin(b * PI * 0.5) * 2.35);
+    B.push(P(Cone(0.05, 0.4, 3), T.hair, { x: n.x, y: 0.65 + n.y, z: AZ + n.z, rx: (hr(k, 3) - 0.5) * 0.8, rz: (hr(k, 4) - 0.5) * 0.8 }));
+  }
+  B.push(P(Cone(0.3, 0.6, 6), T.shell2, { y: 0.1, z: AZ - 2.35, rx: -PI / 2 })); // spinnerets
+  B.push(P(Sph(0.18, 6, 4), T.gem3, { y: 0.1, z: AZ - 2.7 }));
+  mesh(rig, B, skin);
+  // ---- the crystals growing out of her back: a field of small ones, three big breakable ones ----
+  const G1 = [], abd = (a, b) => { // a point on top of the abdomen, and its normal
+    const nx = Math.cos(a) * Math.sin(b), ny = Math.cos(b), nz = Math.sin(a) * Math.sin(b);
+    return [V(nx * 2.0, 0.65 + ny * 1.7, AZ + nz * 2.3), V(nx / 2.05, ny / 1.75, nz / 2.35).normalize()];
+  };
+  for (let k = 0; k < 26; k++) {
+    const [at, n] = abd(hr(k, 5) * PI * 2, 0.15 + hr(k, 6) * 0.85);
+    if (at.y < 1.1) continue;
+    crystal(G1, at.addScaledVector(n, -0.15), n.add(V((hr(k, 7) - 0.5) * 0.5, 0, (hr(k, 8) - 0.5) * 0.5)), 0.5 + hr(k, 9) * 0.7, 0.14 + hr(k, 10) * 0.1, k % 3 ? T.gem : T.gem2, k % 2 ? T.gem3 : T.gem);
+  }
+  mesh(rig, G1, gemMat);
+  const crystals = [];
+  for (const [a, b, h] of [[PI * 0.5, 0.18, 2.3], [PI * 0.5 + 1.0, 0.55, 1.8], [PI * 0.5 - 1.0, 0.55, 1.8]]) {
+    const [at, n] = abd(-a, b), parts = [];
+    const c = new THREE.Group();
+    c.position.copy(at.addScaledVector(n, -0.2));
+    crystal(parts, V(0, 0, 0), n, h, 0.38, T.gem, T.gem3);
+    crystal(parts, V(0.2, 0, 0.1), n.clone().add(V(0.45, 0, 0.2)), h * 0.55, 0.22, T.gem2, T.gem);
+    crystal(parts, V(-0.2, 0, -0.1), n.clone().add(V(-0.4, 0, -0.25)), h * 0.5, 0.2, T.gem4, T.gem3);
+    mesh(c, parts, gemMat);
+    rig.add(c);
+    breakable(g, c, 1.2, 'gem', 1.5);
+    crystals.push(c);
+  }
+  // ---- the head: eight glowing eyes (two big ones in front), a crystal tiara, fangs and feelers ----
+  const head = new THREE.Group();
+  head.position.set(0, 0.35, 2.05);
+  rig.add(head);
+  const E = [];
+  const eyeAt = [[0.34, 0.32, 0.42, 0.26], [-0.34, 0.32, 0.42, 0.26], [0.72, 0.42, 0.18, 0.15], [-0.72, 0.42, 0.18, 0.15], [0.18, 0.66, 0.1, 0.12], [-0.18, 0.66, 0.1, 0.12], [0.6, 0.66, -0.12, 0.1], [-0.6, 0.66, -0.12, 0.1]];
+  for (const [x, y, z, r] of eyeAt) { E.push(P(Sph(r, 10, 8), T.eye, { x, y, z })); E.push(P(Sph(r * 0.45, 6, 4), T.eye2, { x: x * 1.04, y: y + r * 0.3, z: z + r * 0.6 })); }
+  const eyes = add(head, M(E), glow);
+  weak(g, eyes, 1.1, 3); // her eyes are soft
+  const TI = [];
+  for (let k = -2; k <= 2; k++) crystal(TI, V(k * 0.32, 0.6 - Math.abs(k) * 0.06, -0.25 - Math.abs(k) * 0.08), V(k * 0.18, 1, -0.15), 0.35 + (2 - Math.abs(k)) * 0.22, 0.09, k ? T.gem2 : T.gem, T.gem3);
+  TI.push(P(Tor(0.62, 0.05, 4, 16, PI), T.band, { y: 0.6, z: -0.3, rx: -0.1, rz: PI, sy: 0.6 }));
+  TI.push(P(Sph(0.12, 8, 6), '#ffffff', { y: 1.35, z: -0.3 })); // a pearl
+  mesh(head, TI, gemMat);
+  const fangs = [];
+  for (const sd of [-1, 1]) {
+    const f = new THREE.Group();
+    f.position.set(sd * 0.32, -0.05, 0.45);
+    head.add(f);
+    mesh(f, [P(Sph(0.32, 8, 6), T.shell2, { y: -0.15, z: 0.1, sy: 1.3 }), P(Tor(0.12, 0.05, 4, 8), T.band, { y: 0.05, z: 0.1, rx: PI / 2 })], skin);
+    mesh(f, [seg(V(0, -0.45, 0.2), V(-sd * 0.12, -0.85, 0.42), 0.12, 0.05, T.fang), seg(V(-sd * 0.12, -0.85, 0.42), V(-sd * 0.2, -0.98, 0.3), 0.05, 0.02, T.fang)], glow);
+    f.userData.sd = sd;
+    fangs.push(f);
+  }
+  const palps = [];
+  for (const sd of [-1, 1]) {
+    const pp = new THREE.Group();
+    pp.position.set(sd * 0.62, 0.0, 0.35);
+    head.add(pp);
+    mesh(pp, [seg(V(0, 0, 0), V(sd * 0.25, 0.25, 0.6), 0.1, 0.08, T.leg), P(Sph(0.1, 5, 4), T.joint, { x: sd * 0.25, y: 0.25, z: 0.6 }), seg(V(sd * 0.25, 0.25, 0.6), V(sd * 0.3, -0.25, 1.05), 0.08, 0.06, T.leg), P(Sph(0.11, 6, 4), T.hair, { x: sd * 0.3, y: -0.25, z: 1.05 })], skin);
+    pp.userData.sd = sd;
+    palps.push(pp);
+  }
+  // ---- eight legs, each on a hip pivot (its yaw `base`), a lift joint and a knee; banded, with gold joints and a crystal claw ----
+  const legs = [];
+  const phis = [0.85, 0.32, -0.22, -0.72], hipZ = [1.55, 1.0, 0.45, -0.05];
+  for (const sd of [-1, 1]) for (let k = 0; k < 4; k++) {
+    const hip = new THREE.Group(), lift = new THREE.Group();
+    const d = V(sd * Math.cos(phis[k]), 0, Math.sin(phis[k]));
+    hip.position.set(sd * 0.95, 0.05, hipZ[k]);
+    hip.rotation.y = Math.atan2(-d.z, d.x);
+    hip.add(lift);
+    rig.add(hip);
+    const L = k === 0 || k === 3 ? 1.12 : 1; // the front and back pairs reach further
+    const knee = V(2.25 * L, 1.75, 0), foot = V((2.25 + 1.55) * L, -SPIDER_FEET, 0);
+    const LG = [
+      P(Sph(0.24, 8, 6), T.joint), // hip joint
+      seg(V(0, 0, 0), knee, 0.22, 0.17, T.leg),
+      P(Tor(0.2, 0.05, 4, 8), T.band, { x: knee.x * 0.5, y: knee.y * 0.5, rz: -Math.atan2(knee.x, knee.y) + PI / 2, ry: PI / 2 }),
+      P(Sph(0.21, 8, 6), T.joint, { x: knee.x, y: knee.y }),
+      seg(knee, foot, 0.16, 0.06, T.leg),
+      P(Tor(0.14, 0.04, 4, 8), T.band, { x: (knee.x + foot.x) / 2, y: (knee.y + foot.y) / 2, ry: PI / 2, rz: -Math.atan2(foot.x - knee.x, foot.y - knee.y) + PI / 2 }),
+    ];
+    for (let j = 0; j < 5; j++) { // leg hairs
+      const t = 0.15 + j * 0.17, at = knee.clone().lerp(foot, t);
+      LG.push(P(Cone(0.035, 0.35, 3), T.hair, { x: at.x, y: at.y, z: (j % 2 ? 0.12 : -0.12), rz: 0.9, rx: j % 2 ? 0.5 : -0.5 }));
+    }
+    mesh(lift, LG, skin);
+    const claw = [];
+    crystal(claw, foot.clone().add(V(0, 0.2, 0)), V(0.15, -1, 0), 0.35, 0.07, T.gem2, T.gem3);
+    mesh(lift, claw, gemMat);
+    hip.userData = { sd, k, base: hip.rotation.y, ph: (k % 2) ^ (sd > 0 ? 1 : 0) ? PI : 0 };
+    legs.push(hip);
+  }
+  // Glints under her in the dark: a faint violet glow disc that lies on whatever she stands or hangs on (bossmoves).
+  const glint = add(g, new THREE.CircleGeometry(1, 28), new THREE.MeshBasicMaterial({ color: '#8a5cff', transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), { rx: -PI / 2 });
+  glint.scale.setScalar(5.5);
+  Object.assign(g.userData, { spider: true, flip, rig, head, eyes, fangs, palps, spiderLegs: legs, crystals, gemMat, glint, crownOn: head });
+  if (hat) partyHat(head, 1.5);
+  return g;
+}

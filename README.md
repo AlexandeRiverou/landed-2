@@ -413,6 +413,26 @@ doesn't by itself, but flying on from where it put you does.
   she bursts up from the middle with a beak snap (22 hull within 32 m). Caught by the pull and out unhurt: a dodge
   (+25, and she's dazed). Each palm she loses (1.5 hp, 4% of her hp) means one coconut fewer (5, 4, 3, 2). Her pale
   throat is the weak spot. 95 hp.
+- Queen Quartzelle, the Crystal Spider (a land boss of the Crystal Caverns; the deck brings her only there, and first
+  there once the two openers are done): an enormous dark-violet spider with gold bands, whose round abdomen has grown a
+  glittering garden of amethyst crystals, with eight glowing cyan eyes, a little crystal tiara, fangs, feelers and eight
+  long banded legs tipped with crystal claws. She walks the cave roof upside down, feet on the rock and leaning with
+  it, toward a spot 80 m ahead of you and 60 m to one side (straight at you beyond 220 m), 46 m/s (54 enraged), her
+  legs stepping in a proper gait, so a plane flying on outruns her. Every 6 s (4 s enraged; first 3 s in) she dashes
+  past you at 115 m/s (130 enraged), faster than a boosting plane, to a spot 140 m ahead and 25 m aside (giving up after
+  7 s, with a tip the first time), then keeps pace there for 9 s turned round to face you: your clear shot at her
+  eyes (she spins no Web Wall while she's ahead; one due waits till she trails). Every 2nd time, once ahead she lets
+  go of the roof and drops on a silk line to the cave floor (a tip the first time), walking there for 11 s, an easy
+  target, before she climbs her line back up. Then she drops back again. Where there's no roof she turns over and walks the ground. Most attacks are a volley
+  of 5 crystal shards (9 each) from her fangs. Every 3rd attack (every 2nd enraged), with you within 300 m and not
+  landed, she rears up, front legs high and her crystals glowing brighter, for 1.3 s (1.9 s the first time, with a
+  tip; 1 s enraged), while a faint web spins up across your path, where you'll be 0.9 s after it sets, facing the way
+  you fly (it follows you until the last 0.8 s, then holds still: that's your cue to turn). Then it hangs, solid and
+  glowing, for 3 s, 24 m round and clear of the rock, anchored to the roof and floor by threads, with her own line
+  running to it. Flying through it costs 16 hull and 14 m/s of speed (it tears); getting by it untouched within 40 m
+  of its edge, or barrel-rolling through it, is a dodge (+25, and she's dazed). Each back crystal she loses (1.5 hp, 4% of her
+  hp) shrinks the web: 20, 16, then 12 m round. Her eight eyes are the weak spot; on the roof her marker hangs under
+  her, pointing up. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.

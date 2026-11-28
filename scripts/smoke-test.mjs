@@ -187,6 +187,7 @@ try {
     window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.TOAD_FEET_FOR_TEST = (await import('./src/models.js')).TOAD_FEET;
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
+    window.SPIDER_FEET_FOR_TEST = (await import('./src/models.js')).SPIDER_FEET;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1218,6 +1219,98 @@ try {
       r.volleys = r.volleys.slice(0, 3);
       return r;
     };
+    // Queen Quartzelle: in a cave she hangs upside down from the roof, feet on the rock, and walks along it (her legs
+    // swing); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then the web: flying through its
+    // middle snares you (hull and speed lost, it tears), flying past its edge is a dodge (she's dazed); with her three
+    // back crystals shattered the web is 12 m round.
+    const spiderChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, T = G.terrain, mv = () => e.mv || {};
+      const r = { volleys: [], roofed: !!mv().roof, flip: +(e.flipK || 0).toFixed(2), onRock: 0, frames: 0, walked: 0, swing: [9, -9] };
+      const feet = window.SPIDER_FEET_FOR_TEST * e.mesh.scale.x, leg = u.spiderLegs[1];
+      const park = () => {
+        const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        if (d.lengthSq() < 1) d.set(1, 0, 0);
+        p.pos.copy(e.pos).addScaledVector(d.normalize(), 150);
+        p.pos.y = Math.max(T.surfaceHeight(p.pos.x, p.pos.z) + 20, e.pos.y - 60); p.prevPos.copy(p.pos);
+      };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          const shots0 = new Set(G.enemies.shots), v0 = mv().volleys, at = e.pos.clone();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
+          if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
+          if (mv().roof) { r.frames++; if (Math.abs(e.pos.y + feet - T.ceilingHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) r.onRock++; }
+          r.walked += Math.hypot(e.pos.x - at.x, e.pos.z - at.z);
+          const s = leg.rotation.y - leg.userData.base;
+          r.swing = [Math.min(r.swing[0], +s.toFixed(2)), Math.max(r.swing[1], +s.toFixed(2))];
+          if (until()) return true;
+        }
+        return false;
+      };
+      fly(30 * 6);
+      r.walked = Math.round(r.walked);
+      // A straight run along the cave with her starting 60 m behind you: she trails (a plane outruns her), but now and
+      // then dashes past and keeps pace ahead of you, turned round to face you; every 2nd time she drops to the floor.
+      {
+        const m = mv(), f0 = new V(p.forward.x, 0, p.forward.z);
+        if (f0.lengthSq() < 0.01) f0.set(0, 0, -1);
+        f0.normalize();
+        Object.assign(m, { phase: 'trail', clock: 3, dashes: 1, floorT: 0 }); // (her next dash ends in a drop to the floor)
+        const at = e.pos.clone().addScaledVector(f0, 60), dashes0 = m.dashes;
+        const midY = (x, z) => { const fl = T.surfaceHeight(x, z, e.pos.y), ro = T.ceilingHeight(x, z, fl + 5); return Number.isFinite(ro) ? (fl + ro) / 2 : fl + 40; };
+        const R = { frames: 0, ahead: 0, shown: 0, aheadShown: 0, facing: 0, start: 0, floor: 0, line: 0, back: 0 }, drops0 = m.drops;
+        for (let i = 0; i < 30 * 40; i++) {
+          at.addScaledVector(f0, p.speed / 30);
+          p.pos.set(at.x, midY(at.x, at.z), at.z); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1);
+          const lead = (e.pos.x - p.pos.x) * f0.x + (e.pos.z - p.pos.z) * f0.z;
+          if (i === 0) R.start = Math.round(lead);
+          R.frames++;
+          if (lead > 0) R.ahead++;
+          if (!m.roof && Math.abs(e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) R.floor++; // walking the cave floor
+          if (u.dragFx?.visible) R.line = 1;
+          if (R.floor && m.roof && Math.abs(e.pos.y + feet - T.ceilingHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) R.back = 1; // up on the roof again
+          if (m.phase === 'show') {
+            R.shown++;
+            if (lead > 0) R.aheadShown++;
+            const to = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z).normalize();
+            if (to.x * Math.sin(e.yaw) + to.z * Math.cos(e.yaw) > 0.7) R.facing++;
+          }
+        }
+        r.race = { start: R.start, dashes: m.dashes - dashes0, ahead: +(R.ahead / R.frames).toFixed(2), shown: +(R.shown / 30).toFixed(1), aheadShown: R.shown ? +(R.aheadShown / R.shown).toFixed(2) : 0, facing: R.shown ? +(R.facing / R.shown).toFixed(2) : 0, drops: m.drops - drops0, floor: +(R.floor / 30).toFixed(1), line: R.line, back: R.back };
+      }
+      // The next Web Wall, with the plane flown through its plane `off` m from its middle (`off` 'edge': 25 m past its edge).
+      const web = (off) => {
+        if (!fly(30 * 40, () => mv().tell > 0)) return null;
+        const l = { tell: +mv().tell0.toFixed(2), rear: 0, spun: 0 };
+        if (!fly(30 * 4, () => { l.rear = Math.max(l.rear, +u.spiderLegs[0].children[0].rotation.z.toFixed(2)); l.spun = Math.max(l.spun, u.webFx?.group.visible ? 1 : 0); return !!mv().web; })) return l;
+        const m = mv(), W = m.web, sn = m.snares, ps = m.passes, hull = p.health, speed0 = p.speed;
+        Object.assign(l, { R: W.R, drawn: +u.webFx.disc.scale.x.toFixed(1) });
+        const side = new V(-W.n.z, 0, W.n.x), d = off === 'edge' ? W.R + 25 : off;
+        for (let i = 0; i < 4 && m.web === W && m.snares === sn; i++) {
+          // Just in front of it, flying straight at it: the plane's own move this frame takes it through.
+          p.pos.copy(W.c).addScaledVector(side, d).addScaledVector(W.n, -0.5); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), W.n); p.updateAxes();
+          G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); // only her web can touch it here
+          G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
+          p.invuln = 0; p.grace = 1; G.step(1 / 30); // not step(): it makes the plane invulnerable
+          if (W.n.dot(new V().subVectors(p.pos, W.c)) > 0) break; // through (or past) it
+        }
+        Object.assign(l, { snared: m.snares - sn, torn: m.web !== W, hull: +(hull - p.health).toFixed(1), slowed: +(speed0 - p.speed).toFixed(1) });
+        for (let i = 0; i < 30 * 5 && m.web === W; i++) { p.pos.copy(W.c).addScaledVector(W.n, 40 + i * 0.5); p.prevPos.copy(p.pos); p.invuln = 99; G.step(1 / 30); }
+        Object.assign(l, { passed: m.passes - ps, dazed: +(e.dazed || 0).toFixed(1), gone: !u.webFx.group.visible });
+        p.invuln = 99; p.health = p.maxHealth;
+        return l;
+      };
+      r.on = web(0);
+      r.edge = web('edge');
+      for (const c of u.parts.filter((x) => x.name === 'gem')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.gemHits = n; }
+      r.small = web(0)?.R ?? null;
+      r.volleys = r.volleys.slice(0, 4);
+      r.onRock = r.frames ? +(r.onRock / r.frames).toFixed(2) : 0;
+      delete r.frames;
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1238,8 +1331,10 @@ try {
       const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
       // turn, whatever land the loop has reached by now.
-      const roof = (kind === 'toadBaron' || kind === 'islandTurtle') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
-      if (roof) Object.assign(G.world, { cave: 0, tunnels: 0, city: 0, underwater: false });
+      // Duchess Brûlée's Rake check holds the plane at set heights, which a cave roof's push would undo. Queen Quartzelle
+      // is the caves': give her a cave roof (the ground's rebuild below builds it).
+      const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
+      if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon') && place();
@@ -1327,6 +1422,7 @@ try {
       if (kind === 'toadBaron' && e.kind === kind) out.toad = toadChecks(e);
       if (kind === 'castleDragon' && e.kind === kind) out.dragon = dragonChecks(e);
       if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e, turtleNap);
+      if (kind === 'crystalSpider' && e.kind === kind) out.spider = spiderChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1385,6 +1481,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'toadBaron'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Mushroom Forest');
       L.toadHome = draw();
+      // Queen Quartzelle in the caves.
+      O.bossDeck = ['crystalSpider', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.spiderElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'crystalSpider'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Crystal Caverns');
+      L.spiderHome = draw();
       // Duchess Brûlée in the castle lands.
       O.bossDeck = ['castleDragon', 'gooseQueen'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
@@ -1528,6 +1631,7 @@ try {
           if (e.mv?.hops !== undefined) S.hops = e.mv.hops;
           if (kind === 'castleDragon') Object.assign(S, { rakes: e.mv?.rakes || 0, tells: e.rakeTells || 0 });
           if (kind === 'islandTurtle') Object.assign(S, { whirls: e.mv?.whirls || 0, tells: e.whirlTells || 0 });
+          if (kind === 'crystalSpider') Object.assign(S, { webs: e.mv?.webs || 0, tells: e.webTip ? 1 : 0 });
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -5515,6 +5619,8 @@ try {
     [(({ dragon: d }) => d?.volleys?.length >= 1 && d.volleys.every((n) => n === 5) && d.on?.tell >= 1.3 && d.on.len === 180 && d.on.hit === 1 && d.on.hull > 0 && d.over?.hit === 0 && d.over.hull === 0 && d.over.dazed >= 1 && d.hornHits >= 1 && d.hornHits <= 12 && d.horns?.len === 90 && d.horns.linger === 0)(report), `Duchess Brûlée: 5-bonbon volleys; a 1.3 s+ sparkle line, then a 180 m sweep of fire along it that burns a plane on the line and spares one 30 m over it (a dodge: she's dazed); with both horns snapped the curtain is 90 m and doesn't linger (${JSON.stringify(report.dragon)})`],
     [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
     [(({ turtle: t }) => t && t.nap && t.gulls && t.woke && t.afloat && t.flip[1] - t.flip[0] > 0.3 && t.volleys.length >= 1 && t.volleys.every((n) => n === 5) && t.mid?.tell >= 1.4 && t.mid.under && t.mid.caught === 1 && t.mid.gust > 0 && t.mid.splash === 0 && t.mid.hull === 0 && t.mid.dazed >= 1 && t.mid.back && t.low?.splash === 1 && t.low.hull > 0 && t.high?.caught === 0 && t.high.gust === 0 && t.high.dazed === 0 && t.palmHits >= 1 && t.palmHits <= 12 && t.after === 2)(report), `Grandma Atolla: she starts asleep like an island (gulls round her palms), wakes when you come near, floats and paddles; 5-coconut volleys, 2 with her palms down; her Whirlpool (1.4 s+ tell, she's under and can't be hurt) pulls a plane 30 m up without hurting it (a dodge: she's dazed), splashes one at the water line, and leaves one 100 m up alone (${JSON.stringify(report.turtle)})`],
+    [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.race.drops >= 1 && s.race.floor >= 3 && s.race.line === 1 && s.race.back === 1)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead often and keeps pace there 8 s+ facing you, dropping on a silk line to walk the floor 3 s+ (then back up); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
+    [(({ lands: l }) => l && l.spiderElsewhere === 'gooseQueen' && l.spiderHome === 'crystalSpider')(report.serpent || {}), `Queen Quartzelle only comes in the Crystal Caverns, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.toadElsewhere === 'gooseQueen' && l.toadHome === 'toadBaron')(report.serpent || {}), `Count Ribbiton only comes in the mushroom lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -5533,6 +5639,7 @@ try {
         fortGrump: (s) => /udu/.test(s.shields), lavaSerpent: (s) => /dud/.test(s.shields) && s.hazards >= 2, carrier: (s) => s.hazards >= 1 && s.run >= 40, octopus: (s) => s.lead[1] - s.lead[0] >= 150, crab: (s) => s.lateral > 75, puffer: (s) => s.puffShrink >= 40,
         auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes + s.tells >= 1, // (a sparkle line drawn counts: the window may end before the fire)
         islandTurtle: (s) => s.whirls + s.tells >= 1, // (a foam ring drawn counts)
+        crystalSpider: (s) => s.webs + s.tells >= 1, // (a web spinning up counts)
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
