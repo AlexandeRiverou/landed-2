@@ -51,6 +51,8 @@ const seedRandom = async (page) => {
     };
     Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
     Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+    // A page's own seed, so a check can start its own stream from it (see the boss loop) without rolling from this one.
+    Object.defineProperty(window, '__smokeBase', { value: s >>> 0 });
     // Side streams for code whose rolls are paced by a real clock (the music picks its next notes by the audio clock,
     // timers fire on real time): wrapped with __smokeAside, it rolls from its own stream, so how fast the machine ran
     // can't shift the main stream. Each wrapped function gets a stream of its own, keyed by its name, so the real-time
@@ -198,6 +200,7 @@ try {
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
     window.SPIDER_FEET_FOR_TEST = (await import('./src/models.js')).SPIDER_FEET;
     window.MECH_FEET_FOR_TEST = (await import('./src/models.js')).MECH_FEET;
+    window.HERMIT_FEET_FOR_TEST = (await import('./src/models.js')).HERMIT_FEET;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1353,6 +1356,7 @@ try {
           r.frames++;
           const dy = e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
           if (Math.abs(dy) < 3) r.onGround++;
+          else { const O = (r.offGround ||= {}); const k = `${mv().phase}/${mv().tell > 0 ? 'tell' : mv().slam > 0 ? 'slam' : e.dazed > 0 ? 'dazed' : '-'}/${Math.round(mv().moving || 0) > 20 ? 'fast' : 'slow'}`; O[k] = (O[k] || 0) + 1; }
           // (what the fight looked like, for a failure's report)
           const D = (r.dbg ||= { dy: [1e9, -1e9], gone: 0, landed: 0, dead: 0, front: 0, phase: {}, far: 0, ring: 0, due: 0 });
           D.dy = [Math.min(D.dy[0], Math.round(dy)), Math.max(D.dy[1], Math.round(dy))];
@@ -1456,6 +1460,114 @@ try {
       delete r.frames;
       return r;
     };
+    // Baron Barnacle: feet on the seabed (here, the ground) as he scuttles, legs stepping, side-on with his face your way
+    // while he trails; 4-bubble volleys; a drum with both claws up, then a Geyser Row across your path: 12 columns (3
+    // gaps, one a small nudge off your line), a column flown into costs hull and speed and bobs you up, a gap flown
+    // through is a dodge; with both claws off, 7 gaps.
+    const hermitChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, T = G.terrain, mv = () => e.mv || {};
+      const r = { volleys: [], onGround: 0, frames: 0, walked: 0, lift: [9, -9], trail: 0, sideOn: 0, faceYou: 0 };
+      const feet = window.HERMIT_FEET_FOR_TEST * e.mesh.scale.x, leg = u.crabLegs[1];
+      // 150 m from him, 40 m up, facing him (his Geyser Row only comes from in front of you).
+      const park = () => {
+        const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        if (d.lengthSq() < 1) d.set(1, 0, 0);
+        d.normalize();
+        const g0 = e.pos.y - feet;
+        for (let k = 0; k < 12; k++) {
+          p.pos.copy(e.pos).addScaledVector(d, 150);
+          if (Math.abs(T.surfaceHeight(p.pos.x, p.pos.z) - g0) < 25) break;
+          d.applyAxisAngle(new V(0, 1, 0), Math.PI / 6);
+        }
+        p.pos.y = T.surfaceHeight(p.pos.x, p.pos.z) + 40; p.prevPos.copy(p.pos);
+        p.quat.setFromUnitVectors(new V(0, 0, -1), d.negate()); p.updateAxes();
+      };
+      const clear = () => { G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x)); };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          const shots0 = new Set(G.enemies.shots), v0 = mv().volleys, at = e.pos.clone();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
+          if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
+          r.frames++;
+          if (Math.abs(e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) r.onGround++;
+          r.walked += Math.hypot(e.pos.x - at.x, e.pos.z - at.z);
+          r.lift = [Math.min(r.lift[0], +leg.rotation.z.toFixed(2)), Math.max(r.lift[1], +leg.rotation.z.toFixed(2))];
+          if (until()) return true;
+        }
+        return false;
+      };
+      fly(30 * 8);
+      r.walked = Math.round(r.walked);
+      // Flying straight on past him with him trailing (no dash): he scuttles side-on along your way, face toward you.
+      {
+        const m = mv(), f0 = new V(p.forward.x, 0, p.forward.z);
+        if (f0.lengthSq() < 0.01) f0.set(0, 0, -1);
+        f0.normalize();
+        const g0 = e.pos.y - feet, best = { k: 0, v: Infinity }, f = f0.clone();
+        for (let k = 0; k < 12; k++, f.applyAxisAngle(new V(0, 1, 0), Math.PI / 6)) {
+          let v = 0;
+          for (let t = 100; t <= 1500; t += 50) v = Math.max(v, Math.abs(T.surfaceHeight(e.pos.x + f.x * t, e.pos.z + f.z * t) - g0));
+          if (v < best.v) Object.assign(best, { k, v });
+        }
+        f0.applyAxisAngle(new V(0, 1, 0), (best.k * Math.PI) / 6);
+        const at = e.pos.clone().addScaledVector(f0, 40), clock0 = m.clock;
+        for (let i = 0; i < 30 * 8; i++) {
+          m.phase = 'trail'; m.clock = 99;
+          at.addScaledVector(f0, p.speed / 30);
+          p.pos.set(at.x, T.surfaceHeight(at.x, at.z) + 60, at.z); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1);
+          const D = (r.raceDbg ||= { maxMoving: 0, swaps: 0, tells: 0, dazed: 0, blocked0: m.blocked || 0, phases: {}, dEnd: 0, lead: [1e9, -1e9] });
+          D.maxMoving = Math.max(D.maxMoving, Math.round(m.moving || 0)); if (m.clock < 99) D.stepped = (D.stepped || 0) + 1; D.slam = Math.max(D.slam || 0, +(m.slam || 0).toFixed(2)); D.calm = Math.max(D.calm || 0, +G.enemies.calmTimer.toFixed(1)); D.state = e.state; D.quest = !!e.quest; if (e.mv !== m) D.swaps++; if (m.tell > 0) D.tells++; if (e.dazed > 0) D.dazed++;
+          D.phases[m.phase] = (D.phases[m.phase] || 0) + 1; D.blocked = (m.blocked || 0) - D.blocked0; D.dEnd = Math.round(Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z));
+          const ld = Math.round((e.pos.x - p.pos.x) * f0.x + (e.pos.z - p.pos.z) * f0.z); D.lead = [Math.min(D.lead[0], ld), Math.max(D.lead[1], ld)];
+          if (i < 60 || !(m.moving > 10)) continue; // (once he's turned side-on and under way)
+          r.trail++;
+          if (Math.abs(Math.cos(e.yaw - m.head)) < 0.5) r.sideOn++;
+          const to = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z).normalize();
+          if (to.x * Math.sin(e.yaw) + to.z * Math.cos(e.yaw) > 0) r.faceYou++;
+        }
+        m.clock = clock0;
+      }
+      r.sideOn = r.trail ? +(r.sideOn / r.trail).toFixed(2) : 0;
+      r.faceYou = r.trail ? +(r.faceYou / r.trail).toFixed(2) : 0;
+      // The next Geyser Row: wait for the drum, then for the columns, then fly the plane into a column ('hit') or
+      // across the row through a gap ('gap').
+      const row = (how) => {
+        if (!fly(30 * 40, () => mv().tell > 0)) return null;
+        const l = { tell: +mv().tell0.toFixed(2), claws: 0 };
+        if (!fly(30 * 4, () => { l.claws = Math.min(l.claws, +u.claws[0].rotation.x.toFixed(2)); return mv().row?.t >= 0.3; })) return l;
+        const m = mv(), R = m.row, h0 = m.hits, ps = m.passes, hull = p.health, speed0 = p.speed, dazed0 = e.dazed || 0;
+        Object.assign(l, { cols: R.cols.length, gaps: R.open.length, near: R.open.some((o) => Math.abs(o) >= 15 && Math.abs(o) <= 40) ? 1 : 0, ahead: R.open.includes(0) ? 1 : 0, drawn: u.rowFx?.core.visible ? u.rowFx.core.count : 0 });
+        const f = new V(R.fx, 0, R.fz), side = new V(-R.fz, 0, R.fx), o = how === 'hit' ? R.cols[0].o : R.open[0];
+        let slowed = 0, bob = 0;
+        for (let i = 0; i < 40 && m.row === R; i++) {
+          const along = how === 'hit' ? 0.5 : -15 + i;
+          const at = new V(R.x, 0, R.z).addScaledVector(side, o).addScaledVector(f, along);
+          at.y = T.surfaceHeight(at.x, at.z) + 20;
+          p.pos.copy(at); p.prevPos.copy(at);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), f); p.updateAxes();
+          clear();
+          p.invuln = 0; p.grace = 1; const sp = p.speed, gy = p.gust.y; G.step(1 / 30); // not step(): it makes the plane invulnerable
+          if (m.hits > h0 && !slowed) { slowed = +(sp - p.speed).toFixed(1); bob = +(p.gust.y - gy).toFixed(1); }
+          if (how === 'hit' && i > 5) break;
+          if (how === 'gap' && along > 15) break;
+        }
+        Object.assign(l, { hits: m.hits - h0, hull: +(hull - p.health).toFixed(1), slowed, bob, passed: m.passes - ps, dazed: +((e.dazed || 0) - dazed0).toFixed(1) });
+        for (let i = 0; i < 30 * 6 && m.row; i++) { park(); p.invuln = 99; G.step(1 / 30); }
+        l.gone = !m.row && !u.rowFx.group.visible;
+        p.invuln = 99; p.health = p.maxHealth; p.speed = speed0; p.gust.set(0, 0, 0);
+        return l;
+      };
+      r.hit = row('hit');
+      r.gap = row('gap');
+      for (const c of u.parts.filter((x) => x.name === 'pincer')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.clawHits = n; }
+      r.bare = row('gap');
+      r.volleys = r.volleys.slice(0, 4);
+      r.onGround = r.frames ? +(r.onGround / r.frames).toFixed(2) : 0;
+      delete r.frames;
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1464,7 +1576,11 @@ try {
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
       return G.enemies.list.filter((e) => e.boss);
     };
+    // Each boss's turn rolls from its own stream (the page's seed and the boss's name), and so does what comes after the
+    // loop: a new boss (which reshuffles the boss deck) or a change to one boss's checks can't shift every later check.
+    const ownRolls = (name) => window.__smokeSeed?.([...name].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0, (window.__smokeBase ?? 0) ^ 0x811c9dc5));
     for (const kind of Object.keys(window.BOSSES_FOR_TEST)) {
+      ownRolls(kind);
       // A Time Freeze or Slow-Mo grabbed from the last boss's drop would stop this one from attacking.
       G.powerups.active.clear();
       G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
@@ -1473,16 +1589,22 @@ try {
       // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
-      const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
+      // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so tall
+      // peaks or rock pinnacles the loop has reached (Volcano Land's aren't calmed by amp) can't throw their checks. DJ
+      // Gigawatt and Baron Barnacle never step off a cliff, so their calm land has no pinnacles, stepped cliffs, table
+      // mountains or canyons either (a canyon cuts down to the sea level, here 400 m under the land).
+      const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes, terrace, mesa, canyon } = G.world;
+      const strider = kind === 'boomboxMech' || kind === 'hermitKing';
+      const ground = walks || kind === 'harvestOwl' || kind === 'castleDragon';
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
       // turn, whatever land the loop has reached by now.
       // Duchess Brûlée's Rake check holds the plane at set heights, which a cave roof's push would undo. Queen Quartzelle
       // is the caves': give her a cave roof (the ground's rebuild below builds it).
-      const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
+      const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech' || kind === 'hermitKing') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
-      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech') && place();
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: walks && !strider ? spikes : 0 }, strider && { terrace: 0, mesa: 0, canyon: 0 }); G.terrain.rebuildAll(); step(30); }
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech' || kind === 'hermitKing') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -1558,6 +1680,7 @@ try {
       if (toadHop) { delete toadHop.a0; out.toadHop = toadHop; }
       if (dragonFly) out.dragonFly = dragonFly;
       const attacks = e.attacks;
+      (out.loopAt ||= {})[kind] = { zone: G.zones.current.name, speed: Math.round(G.player.speed), base: Math.round(G.player.baseSpeed), landed: !!G.player.landed, cave: G.world.cave, city: G.world.city, amp: G.world.amp, y: Math.round(G.player.pos.y - G.terrain.surfaceHeight(G.player.pos.x, G.player.pos.z)) }; // (where each boss's checks ran, for a failure's report)
       if (sea && kind === 'carrier' && e.kind === kind) out.carrier = carrierChecks(e, afloat); // the other sea boss (Grandma Atolla) has her own
       if (kind === 'fortGrump' && e.kind === kind) out.fort = fortChecks(e);
       if (swim && e.kind === kind) out.serpent = serpentChecks(e);
@@ -1569,14 +1692,17 @@ try {
       if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e, turtleNap);
       if (kind === 'crystalSpider' && e.kind === kind) out.spider = spiderChecks(e);
       if (kind === 'boomboxMech' && e.kind === kind) out.mech = mechChecks(e);
+      if (kind === 'hermitKing' && e.kind === kind) out.hermit = hermitChecks(e);
+      if (e.mv) Object.assign(out.loopAt[kind], { blocked: e.mv.blocked || 0, why: e.mv.why, wl: G.world.underwater ? null : G.world.seaLevel, g: Math.round(G.terrain.surfaceHeight(e.pos.x, e.pos.z)), by: Math.round(e.pos.y), py: Math.round(G.player.pos.y) });
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
       if (spot0) putBack(spot0);
       if (roof) { const { zone, ...flags } = roof; Object.assign(G.world, flags); }
-      if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
+      if (ground) { Object.assign(G.world, { amp, seaLevel, spikes, terrace, mesa, canyon }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    ownRolls('after the boss loop');
     if (!out.carrier) out.carrier = { spawned: false };
     if (!out.serpent) out.serpent = { spawned: false };
     // Magmadora is Volcano Land's: the deck never brings her anywhere else (another boss comes instead), and in Volcano
@@ -1641,6 +1767,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'boomboxMech'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Neon Grid');
       L.mechHome = draw();
+      // Baron Barnacle on the reef.
+      O.bossDeck = ['hermitKing', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.hermitElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'hermitKing'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Sunken Reef');
+      L.hermitHome = draw();
       // Duchess Brûlée in the castle lands.
       O.bossDeck = ['castleDragon', 'gooseQueen'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
@@ -1786,6 +1919,7 @@ try {
           if (kind === 'islandTurtle') Object.assign(S, { whirls: e.mv?.whirls || 0, tells: e.whirlTells || 0 });
           if (kind === 'crystalSpider') Object.assign(S, { webs: e.mv?.webs || 0, tells: e.webTip ? 1 : 0 });
           if (kind === 'boomboxMech') Object.assign(S, { drops: e.mv?.drops || 0, tells: e.dropTip ? 1 : 0 });
+          if (kind === 'hermitKing') Object.assign(S, { rows: e.mv?.rows || 0, tells: e.rowTip ? 1 : 0 });
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -2397,21 +2531,23 @@ try {
         G.zones.enter(ZONES.findIndex((z) => z.name === name));
         step(60);
         for (const kind of ['seagullSteven', 'pigeonDon', 'megaUfo', 'kingDrone']) {
+          ownRolls(`${name}/${kind}`); // each run rolls from its own stream, so earlier checks can't shift where it blinks or perches
           tidy();
           G.player.spawn(G.player.pos.x, G.player.pos.z, Math.atan2(-G.player.forward.x, -G.player.forward.z));
           if (G.objectives.current) { G.objectives.current.dispose(G); G.objectives.current = null; }
           G.objectives.start(G.objectives.makeBoss(kind, { mod: null, duo: false }), 'boss');
           const e = G.enemies.list.find((x) => x.boss);
-          let outside = 0, sat = false;
+          let outside = 0, sat = false, gap = Infinity;
           for (let i = 0; i < 30 * 12; i++) {
             G.player.grace = 1; G.player.health = G.player.maxHealth; e.hp = e.maxHp;
             G.player.nudgeToward(new V(e.pos.x, G.player.pos.y, e.pos.z), 2, 1 / 30);
             step(1);
             const roof = G.terrain.ceilingHeight(e.pos.x, e.pos.z, e.pos.y), floor = G.terrain.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
             if (e.pos.y > roof - e.radius + 1 || e.pos.y < floor) outside++;
+            gap = Math.min(gap, roof - floor);
             sat ||= !!e.mv?.sit;
           }
-          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks };
+          out.moveZones[`${name}/${kind}`] = { outside, sat, attacks: e.attacks, gap: Number.isFinite(gap) ? Math.round(gap) : null, r: Math.round(e.radius) }; // (gap and r: for debugging)
           G.objectives.current.dispose(G);
           G.objectives.current = null;
           tidy();
@@ -5817,6 +5953,8 @@ try {
     [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.race.drops >= 1 && s.race.floor >= 3 && s.race.line === 1 && s.race.back === 1)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead often and keeps pace there 8 s+ facing you, dropping on a silk line to walk the floor 3 s+ (then back up); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
     [(({ mech: s }) => s && s.onGround >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.3 && s.volleys.length >= 1 && s.volleys.every((n) => n === 4) && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.low?.tell >= 1.3 && s.low.crouch > 0.4 && s.low.arms < -1.5 && Math.abs(s.low.H - Math.min(60, Math.max(28, s.low.h0 + 12))) < 0.5 && s.low.drawn === s.low.H && s.low.hits === 1 && s.low.hull > 0 && s.low.slowed >= 4 && s.low.passed === 0 && s.low.gone && s.high?.hits === 0 && s.high.hull === 0 && s.high.passed === 1 && s.high.dazed >= 1 && s.high.gone && s.tall?.H > 28 && Math.abs(s.tall.H - Math.min(60, Math.max(28, s.tall.h0 + 12))) < 0.5 && s.tall.passed === (s.tall.h0 < s.tall.H - 6 ? 1 : 0) && s.aloft?.H === 60 && s.aloft.passed === 0 && s.aloft.hits === 0 && s.speakerHits >= 1 && s.speakerHits <= 12 && s.small?.H < 24 && Math.abs(s.small.H - Math.min(36, Math.max(16, s.small.h0 + 12))) < 0.5)(report), `DJ Gigawatt: feet on the ground as he stomps along, legs swinging; flying straight on with him behind you, he trails but skates ahead often and keeps pace there 8 s+ facing you; 4-note volleys; a 1.3 s+ crouch with his arms up, then a Bass Drop wall riding the ground, 12 m over your height when he stomps (28 m at least, 60 at most), that rattles a plane held low in its way (hull and speed lost) and lets one that climbed over its top go (a dodge: he's dazed; none for a plane already over it); with his speakers busted it's 16 m (${JSON.stringify(report.mech)})`],
     [(({ lands: l }) => l && l.mechElsewhere === 'gooseQueen' && l.mechHome === 'boomboxMech')(report.serpent || {}), `DJ Gigawatt only comes in the digital lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
+    [(({ hermit: s }) => s && s.onGround >= 0.8 && s.walked >= 60 && s.lift[1] - s.lift[0] > 0.1 && s.trail >= 30 && s.sideOn >= 0.7 && s.faceYou >= 0.7 && s.volleys.length >= 1 && s.volleys.every((n) => n === 4) && s.hit?.tell >= 1.3 && s.hit.claws < -0.5 && s.hit.cols === 12 && s.hit.gaps === 3 && s.hit.near === 1 && s.hit.ahead === 0 && s.hit.drawn === 12 && s.hit.hits === 1 && s.hit.hull > 0 && s.hit.slowed >= 4 && s.hit.bob > 0 && s.hit.passed === 0 && s.hit.gone && s.gap?.hits === 0 && s.gap.hull === 0 && s.gap.passed === 1 && s.gap.dazed > 0 && s.gap.gone && s.clawHits >= 1 && s.clawHits <= 12 && s.bare?.cols === 8 && s.bare.gaps === 7 && s.bare.ahead === 0)(report), `Baron Barnacle: feet on the ground as he scuttles, legs stepping, side-on with his face your way while he trails; 4-bubble volleys; a 1.3 s+ drum with his claws up, then a Geyser Row across your path: 12 columns with 3 gaps (one a small nudge off your line, none dead ahead); a column flown into costs hull and speed and bobs you up, a gap flown through is a dodge (he's dazed); with both claws off it has 7 gaps (${JSON.stringify(report.hermit)})`],
+    [(({ lands: l }) => l && l.hermitElsewhere === 'gooseQueen' && l.hermitHome === 'hermitKing')(report.serpent || {}), `Baron Barnacle only comes on the Sunken Reef, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.spiderElsewhere === 'gooseQueen' && l.spiderHome === 'crystalSpider')(report.serpent || {}), `Queen Quartzelle only comes in the Crystal Caverns, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -5838,6 +5976,7 @@ try {
         islandTurtle: (s) => s.whirls + s.tells >= 1, // (a foam ring drawn counts)
         crystalSpider: (s) => s.webs + s.tells >= 1, // (a web spinning up counts)
         boomboxMech: (s) => s.drops + s.tells >= 1, // (a crouch counts)
+        hermitKing: (s) => s.rows + s.tells >= 1, // (a drum counts)
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);

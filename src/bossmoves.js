@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { rand, pick } from './texts.js';
 import { waterLine } from './world.js';
-import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET, makeDragonTower, DRAGON_FEET, SPIDER_FEET, MECH_FEET } from './models.js';
+import { SERPENT_GAP, disposeTree, makeCrown, makeHarvestOak, makeGiantToadstool, TOAD_FEET, makeDragonTower, DRAGON_FEET, SPIDER_FEET, MECH_FEET, HERMIT_FEET } from './models.js';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -124,6 +124,58 @@ export const BEAT = {
 };
 const NEON = ['#ff3ad0', '#3af0ff', '#8a4aff', '#ffffff'];
 const WALL_N = 64, _neonA = new THREE.Color(NEON[0]), _neonB = new THREE.Color(NEON[1]); // the Bass Drop wall's columns, and its top band's two colours
+// Baron Barnacle (geyser, the reef): he walks the seabed like DJ Gigawatt (BEAT's walk numbers), but side-on while he
+// trails (sideways), face and eyestalks turned your way. Most attacks are `bubbles` bubbles from his claws (his mouth
+// once both are off). Every 3rd (2nd enraged), in front of you, he raises both claws and drums the seabed for `tell` s
+// (`first` the first time, with a tip; `tellRage` enraged): a Geyser Row lands `lead` s of flight past where you'll be
+// at the eruption, `width` m across your way in `slots` slots `gap` m apart, following you until `lock` s before it
+// erupts. Sand puffs mark each column's spot, then the columns (radius `r`) roar up from the seabed to the surface in
+// `rise` s, hold `last` s and fizz out in `fade` s (harmless while fading). `gaps[k]` slots stay clear (k = claws lost),
+// one of them always `nearGap` m off your line. Flying into a column costs `dmg` hull and `slow` m/s and bobs you up
+// `shove` m/s; crossing the row through a gap (or rolling through a column) is a dodge (+25, he's dazed).
+export const GEYSER = {
+  ...BEAT, sideways: true, walk: 38, walkRage: 46, stride: 10, tilt: 0.3, dash: 105, dashRage: 120,
+  tell: 1.3, first: 1.9, tellRage: 1, ringMax: 280, lead: 0.9, lock: 0.8, width: 252, slots: 15, gap: 18, r: 7, nearGap: [15, 40],
+  rise: 0.5, last: 3, fade: 0.6, gaps: [3, 5, 7], dmg: 16, slow: 12, shove: 8, tall: 160,
+  bubbles: 4, bubbleSpeed: 70, bubbleDmg: 9, spread: 0.09, colors: ['#e8fbff', '#9ae8ff'],
+};
+const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _q0 = new THREE.Quaternion(), _qFlat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2); // the Geyser Row's instances
+const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _col = new THREE.Color(), RIPPLE = new THREE.Color('#bff4ff');
+// The Geyser Row's shapes, each 1 m tall and about 1 m across (scaled per column). A tube with `ridges` spiral ridges
+// making `turns` turns up it (negative: the other way), `amp` deep, shading from `bottom` at the seabed to `top`.
+function geyserTube(rTop, rBot, ridges, turns, amp, bottom, top) {
+  const geo = new THREE.CylinderGeometry(rTop, rBot, 1, 18, 24, true), pos = geo.attributes.position, c0 = new THREE.Color(bottom), c1 = new THREE.Color(top), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), k = 1 + amp * Math.sin(Math.atan2(z, x) * ridges + y * Math.PI * 2 * turns);
+    pos.setXYZ(i, x * k, y - 0.5, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+// The splash crown on top: a flared cup whose rim breaks into seven ragged petals, pale at the throat, aqua at the tips.
+function geyserCrown() {
+  const geo = new THREE.CylinderGeometry(2.2, 0.8, 1, 28, 3, true), pos = geo.attributes.position, c0 = new THREE.Color('#ffffff'), c1 = new THREE.Color('#5ad8ff'), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), a = Math.atan2(z, x), petal = Math.pow(Math.abs(Math.sin(a * 3.5)), 3);
+    const k = 1 + 0.25 * petal * y;
+    pos.setXYZ(i, x * k, y - 0.5 + 0.7 * petal * y * y, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+// The frothing skirt at the seabed: a low cone of foam, sandy where it meets the floor.
+function geyserSkirt() {
+  const geo = new THREE.CylinderGeometry(0.75, 1.6, 1, 22, 2, true), pos = geo.attributes.position, c0 = new THREE.Color('#d8c8a0'), c1 = new THREE.Color('#e8fbff'), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), k = 1 + 0.12 * Math.sin(Math.atan2(z, x) * 9) * (1 - y);
+    pos.setXYZ(i, x * k, y, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
 export const WEB = {
   walk: 46, walkRage: 54, turn: 1.6, ahead: 80, side: 60, near: 12, chase: 220, stride: 18, climb: 60, drop: 110, tilt: 0.35, far: 300,
   // Now and then (every `every` s, `everyRage` enraged, the first `opener` s in) she dashes past you at `dash`/`dashRage`
@@ -417,6 +469,7 @@ export function endMoves(en, e) {
   if (e.mesh.userData.turtle) { MOVES.whirl.hide(e); en.G.player.gustDecay = 2.2; }
   if (e.mesh.userData.spider) MOVES.web.hide(e);
   if (e.mesh.userData.mech) MOVES.beat.hide(e);
+  if (e.mesh.userData.hermit) MOVES.geyser.hide(e);
   e.mv = null;
 }
 // The boss is gone (death, relax mode): its hazards, stingers and extras go too; guards pop on their next update.
@@ -434,6 +487,7 @@ export function dropBoss(en, e) {
   if (u.webFx) { en.G.scene.remove(u.webFx.group); u.webFx.disc.geometry.dispose(); u.webFx.disc.children[0].geometry.dispose(); u.webFx.silk.dispose(); u.webFx.fill.dispose(); u.webFx = null; } // Queen Quartzelle's web (its threads share BEAM_LINE)
   if (u.dragFx) { en.G.scene.remove(u.dragFx); u.dragFx.material.dispose(); u.dragFx = null; } // and her drop line
   if (u.wallFx) { en.G.scene.remove(u.wallFx.group); u.wallFx.wall.geometry.dispose(); u.wallFx.top.geometry.dispose(); u.wallFx.wallMat.dispose(); u.wallFx.topMat.dispose(); u.wallFx = null; } // DJ Gigawatt's Bass Drop wall
+  if (u.rowFx) { const f = u.rowFx; en.G.scene.remove(f.group); for (const x of f.all) { x.geometry.dispose(); x.dispose(); } for (const mt of f.mats) mt.dispose(); u.rowFx = null; } // Baron Barnacle's Geyser Row
   if (u.whirlFx) { en.G.scene.remove(u.whirlFx); disposeTree(u.whirlFx); u.whirlFx = null; } // Grandma Atolla's whirlpool
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
@@ -451,6 +505,60 @@ function clearBlobs(en, e) {
 // ---------- the moves ----------
 // step(en, e, c) with c = { p, toP, dist, dt, pace, fight }: set e.vel, return true (false: plain orbit / lead slot).
 // hold(e): true while the boss shouldn't start a regular attack. Extra entry points are called from the attack switch.
+
+// The walk shared by the striding land bosses (DJ Gigawatt, Baron Barnacle), B their numbers (see BEAT), ground(en, e,
+// x, z) their standing height there, tip the line shown on their first dash. Sets e.pos, e.yaw and m's gait.
+function strideCycle(en, e, c, B, ground, tip) {
+  const G = en.G, p = c.p, dt = c.dt, m = e.mv;
+  // His run: mostly he trails toward a spot beside your path (a plane outruns him); every so often he skates past
+  // you to a spot well ahead, then keeps pace there facing you. Not while crouching for a Bass Drop (or drumming).
+  const f = flatFwd(p, _a), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  m.clock -= dt;
+  const lead = (e.pos.x - p.pos.x) * f.x + (e.pos.z - p.pos.z) * f.z;
+  if (m.phase === 'trail' && m.clock <= 0 && m.tell <= 0 && !p.landed) {
+    m.phase = 'dash'; m.clock = B.dashMax; m.dashes++;
+    if (!e.dashTip) { e.dashTip = true; G.ui.notify(tip, 'info', 3, 1); }
+  } else if (m.phase === 'dash' && (m.clock <= 0 || lead > B.front * 0.7)) {
+    m.phase = 'show'; m.clock = B.show;
+  } else if (m.phase === 'show' && m.clock <= 0) {
+    m.phase = 'trail'; m.clock = e.enraged ? B.everyRage : B.every;
+  }
+  const run = m.phase !== 'trail', far = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > B.chase;
+  const spot = run ? B.front : B.ahead, off = run ? B.frontSide * m.side : far ? 0 : B.side * m.side;
+  const tx = p.pos.x + f.x * spot - f.z * off, tz = p.pos.z + f.z * spot + f.x * off;
+  const dx = tx - e.pos.x, dz = tz - e.pos.z, d = Math.hypot(dx, dz), turnRate = run ? B.dashTurn : B.turn;
+  e.yaw ??= Math.atan2(dx, dz);
+  m.head ??= e.yaw;
+  let go = 0;
+  // (Keeping pace ahead of you he crouches on the move: a Bass Drop never lets you fly up behind him.)
+  if ((m.phase === 'show' || (m.tell <= 0 && m.slam <= 0)) && d > (m.phase === 'show' ? 1 : B.near)) {
+    const turn = wrap(Math.atan2(dx, dz) - m.head);
+    m.head += THREE.MathUtils.clamp(turn, -turnRate * dt, turnRate * dt);
+    const top = run ? (e.enraged ? B.dashRage : B.dash) : e.enraged ? B.walkRage : B.walk;
+    const want = m.phase === 'show' ? Math.min(top, p.speed / c.pace + d * 1.5) : top * Math.min(1, d / 40);
+    go = want * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4)));
+    const nx = e.pos.x + Math.sin(m.head) * go * dt, nz = e.pos.z + Math.cos(m.head) * go * dt;
+    // Only on dry land, and never down a cliff (steeper than `cliff`:1) or down to more than `reach` m below you (a pit
+    // or a canyon floor would put him out of your reach): blocked, he turns away. Level or uphill is always fine.
+    const gn = G.terrain.surfaceHeight(nx, nz), drop = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - gn;
+    if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= B.cliff * go * dt + 0.5 && gn > p.pos.y - B.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; m.blocked = (m.blocked || 0) + 1; const w = (m.why ||= { wet: 0, cliff: 0, deep: 0 }); if (!(gn > waterLine() + 1)) w.wet++; else if (drop > B.cliff * go * dt + 0.5) w.cliff++; else w.deep++; }
+  }
+  // He looks where he goes, except when keeping pace ahead of you: then he turns round to face you.
+  // (B.sideways: a crab, trailing, walks side-on with his face turned your way.)
+  const toYou = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z);
+  let look = m.phase === 'show' ? toYou : m.head;
+  if (B.sideways && m.phase === 'trail') { const l = m.head + Math.PI / 2, r = m.head - Math.PI / 2; look = Math.abs(wrap(l - toYou)) < Math.abs(wrap(r - toYou)) ? l : r; }
+  e.yaw += THREE.MathUtils.clamp(wrap(look - e.yaw), -B.dashTurn * dt, B.dashTurn * dt);
+  m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
+  m.gait += (Math.min(m.moving, B.walkRage) * dt) / B.stride; // (skating, his legs don't run any faster)
+  // Feet on the ground, and lean with it along his way.
+  const want = ground(en, e, e.pos.x, e.pos.z), dy = want - e.pos.y, rate = Math.max(150, m.moving * 8);
+  e.pos.y += THREE.MathUtils.clamp(dy, -rate * dt, rate * dt);
+  const o = 3 * e.mesh.scale.x, sx = Math.sin(e.yaw) * o, sz = Math.cos(e.yaw) * o, T = G.terrain;
+  const slope = -Math.atan2(T.surfaceHeight(e.pos.x + sx, e.pos.z + sz) - T.surfaceHeight(e.pos.x - sx, e.pos.z - sz), 2 * o);
+  m.pitch += (THREE.MathUtils.clamp(Number.isFinite(slope) ? slope : 0, -B.tilt, B.tilt) - m.pitch) * (1 - Math.exp(-dt * 4));
+  if (m.walked > 400 && !run) { m.walked = 0; m.side = -m.side; }
+}
 
 export const MOVES = {
   // The Mothership: hovers, and every 3rd attack blinks (column warning at the destination, shrink, jump, grow).
@@ -2537,55 +2645,11 @@ export const MOVES = {
     // The ground under a spot (his stomp height where there's none).
     floor: (en, x, z, y0) => { const g = en.G.terrain.surfaceHeight(x, z); return Number.isFinite(g) ? g : y0; },
     step(en, e, c) {
-      const G = en.G, p = c.p, dt = c.dt, m = (e.mv ||= MOVES.beat.fresh());
+      const dt = c.dt, m = (e.mv ||= MOVES.beat.fresh());
       e.vel.set(0, 0, 0);
       MOVES.beat.wave(en, e, c);
       if (m.slam > 0) m.slam -= dt;
-      // His run: mostly he trails toward a spot beside your path (a plane outruns him); every so often he skates past
-      // you to a spot well ahead, then keeps pace there facing you. Not while crouching for a Bass Drop.
-      const f = flatFwd(p, _a), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-      m.clock -= dt;
-      const lead = (e.pos.x - p.pos.x) * f.x + (e.pos.z - p.pos.z) * f.z;
-      if (m.phase === 'trail' && m.clock <= 0 && m.tell <= 0 && !p.landed) {
-        m.phase = 'dash'; m.clock = BEAT.dashMax; m.dashes++;
-        if (!e.dashTip) { e.dashTip = true; G.ui.notify('He skates ahead of you and turns round: now his LED eyes are in your sights!', 'info', 3, 1); }
-      } else if (m.phase === 'dash' && (m.clock <= 0 || lead > BEAT.front * 0.7)) {
-        m.phase = 'show'; m.clock = BEAT.show;
-      } else if (m.phase === 'show' && m.clock <= 0) {
-        m.phase = 'trail'; m.clock = e.enraged ? BEAT.everyRage : BEAT.every;
-      }
-      const run = m.phase !== 'trail', far = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > BEAT.chase;
-      const spot = run ? BEAT.front : BEAT.ahead, off = run ? BEAT.frontSide * m.side : far ? 0 : BEAT.side * m.side;
-      const tx = p.pos.x + f.x * spot - f.z * off, tz = p.pos.z + f.z * spot + f.x * off;
-      const dx = tx - e.pos.x, dz = tz - e.pos.z, d = Math.hypot(dx, dz), turnRate = run ? BEAT.dashTurn : BEAT.turn;
-      e.yaw ??= Math.atan2(dx, dz);
-      m.head ??= e.yaw;
-      let go = 0;
-      // (Keeping pace ahead of you he crouches on the move: a Bass Drop never lets you fly up behind him.)
-      if ((m.phase === 'show' || (m.tell <= 0 && m.slam <= 0)) && d > (m.phase === 'show' ? 1 : BEAT.near)) {
-        const turn = wrap(Math.atan2(dx, dz) - m.head);
-        m.head += THREE.MathUtils.clamp(turn, -turnRate * dt, turnRate * dt);
-        const top = run ? (e.enraged ? BEAT.dashRage : BEAT.dash) : e.enraged ? BEAT.walkRage : BEAT.walk;
-        const want = m.phase === 'show' ? Math.min(top, p.speed / c.pace + d * 1.5) : top * Math.min(1, d / 40);
-        go = want * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4)));
-        const nx = e.pos.x + Math.sin(m.head) * go * dt, nz = e.pos.z + Math.cos(m.head) * go * dt;
-        // Only on dry land, and never down a cliff (steeper than `cliff`:1) or down to more than `reach` m below you (a pit
-        // or a canyon floor would put him out of your reach): blocked, he turns away. Level or uphill is always fine.
-        const gn = G.terrain.surfaceHeight(nx, nz), drop = G.terrain.surfaceHeight(e.pos.x, e.pos.z) - gn;
-        if (gn > waterLine() + 1 && (drop <= 0.5 || (drop <= BEAT.cliff * go * dt + 0.5 && gn > p.pos.y - BEAT.reach))) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; }
-      }
-      // He looks where he goes, except when keeping pace ahead of you: then he turns round to face you.
-      const look = m.phase === 'show' ? Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z) : m.head;
-      e.yaw += THREE.MathUtils.clamp(wrap(look - e.yaw), -BEAT.dashTurn * dt, BEAT.dashTurn * dt);
-      m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
-      m.gait += (Math.min(m.moving, BEAT.walkRage) * dt) / BEAT.stride; // (skating, his legs don't run any faster)
-      // Feet on the ground, and lean with it along his way.
-      const want = MOVES.beat.ground(en, e, e.pos.x, e.pos.z), dy = want - e.pos.y, rate = Math.max(150, m.moving * 8);
-      e.pos.y += THREE.MathUtils.clamp(dy, -rate * dt, rate * dt);
-      const o = 3 * e.mesh.scale.x, sx = Math.sin(e.yaw) * o, sz = Math.cos(e.yaw) * o, T = G.terrain;
-      const slope = -Math.atan2(T.surfaceHeight(e.pos.x + sx, e.pos.z + sz) - T.surfaceHeight(e.pos.x - sx, e.pos.z - sz), 2 * o);
-      m.pitch += (THREE.MathUtils.clamp(Number.isFinite(slope) ? slope : 0, -BEAT.tilt, BEAT.tilt) - m.pitch) * (1 - Math.exp(-dt * 4));
-      if (m.walked > 400 && !run) { m.walked = 0; m.side = -m.side; }
+      strideCycle(en, e, c, BEAT, MOVES.beat.ground, 'He skates ahead of you and turns round: now his LED eyes are in your sights!');
       return true;
     },
     hold: (e) => e.mv?.tell > 0,
@@ -2731,6 +2795,262 @@ export const MOVES = {
       return (u.wallFx = { group, wall, top, wallMat, topMat });
     },
     hide(e) { const f = e.mesh.userData.wallFx; if (f) f.group.visible = false; },
+  },
+
+  // Baron Barnacle: scuttles the seabed (strideCycle, side-on while he trails), bubble volleys, and the Geyser Row.
+  geyser: {
+    spawn(en, e) {
+      e.mv = MOVES.geyser.fresh();
+      e.pos.y = MOVES.geyser.ground(en, e, e.pos.x, e.pos.z);
+      e.yaw = Math.atan2(en.G.player.pos.x - e.pos.x, en.G.player.pos.z - e.pos.z);
+    },
+    fresh: () => ({ side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, slam: 0, rows: 0, hits: 0, passes: 0, volleys: 0, walked: 0, phase: 'trail', clock: GEYSER.opener, dashes: 0, head: null, row: null, due: false }),
+    // His body's height standing at (x, z): the seabed (or the ground), plus his legs.
+    ground: (en, e, x, z) => Math.max(en.G.terrain.surfaceHeight(x, z, e.pos.y), waterLine()) + HERMIT_FEET * e.mesh.scale.x,
+    floor: (en, x, z, y0) => { const g = en.G.terrain.surfaceHeight(x, z); return Number.isFinite(g) ? g : y0; },
+    // A column's top: the sea surface underwater, else `tall` m over the ground.
+    top: (en, g) => (en.G.world.underwater ? en.G.world.seaLevel : g + GEYSER.tall),
+    step(en, e, c) {
+      const dt = c.dt, m = (e.mv ||= MOVES.geyser.fresh());
+      e.vel.set(0, 0, 0);
+      MOVES.geyser.row(en, e, c);
+      if (m.slam > 0) m.slam -= dt;
+      strideCycle(en, e, c, GEYSER, MOVES.geyser.ground, 'He scuttles ahead of you and turns round: now his eyes on stalks are in your sights!');
+      return true;
+    },
+    hold: (e) => e.mv?.tell > 0,
+    attack(en, e, n) {
+      const m = e.mv, G = en.G, p = G.player;
+      if (!m || m.tell > 0) return;
+      const from = MOVES.geyser.mouth(e, new THREE.Vector3()), dist = from.distanceTo(p.pos);
+      // A Geyser Row only comes from in front of you, where you can see him drum (not mid-dash): a due one waits.
+      const due = n % (e.enraged ? 2 : 3) === 0 || m.due;
+      const fx = p.forward.x, fz = p.forward.z, fl = Math.hypot(fx, fz) || 1, tx = e.pos.x - p.pos.x, tz = e.pos.z - p.pos.z;
+      const front = (fx * tx + fz * tz) / (fl * (Math.hypot(tx, tz) || 1)) > 0.3;
+      if (due && (m.phase === 'dash' || !front)) m.due = true;
+      else if (due && !m.row && dist < GEYSER.ringMax && !p.landed && !p.dead) {
+        m.due = false;
+        m.tell = m.tell0 = !e.rowTip ? GEYSER.first : e.enraged ? GEYSER.tellRage : GEYSER.tell;
+        if (!e.rowTip) { e.rowTip = true; G.ui.notify('Geyser Row! When he drums the seabed, bubble geysers erupt across your path where the sand puffs. Fly through a gap!', 'warn', 4, 1); }
+        MOVES.geyser.place(en, e, true);
+        return;
+      }
+      const aim = _b.copy(p.pos).addScaledVector(p.forward, p.speed * (dist / GEYSER.bubbleSpeed) * 0.6);
+      for (let j = 0; j < GEYSER.bubbles; j++) {
+        const d = _c.copy(aim).sub(from).normalize().add(_a.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(GEYSER.spread));
+        en.fireOrb(from, d, GEYSER.bubbleSpeed, GEYSER.bubbleDmg, GEYSER.colors[j % 2], 1.2).src = e;
+      }
+      m.volleys++;
+      m.snap = 0.35;
+      G.audio.tone(520, 0.12, { type: 'sine', vol: 0.05, slide: 380 }); // a bubbly bloop
+    },
+    // Between the claws that are left (his mouth once both are off).
+    mouth(e, out) {
+      const u = e.mesh.userData, left = u.claws.filter((cl) => cl.userData.wr.visible);
+      if (left.length) { const at = left[(e.mv?.volleys || 0) % left.length].userData.pinch; at.updateWorldMatrix(true, false); return at.localToWorld(out.set(0, 0, 1)); }
+      u.rig.updateWorldMatrix(true, false);
+      return u.rig.localToWorld(out.set(0, 0.1, 3.1));
+    },
+    // Where the row lands (first: pick its gaps): across your way, lead s of flight past where you'll be at the eruption.
+    place(en, e, first) {
+      const m = e.mv, p = en.G.player, f = flatFwd(p, _a), s = e.mesh.scale.x;
+      const ahead = p.speed * (Math.max(0, m.tell) + GEYSER.rise + GEYSER.lead);
+      const R = (m.row ||= { x: 0, z: 0, fx: 0, fz: 1, cols: [], t: -1, hit: false, prev: null, y0: e.pos.y - HERMIT_FEET * s });
+      R.x = p.pos.x + f.x * ahead; R.z = p.pos.z + f.z * ahead; R.fx = f.x; R.fz = f.z;
+      if (first) {
+        const k = Math.min(2, e.broken?.pincer || 0), N = GEYSER.slots, mid = (N - 1) / 2, open = new Set();
+        // One gap a small nudge off your line (`nearGap` m), the rest anywhere but dead ahead, so every row asks for a turn.
+        const nearSlots = [];
+        for (let i = 0; i < N; i++) { const o = Math.abs(i - mid) * GEYSER.gap; if (o >= GEYSER.nearGap[0] && o <= GEYSER.nearGap[1]) nearSlots.push(i); }
+        open.add(nearSlots[(Math.random() * nearSlots.length) | 0]);
+        while (open.size < GEYSER.gaps[k]) { const i = (Math.random() * N) | 0; if (i !== mid) open.add(i); }
+        R.cols = [];
+        for (let i = 0; i < N; i++) if (!open.has(i)) R.cols.push({ o: (i - mid) * GEYSER.gap, x: 0, z: 0, g: 0 });
+        R.open = [...open].sort((a, b) => a - b).map((i) => (i - mid) * GEYSER.gap);
+      }
+      for (const C of R.cols) { C.x = R.x - R.fz * C.o; C.z = R.z + R.fx * C.o; C.g = MOVES.geyser.floor(en, C.x, C.z, R.y0); }
+    },
+    // The drum counts down (the row follows you until lock s before it erupts); then the row erupts, holds and fizzes out.
+    row(en, e, c) {
+      const m = e.mv, G = en.G, p = c.p, dt = c.dt, R = m.row;
+      if (m.tell > 0) {
+        m.tell -= dt;
+        if (m.tell > GEYSER.lock) MOVES.geyser.place(en, e, false);
+        // sand puffs on each column's spot (dark sand, so they read in the murk)
+        if (R && Math.random() < dt * 14) {
+          const C = R.cols[(Math.random() * R.cols.length) | 0];
+          if (C) G.fx.emit(_c.set(C.x, C.g + 1.5, C.z), 6, { colors: ['#6a5034', '#8a6a44', '#c8b890'], speed: 10, life: 0.9, size: 3.5, up: 6 });
+        }
+        if (m.drumT === undefined || G.time > m.drumT) { m.drumT = G.time + 0.22; G.audio.tone(90, 0.1, { type: 'sine', vol: 0.1, slide: -30 }); } // the drumbeat
+        if (m.tell <= 0 && R) {
+          R.t = 0;
+          m.rows++;
+          m.slam = 0.4;
+          dodgeStart(en, e);
+          G.audio.tone(140, 0.8, { type: 'sawtooth', vol: 0.05, slide: 260 }); // the roar
+        }
+      }
+      if (!R || R.t < 0) return;
+      R.t += dt;
+      const up = Math.min(1, R.t / GEYSER.rise), live = R.t < GEYSER.rise + GEYSER.last;
+      if (R.t > GEYSER.rise + GEYSER.last + GEYSER.fade) { m.row = null; m.dodge = null; return; }
+      // Bubbles boiling up each column (capped: a few per frame).
+      if (R.t < GEYSER.rise + GEYSER.last && Math.random() < 0.7) {
+        const C = R.cols[(Math.random() * R.cols.length) | 0];
+        if (C) G.fx.emit(_c.set(C.x + rand(-3, 3), C.g + rand(2, 40), C.z + rand(-3, 3)), 2, { colors: ['#ffffff', '#cff6ff'], speed: 4, life: 1.2, size: 2.2, up: 24 });
+      }
+      if (!live || up < 0.5 || p.dead || p.landed) return;
+      // Inside a column (under its top, which has risen up%): a hit, once per row.
+      if (!R.hit) for (const C of R.cols) {
+        const top = C.g + (MOVES.geyser.top(en, C.g) - C.g) * up;
+        if (Math.hypot(p.pos.x - C.x, p.pos.z - C.z) < GEYSER.r && p.pos.y > C.g - 2 && p.pos.y < top + 2) {
+          R.hit = true;
+          if (p.dodging) { dodgeEnd(en, e); break; } // rolled through it: a dodge
+          if (!(p.invuln > 0)) {
+            m.hits++;
+            p.damage(GEYSER.dmg);
+            p.speed = Math.max(p.baseSpeed * 0.5, p.speed - GEYSER.slow);
+            p.gust.y += GEYSER.shove;
+            if (!(en.geyserNews > G.time)) { en.geyserNews = G.time + 6; G.ui.notify('Geyser! You got bubbled.', 'bad', 2); }
+            G.audio.tone(200, 0.3, { type: 'square', vol: 0.05, slide: 300 });
+          }
+          m.dodge = null;
+          break;
+        }
+      }
+      // Crossing the row's line within its width, untouched: a dodge.
+      const along = (p.pos.x - R.x) * R.fx + (p.pos.z - R.z) * R.fz, across = -(p.pos.x - R.x) * R.fz + (p.pos.z - R.z) * R.fx;
+      if (R.prev != null && Math.sign(along) !== Math.sign(R.prev) && Math.abs(across) < GEYSER.width / 2 && !R.hit && !R.past) { R.past = true; m.passes++; dodgeEnd(en, e); }
+      R.prev = along;
+    },
+    // Every frame (animate): his facing and lean, the scuttle, claws (snap, raised to drum), eyestalks on you, the
+    // anemone and sea fan swaying, his shadow, and the Geyser Row's columns and spot marks.
+    pose(en, e, dt) {
+      if (e.dead) return MOVES.geyser.hide(e);
+      const u = e.mesh.userData, m = e.mv, ease = (r) => 1 - Math.exp(-dt * r), t = e.t, G = en.G, p = G.player;
+      if (!m) return;
+      e.mesh.rotation.order = 'YXZ';
+      e.mesh.rotation.set(m.pitch, e.yaw ?? 0, 0);
+      const tell = m.tell > 0, k = tell ? 1 - m.tell / m.tell0 : 0, slam = m.slam > 0;
+      const stride = Math.min(1, m.moving / GEYSER.walk), ph = m.gait * Math.PI * 2;
+      // A low bob as he scuttles; down on the drum.
+      const drum = tell ? Math.pow(Math.abs(Math.sin(t * Math.PI * 4.5)), 2) : 0;
+      u.rig.position.y += ((slam ? -0.5 : -drum * 0.25) + Math.abs(Math.sin(ph * 2)) * 0.12 * stride - u.rig.position.y) * ease(12);
+      // The legs ripple in pairs, lifting and swinging.
+      u.crabLegs.forEach((h) => {
+        const a = ph + h.userData.ph, lift = Math.max(0, Math.sin(a)) * 0.35 * stride;
+        h.rotation.z = h.userData.sx * lift;
+        h.userData.knee.rotation.z = -h.userData.sx * lift * 0.6;
+        h.rotation.x = Math.cos(a) * 0.25 * stride;
+      });
+      // Claws: up high and pounding the seabed in the drum, a snap on each volley, a lazy clack otherwise.
+      m.snap = Math.max(0, (m.snap || 0) - dt);
+      u.claws.forEach((cl, j) => {
+        const d = cl.userData, raise = tell ? -1.1 + drum * 1.4 : slam ? 0.5 : -0.15 + Math.sin(t * 1.3 + j) * 0.08;
+        cl.rotation.x += (raise - cl.rotation.x) * ease(tell ? 18 : 6);
+        cl.rotation.y += ((tell ? -0.3 : 0.15) * d.sx - cl.rotation.y) * ease(6);
+        const open = m.snap > 0 ? 0.6 * (m.snap / 0.35) : tell ? 0.4 : 0.12 + 0.12 * Math.max(0, Math.sin(t * 2.2 + j * 2));
+        d.pinch.rotation.x += (-open - d.pinch.rotation.x) * ease(20);
+      });
+      // Eyestalks turn to watch you (antennae sweep).
+      _c.copy(p.pos); e.mesh.worldToLocal(_c);
+      const yawTo = Math.atan2(_c.x, _c.z);
+      u.stalks.forEach((st, j) => {
+        if (st.userData.antenna) { st.rotation.y = Math.sin(t * 1.7 + j) * 0.25; st.rotation.x = Math.sin(t * 1.1 + j) * 0.15; return; }
+        st.rotation.y += (THREE.MathUtils.clamp(yawTo, -0.7, 0.7) - st.rotation.y) * ease(5);
+        st.rotation.x = 0.15 + Math.sin(t * 2 + j) * 0.05 - (tell ? 0.2 * k : 0);
+      });
+      u.mouth.forEach((mp, j) => { mp.rotation.x = Math.sin(t * 6 + j * Math.PI) * 0.25; });
+      // The garden sways with the current.
+      u.tentacles.forEach((tg) => { tg.rotation.x = Math.sin(tg.userData.a) * 0.5 + Math.sin(t * 2 + tg.userData.a) * 0.25; tg.rotation.z = -Math.cos(tg.userData.a) * 0.5 + Math.cos(t * 1.7 + tg.userData.a) * 0.25; });
+      u.fan.rotation.z = 0.25 + Math.sin(t * 0.9) * 0.12;
+      if (Math.random() < dt * 1.5) G.fx.emit(MOVES.geyser.mouth(e, _c), 2, { colors: ['#ffffff', '#cff6ff'], speed: 2, life: 1.4, size: 1.2, up: 8 }); // a few bubbles
+      shade(en, e, 18);
+      // The Geyser Row: churning sand spots with a target ring closing in while he drums, then the geysers: a twisting
+      // jet in a counter-spinning foam sheath, a frothing skirt at the seabed with ripple rings spreading out, and a
+      // splash crown at the top that blooms as the jet arrives. They sway, and fizz down and thin out at the end.
+      const R = m.row, fx = R ? MOVES.geyser.rowMesh(en, e) : u.rowFx;
+      if (!fx) return;
+      fx.group.visible = !!R;
+      if (!R) return;
+      const live = R.t >= 0, up = live ? Math.min(1, R.t / GEYSER.rise) : 0, end = GEYSER.rise + GEYSER.last, rise = 1 - Math.pow(1 - up, 3);
+      const fade = R.t < end ? 1 : Math.max(0, 1 - (R.t - end) / GEYSER.fade), n = R.cols.length, r = GEYSER.r;
+      const tk = R.t < 0 && m.tell0 ? THREE.MathUtils.clamp(1 - m.tell / m.tell0, 0, 1) : 1; // how far into the drum
+      const el = R.t < 0 && m.tell0 ? Math.max(0, m.tell0 - m.tell) : 0, T0 = m.tell0 || 1; // s into the drum: the tell's pulse speeds up from it (at most ~3 Hz)
+      for (const x of fx.all) x.count = n;
+      fx.ripple.count = n * 2; // (after the loop above set it to n)
+      if (live && !R.burst) { // the eruption: a burst of spray and sand at each foot
+        R.burst = true;
+        for (const C of R.cols) {
+          G.fx.emit(_c.set(C.x, C.g + 2, C.z), 6, { colors: ['#ffffff', '#cff6ff', '#7ad8ff'], speed: 34, life: 0.9, size: 4, up: 26, ring: true });
+          G.fx.emit(_c.set(C.x, C.g + 1, C.z), 4, { colors: ['#6a5034', '#c8b890'], speed: 18, life: 1.1, size: 4.5, up: 8, gravity: -20 });
+        }
+      }
+      R.cols.forEach((C, i) => {
+        const top = MOVES.geyser.top(en, C.g), full = Math.max(0.1, top - C.g), sway = Math.sin(t * 2.3 + i * 1.7) * 0.02;
+        const lift = full * (1 - fade) * 0.85, h = Math.max(0.1, full * rise - lift), base = C.g + lift; // fizzing out: it drops away from the seabed up
+        const thin = 0.55 + 0.45 * fade, wob = 1 + 0.07 * Math.sin(t * 11 + i * 2.1), lean = Math.cos(t * 1.9 + i) * 0.02;
+        _e.set(sway, -t * 2.6 - i, lean, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x, base + h / 2, C.z), _q, _s.set(r * 0.62 * wob * thin, h, r * 0.62 * wob * thin)); fx.core.setMatrixAt(i, _m);
+        _e.set(sway, t * 1.7 + i, lean, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x, base + h / 2, C.z), _q, _s.set(r * wob * thin, h, r * wob * thin)); fx.foam.setMatrixAt(i, _m);
+        // the splash crown rides the jet's top: big while it shoots up, then a steady boil
+        const bloom = (1 + 0.25 * (1 - up)) * (1 + 0.08 * Math.sin(t * 9 + i)) * thin, cr = r * 0.32 * bloom;
+        _e.set(0, t * 0.8 + i, 0, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x - Math.sin(lean) * h * 0.5, base + h - cr * 0.5, C.z + Math.sin(sway) * h * 0.5), _q, _s.set(live ? cr : 0.001, live ? cr * 1.4 : 0.001, live ? cr : 0.001)); fx.crown.setMatrixAt(i, _m);
+        _e.set(0, -t * 1.2 - i, 0, 'XZY'); _q.setFromEuler(_e);
+        const sk = live && lift < 1 ? r * (0.75 + 0.06 * Math.sin(t * 7 + i)) * Math.min(1, R.t / 0.2) : 0.001;
+        _m.compose(_c.set(C.x, C.g, C.z), _q, _s.set(sk, sk * 0.45, sk)); fx.skirt.setMatrixAt(i, _m);
+        for (let j = 0; j < 2; j++) { // ripple rings spreading over the seabed, two at a time
+          const l = (t * 0.8 + j * 0.5 + i * 0.137) % 1, rr = live ? r * (0.9 + 1.6 * l) : 0.001;
+          _m.compose(_c.set(C.x, C.g + 0.5, C.z), _qFlat, _s.set(rr, rr, 1)); fx.ripple.setMatrixAt(i * 2 + j, _m);
+          fx.ripple.setColorAt(i * 2 + j, _col.copy(RIPPLE).multiplyScalar((1 - l) * fade));
+        }
+        // the tell: a target ring closing in on the spot, and the spot glowing up, faster as the eruption nears
+        const ring = live ? r * 1.15 : r * (1.6 - 0.45 * tk) * (1 + 0.06 * Math.sin(8 * el + 5 * el * el / T0 + i));
+        _m.compose(_c.set(C.x, C.g + 0.45, C.z), _qFlat, _s.set(ring, ring, 1)); fx.mark.setMatrixAt(i, _m);
+        const sp = r * (0.7 + 0.5 * tk) * (live ? 1.4 : 1);
+        _m.compose(_c.set(C.x, C.g + 0.4, C.z), _qFlat, _s.set(sp, sp, 1)); fx.spot.setMatrixAt(i, _m);
+      });
+      for (const x of fx.all) x.instanceMatrix.needsUpdate = true;
+      fx.ripple.instanceColor.needsUpdate = true;
+      fx.core.visible = fx.foam.visible = fx.crown.visible = fx.skirt.visible = fx.ripple.visible = live;
+      const flash = live ? Math.max(0, 1 - R.t / 0.3) : 0; // the jets flare white as they burst out
+      fx.coreMat.color.setScalar(1 + 0.7 * flash);
+      fx.coreMat.opacity = 0.8 * fade; fx.foamMat.opacity = 0.32 * fade; fx.crownMat.opacity = 0.7 * fade; fx.skirtMat.opacity = 0.55 * fade;
+      fx.markMat.opacity = live ? 0.4 * fade : 0.45 + 0.4 * tk * Math.abs(Math.sin(5 * el + 2 * el * el / T0));
+      fx.spotMat.opacity = live ? 0.3 * fade : 0.12 + 0.28 * tk;
+      // spray off the crowns and bubbles streaming up the jets (a few per frame)
+      if (live && fade > 0.3 && n) {
+        const C = R.cols[(t * 61 | 0) % n], top = C.g + (MOVES.geyser.top(en, C.g) - C.g) * rise;
+        G.fx.emit(_c.set(C.x, top, C.z), 2, { colors: ['#ffffff', '#cff6ff'], speed: 16, life: 1, size: 3, up: 10, gravity: -14 });
+      }
+    },
+    rowMesh(en, e) {
+      const u = e.mesh.userData;
+      if (u.rowFx) return u.rowFx;
+      const N = GEYSER.slots, group = new THREE.Group(), add = THREE.AdditiveBlending;
+      const coreMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, blending: add }); // front side only: rolling through one doesn't white out the screen
+      const foamMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const crownMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const skirtMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const rippleMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.5, depthWrite: false, blending: add });
+      const markMat = new THREE.MeshBasicMaterial({ color: '#d8f6ff', transparent: true, opacity: 0.5, depthWrite: false }); // pale foam rings, easy to read through the reef's teal fog
+      const spotMat = new THREE.MeshBasicMaterial({ color: '#9ae8ff', transparent: true, opacity: 0.2, depthWrite: false, blending: add });
+      const core = new THREE.InstancedMesh(geyserTube(1, 0.7, 5, 7, 0.16, '#ffffff', '#9ef0ff'), coreMat, N); // a twisting jet, wider as it rises
+      const foam = new THREE.InstancedMesh(geyserTube(1.15, 0.9, 7, -4, 0.12, '#bff4ff', '#2ab8e8'), foamMat, N); // its sheath, twisting the other way
+      const crown = new THREE.InstancedMesh(geyserCrown(), crownMat, N);
+      const skirt = new THREE.InstancedMesh(geyserSkirt(), skirtMat, N);
+      const ripple = new THREE.InstancedMesh(new THREE.RingGeometry(0.88, 1, 28), rippleMat, N * 2);
+      const mark = new THREE.InstancedMesh(new THREE.RingGeometry(0.72, 1, 28), markMat, N);
+      const spot = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20), spotMat, N);
+      ripple.setColorAt(0, _col.set('#ffffff'));
+      const all = [core, foam, crown, skirt, ripple, mark, spot];
+      for (const x of all) { x.frustumCulled = false; x.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(x); }
+      en.G.scene.add(group);
+      return (u.rowFx = { group, all, mats: [coreMat, foamMat, crownMat, skirtMat, rippleMat, markMat, spotMat], core, foam, crown, skirt, ripple, mark, spot, coreMat, foamMat, crownMat, skirtMat, markMat, spotMat });
+    },
+    hide(e) { const f = e.mesh.userData.rowFx; if (f) f.group.visible = false; },
   },
 
   // Admiral Inkworth (lead): drifts in to 110 m, squeezes, then jets back to 280 m behind an ink cloud.

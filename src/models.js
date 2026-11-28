@@ -3271,3 +3271,176 @@ export function makeBoomboxMech(hat) {
   if (hat) partyHat(face, 2.6);
   return g;
 }
+
+// Baron Barnacle, the Hermit King (Sunken Reef): a giant hermit crab living in a spiral conch overgrown with a coral
+// garden: branch coral, a purple sea fan, a swaying anemone, starfish and barnacles, with a little sunken chest wedged
+// in its mouth. Two big breakable claws (the right one bigger), two eyes on stalks (the weak spot), long antennae, mouth
+// plates and four walking legs a side. Origin at his body; leg tips HERMIT_FEET below it. Built as g → body
+// (children[0], animateBoss's) → rig (his own bob and drum).
+export const HERMIT_FEET = 3.4;
+export function makeHermitKing(hat) {
+  const g = new THREE.Group(), body = new THREE.Group(), rig = new THREE.Group();
+  g.add(body);
+  body.add(rig);
+  const T = {
+    shell: '#e04a2a', shell2: '#ff7a3a', belly: '#ffd0a0', joint: '#b8341e', tip: '#3a1a14',
+    conch: '#f4dcc0', conch2: '#e8a890', conchIn: '#ff9ab0', coral: '#ff6a8a', coral2: '#ffa03a', fan: '#a04ad8',
+    anem: '#5ae8a0', anemTip: '#d0ff8a', star: '#ffb02a', barn: '#d8d0c0', barn2: '#9a9080', wood: '#7a4a2a', gold: '#ffcf40',
+  };
+  const skin = lam('#ffffff', { vertexColors: true, emissive: '#120604' });
+  const glow = basic('#ffffff', { vertexColors: true });
+  const mesh = (parent, parts, mat, t = {}) => add(parent, M(parts), mat, t);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const seg = (a, b, r0, r1, col, s = 7) => {
+    const v = new THREE.Vector3().subVectors(b, a), len = v.length(), geo = P(Cyl(r1, r0, len, s), col);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
+    geo.applyMatrix4(new THREE.Matrix4().compose(a.clone().addScaledVector(v, 0.5), q, new THREE.Vector3(1, 1, 1)));
+    return geo;
+  };
+  const barnacles = (A, n, at, spread, s = 1) => {
+    for (let k = 0; k < n; k++) {
+      const a = k * 2.4, r = spread * (0.4 + 0.6 * ((k * 37) % 10) / 10), x = at.x + Math.cos(a) * r, z = at.z + Math.sin(a) * r * 0.7, y = at.y + ((k * 13) % 7) / 7 * spread * 0.4;
+      A.push(P(Cyl(0.08 * s, 0.2 * s, 0.22 * s, 6), T.barn, { x, y, z }), P(Cyl(0.05 * s, 0.05 * s, 0.05 * s, 6), T.barn2, { x, y: y + 0.12 * s, z }));
+    }
+  };
+  // ---- the body: a broad red carapace with a pale belly, bumps and a frilled front edge ----
+  const B = [];
+  B.push(P(Sph(2.4, 16, 10), T.shell, { y: 0.4, z: 0.6, sx: 1.25, sy: 0.55, sz: 0.9 }));
+  B.push(P(Sph(2.2, 14, 8), T.belly, { y: -0.15, z: 0.6, sx: 1.15, sy: 0.35, sz: 0.85 }));
+  for (let k = 0; k < 7; k++) B.push(P(Sph(0.3, 6, 4), T.shell2, { x: -1.8 + k * 0.6, y: 1.15 - Math.abs(k - 3) * 0.08, z: 1.1 + (k % 2) * 0.3 })); // bumps along the top
+  for (let k = 0; k < 9; k++) B.push(P(Cone(0.22, 0.5, 5), T.shell2, { x: -2.4 + k * 0.6, y: 0.55, z: 2.55 - Math.abs(k - 4) * 0.12, rx: PI / 2 })); // the spiky front rim
+  B.push(P(Box(1.6, 0.5, 0.4), T.belly, { y: 0.15, z: 2.65 })); // the mouth plate
+  for (const sx of [-1, 1]) B.push(P(Box(0.55, 0.6, 0.22), T.shell2, { x: sx * 0.45, y: -0.05, z: 2.85, rz: sx * 0.15 })); // mouthparts
+  mesh(rig, B, skin);
+  const mouth = [];
+  for (const sx of [-1, 1]) { const mp = add(rig, Box(0.3, 0.5, 0.15), lam(T.joint), { x: sx * 0.25, y: -0.15, z: 3.0 }); mouth.push(mp); }
+  // ---- the conch on his back: a spiral of shrinking whorls tilted back, pink inside its mouth ----
+  const shell = new THREE.Group();
+  shell.position.set(0, 1.0, -1.6);
+  shell.rotation.x = -0.35;
+  rig.add(shell);
+  const S = [];
+  for (let k = 0; k < 7; k++) {
+    const r = 2.4 * Math.pow(0.78, k), a = k * 1.1;
+    S.push(P(Sph(r, 14, 10), k % 2 ? T.conch : T.conch2, { x: Math.cos(a) * 0.5 * (7 - k) * 0.25, y: 0.6 + k * 0.75, z: -0.4 - Math.sin(a) * 0.3 - k * 0.2, sy: 0.85 }));
+    S.push(P(Tor(r * 0.95, 0.12 * r, 5, 18), T.conch2, { x: Math.cos(a) * 0.5 * (7 - k) * 0.25, y: 0.6 + k * 0.75 - r * 0.25, z: -0.4 - k * 0.2, rx: PI / 2 + 0.2 }));
+  }
+  for (let k = 0; k < 8; k++) S.push(P(Cone(0.25, 0.9, 5), T.conch, { x: Math.cos(k * 0.8) * 2.0 * Math.pow(0.88, k), y: 1.2 + k * 0.55, z: -0.4 + Math.sin(k * 0.8) * 1.6 * Math.pow(0.88, k), rz: -Math.cos(k * 0.8) * 1.1, rx: Math.sin(k * 0.8) * 1.1 })); // spines on the whorls
+  S.push(P(Tor(1.9, 0.35, 8, 20), T.conch, { y: 0.1, z: 1.0, rx: PI / 2 - 0.5 })); // the lip of the shell's mouth
+  S.push(P(Sph(1.7, 14, 8), T.conchIn, { y: 0.1, z: 0.7, sz: 0.4, rx: -0.5 })); // pink inside it
+  barnacles(S, 10, V(0, 1.2, -1.6), 2.2, 1.3);
+  mesh(shell, S, skin);
+  // ---- the coral garden growing on the shell ----
+  const C = [], coralAt = (x, y, z, col, h, n) => {
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * (PI * 2) + x, l = h * (0.6 + 0.4 * ((k * 7) % 5) / 5), b = V(x, y, z), t = V(x + Math.cos(a) * l * 0.5, y + l, z + Math.sin(a) * l * 0.5);
+      C.push(seg(b, t, 0.22, 0.14, col, 5), P(Sph(0.2, 6, 4), col, { x: t.x, y: t.y, z: t.z }));
+      const t2 = V(t.x + Math.cos(a + 1) * l * 0.35, t.y + l * 0.45, t.z + Math.sin(a + 1) * l * 0.35);
+      C.push(seg(t, t2, 0.13, 0.09, col, 5), P(Sph(0.14, 6, 4), col, { x: t2.x, y: t2.y, z: t2.z }));
+    }
+  };
+  coralAt(-1.2, 2.6, -0.2, T.coral, 1.3, 5);
+  coralAt(1.0, 3.4, -1.0, T.coral2, 1.1, 4);
+  coralAt(0.3, 5.2, -1.6, T.coral, 0.9, 4);
+  // brain coral and tube sponges
+  C.push(P(Sph(0.8, 10, 8), '#ffd05a', { x: 1.6, y: 1.9, z: 0.3, sy: 0.65 }));
+  for (let k = 0; k < 6; k++) C.push(P(Tor(0.55 - k * 0.07, 0.05, 3, 12), '#e8a83a', { x: 1.6, y: 2.25, z: 0.3, rx: PI / 2, rz: k * 0.5 }));
+  for (let k = 0; k < 4; k++) C.push(P(Cyl(0.22, 0.26, 0.9 + k * 0.3, 8, true), k % 2 ? '#ff8ad0' : '#c86aff', { x: -1.9 + k * 0.32, y: 2.0 + k * 0.15, z: -1.4 + (k % 2) * 0.3 }));
+  // starfish
+  const star = (x, y, z, rx, rz, col) => { for (let k = 0; k < 5; k++) C.push(P(Cone(0.18, 0.75, 4), col, { x: x + Math.sin(k * (PI * 2) / 5) * 0.35, y: y + Math.cos(k * (PI * 2) / 5) * 0.35, z, rz: -k * (PI * 2) / 5 + rz, rx })); C.push(P(Sph(0.22, 6, 4), col, { x, y, z })); };
+  star(-1.95, 1.4, 0.4, 0.4, 0.3, T.star);
+  star(0.9, 4.6, -0.2, -0.3, 1.2, '#ff5a6a');
+  mesh(shell, C, skin);
+  // a sea fan, standing up off the top whorl: a lattice of thin branches in one plane
+  const fan = new THREE.Group();
+  fan.position.set(-0.6, 4.6, -1.8);
+  fan.rotation.set(0.1, 0.5, 0.25);
+  shell.add(fan);
+  const F = [];
+  for (let k = 0; k < 9; k++) { const a = -0.9 + k * 0.225; F.push(seg(V(0, 0, 0), V(Math.sin(a) * 2.4, Math.cos(a) * 2.4, 0), 0.08, 0.04, T.fan, 4)); }
+  for (let k = 1; k < 5; k++) F.push(P(Tor(k * 0.5, 0.035, 3, 16, 1.8), T.fan, { rz: PI / 2 - 0.9 }));
+  mesh(fan, F, lam('#ffffff', { vertexColors: true, side: THREE.DoubleSide }));
+  // the anemone near the top: a stalk and a ring of glowing tentacles that sway
+  const anem = new THREE.Group();
+  anem.position.set(1.0, 5.4, -1.3);
+  shell.add(anem);
+  mesh(anem, [P(Cyl(0.45, 0.55, 0.7, 10), '#2ab880', { y: 0.35 }), P(Cyl(0.5, 0.45, 0.12, 10), T.anemTip, { y: 0.75 })], skin);
+  const tentacles = [];
+  for (let k = 0; k < 12; k++) {
+    const tg = new THREE.Group(), a = (k / 12) * (PI * 2);
+    tg.position.set(Math.cos(a) * 0.4, 0.75, Math.sin(a) * 0.4);
+    tg.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5);
+    anem.add(tg);
+    mesh(tg, [P(Cyl(0.04, 0.09, 1.1, 5), T.anem, { y: 0.55 })], skin);
+    mesh(tg, [P(Sph(0.11, 6, 4), T.anemTip, { y: 1.12 })], glow);
+    tg.userData.a = a;
+    tentacles.push(tg);
+  }
+  // a little sunken treasure chest wedged in the shell's mouth, lid ajar, gold glinting
+  mesh(shell, [P(Box(0.9, 0.5, 0.6), T.wood, { x: -1.3, y: -0.35, z: 1.2, ry: 0.5 }), P(Box(0.95, 0.12, 0.65), T.gold, { x: -1.3, y: -0.12, z: 1.2, ry: 0.5 }), P(Box(0.9, 0.3, 0.6), T.wood, { x: -1.4, y: 0.15, z: 1.05, ry: 0.5, rx: -0.6 })], skin);
+  mesh(shell, [P(Sph(0.12, 6, 4), T.gold, { x: -1.2, y: 0.0, z: 1.3 }), P(Sph(0.12, 6, 4), T.gold, { x: -1.4, y: 0.02, z: 1.4 }), P(Sph(0.1, 6, 4), '#ffffff', { x: -1.1, y: 0.05, z: 1.15 })], glow);
+  // ---- eyes on stalks (the weak spot), with antennae behind them ----
+  const stalks = [], eyes = [];
+  for (const sx of [-1, 1]) {
+    const st = new THREE.Group();
+    st.position.set(sx * 0.7, 0.85, 2.2);
+    rig.add(st);
+    mesh(st, [P(Cyl(0.16, 0.24, 1.7, 8), T.shell2, { y: 0.85 }), P(Tor(0.2, 0.06, 4, 10), T.joint, { y: 0.5, rx: PI / 2 })], skin);
+    const eye = add(st, Sph(0.5, 14, 10), lam('#ffffff', { emissive: '#3a3a3a' }), { y: 1.9 });
+    add(eye, Sph(0.28, 10, 8), basic('#101018'), { z: 0.32 });
+    add(eye, Sph(0.08, 6, 4), basic('#ffffff'), { x: 0.08, y: 0.1, z: 0.55 });
+    add(eye, Sph(0.53, 12, 6, ), lam(T.shell, { side: THREE.DoubleSide }), { y: 0.12, s: [1, 0.55, 1] }).rotation.x = -0.4; // a heavy eyelid: grumpy
+    weak(g, eye, 0.7, 3);
+    st.userData = { sx };
+    stalks.push(st);
+    eyes.push(eye);
+    const an = new THREE.Group();
+    an.position.set(sx * 0.35, 0.6, 2.6);
+    rig.add(an);
+    mesh(an, [seg(V(0, 0, 0), V(sx * 0.6, 1.4, 1.2), 0.07, 0.05, T.shell2, 4), seg(V(sx * 0.6, 1.4, 1.2), V(sx * 1.6, 2.4, 3.4), 0.05, 0.02, T.shell2, 4)], skin);
+    stalks.push(an); an.userData = { sx, antenna: true };
+  }
+  // ---- claws (breakable): shoulder, arm, wrist, a big palm with barnacles, a fixed finger and a dactyl that snaps ----
+  const claws = [];
+  for (const sx of [-1, 1]) {
+    const big = sx > 0 ? 1.25 : 1, sh = new THREE.Group(), wr = new THREE.Group(), pinch = new THREE.Group();
+    sh.position.set(sx * 2.3, 0.2, 1.8);
+    rig.add(sh);
+    mesh(sh, [P(Sph(0.5, 10, 8), T.joint), seg(V(0, 0, 0), V(sx * 1.0, 0.5, 1.2), 0.45, 0.4, T.shell), P(Sph(0.42, 10, 8), T.joint, { x: sx * 1.0, y: 0.5, z: 1.2 })], skin);
+    wr.position.set(sx * 1.0, 0.5, 1.2);
+    sh.add(wr);
+    const A = [seg(V(0, 0, 0), V(sx * 0.3, 0.3, 1.3), 0.42, 0.5 * big, T.shell)];
+    A.push(P(Sph(1.0 * big, 14, 10), T.shell, { x: sx * 0.35, y: 0.4, z: 2.0 * big, sx: 0.75, sy: 0.85, sz: 1.25 })); // the palm
+    A.push(P(Sph(0.9 * big, 12, 8), T.shell2, { x: sx * 0.6, y: 0.5, z: 2.0 * big, sx: 0.45, sy: 0.7, sz: 1.1 })); // its paler face
+    for (let k = 0; k < 5; k++) A.push(P(Cone(0.12, 0.35, 4), T.tip, { x: sx * 0.35 + sx * 0.6 * big, y: 0.9 * big, z: (1.4 + k * 0.3) * big, rz: -sx * 0.8 })); // spines along the top edge
+    A.push(seg(V(sx * 0.35, 0.0, 2.9 * big), V(sx * 0.35, -0.25, 4.3 * big), 0.42 * big, 0.12, T.shell)); // the fixed finger
+    A.push(P(Cone(0.14, 0.5, 5), T.tip, { x: sx * 0.35, y: -0.3, z: 4.5 * big, rx: PI / 2 }));
+    for (let k = 0; k < 4; k++) A.push(P(Box(0.12, 0.18, 0.12), '#fff4e0', { x: sx * 0.35, y: 0.12 - k * 0.04, z: (3.2 + k * 0.28) * big })); // its teeth
+    barnacles(A, 6, V(sx * 0.4, 1.0, 1.9 * big), 0.8, 0.9);
+    mesh(wr, A, skin);
+    pinch.position.set(sx * 0.35, 0.75, 2.9 * big);
+    wr.add(pinch);
+    mesh(pinch, [seg(V(0, 0, 0), V(0, 0.15, 1.5 * big), 0.38 * big, 0.12, T.shell), P(Cone(0.13, 0.45, 5), T.tip, { y: 0.17, z: 1.7 * big, rx: PI / 2 }), P(Box(0.12, 0.16, 0.12), '#fff4e0', { y: -0.25, z: 0.6 * big }), P(Box(0.12, 0.16, 0.12), '#fff4e0', { y: -0.2, z: 0.95 * big })], skin);
+    breakable(g, wr, 1.6 * big, 'pincer', 2);
+    sh.userData = { sx, wr, pinch, big };
+    claws.push(sh);
+  }
+  // ---- four walking legs a side: hip, a long upper segment out and up, a knee, and a shin down to a dark tip ----
+  const legs = [];
+  for (const sx of [-1, 1]) for (let k = 0; k < 4; k++) {
+    const hip = new THREE.Group(), knee = new THREE.Group(), z = 1.2 - k * 0.85, out = 2.6 + (k === 0 || k === 3 ? 0 : 0.2);
+    hip.position.set(sx * 2.2, 0.1, z);
+    hip.rotation.y = sx * (-0.35 + k * 0.25);
+    rig.add(hip);
+    mesh(hip, [P(Sph(0.34, 8, 6), T.joint), seg(V(0, 0, 0), V(sx * out, 1.3, 0), 0.32, 0.26, T.shell), P(Box(0.08, 0.06, 0.7), T.shell2, { x: sx * out * 0.5, y: 0.9, z: 0 })], skin);
+    knee.position.set(sx * out, 1.3, 0);
+    hip.add(knee);
+    const foot = V(sx * 1.1, -HERMIT_FEET - 1.4, 0);
+    mesh(knee, [P(Sph(0.27, 8, 6), T.joint), seg(V(0, 0, 0), foot.clone().multiplyScalar(0.85), 0.25, 0.16, T.shell), seg(foot.clone().multiplyScalar(0.85), foot, 0.16, 0.04, T.tip)], skin);
+    hip.userData = { sx, knee, ph: (k % 2 ? PI : 0) + (sx > 0 ? PI / 2 : 0) };
+    legs.push(hip);
+  }
+  Object.assign(g.userData, { hermit: true, rig, shell, fan, tentacles, stalks, eyes, claws, crabLegs: legs, mouth, crownOn: shell });
+  if (hat) partyHat(shell, 6.5);
+  return g;
+}

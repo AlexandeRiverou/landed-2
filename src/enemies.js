@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, makeCrystalSpider, makeBoomboxMech, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, makeCrystalSpider, makeBoomboxMech, makeHermitKing, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -431,6 +431,21 @@ export const BOSSES = {
     taunts: ['DJ Gigawatt: "Is this thing on? Oh, it is ALWAYS on."', 'DJ Gigawatt: "Requests? Denied. Next track: your crash."', 'DJ Gigawatt: "Fresh batteries, fresh beats, fresh wreckage."', 'DJ Gigawatt: "Turn it up! No, further. FURTHER."'],
     rage: ['DJ Gigawatt cranked it to eleven.', 'The bass just dropped. So did his mood.'],
   },
+  // Land boss for the reef: a giant hermit crab who scuttles the seabed side-on beside your path, face and eyestalks your
+  // way (a plane outruns him), now and then dashing ahead to turn and face you, firing bubbles; every 3rd attack (2nd
+  // enraged), while in front of you, he drums the seabed and a Geyser Row erupts across your path, with gaps to fly
+  // through (see GEYSER). He sets his own height (hop) and turns himself. His two claws are breakable (more gaps), his
+  // eyes on stalks are soft.
+  hermitKing: {
+    make: makeHermitKing, scale: 4, crownY: 6.8, crownZ: -1.6, crownS: 0.45, radius: 24, hp: 95, speed: 0, orbit: 0, dmg: 20,
+    face: 'none', ground: true, hop: true, markerUp: 40, // his move turns him
+    lands: ['Sunken Reef'],
+    name: 'Baron Barnacle, the Hermit King', short: 'Baron Barnacle', noun: 'Baron Barnacle',
+    move: 'geyser',
+    desc: 'A giant hermit crab who lives in a conch so old a coral garden grew on it: corals, a sea fan, an anemone, starfish and a sunken chest. He scuttles sideways along the seabed beside you, eyes on stalks glaring your way, firing bubbles from his claws; often he dashes ahead and turns round to face you. When he raises both claws and drums the seabed, sand puffs across your path and a row of bubble geysers roars up to the surface: fly through a gap (or roll through a column). Shoot his claws off for wider gaps; his eyes on stalks are soft.',
+    taunts: ['Baron Barnacle: "I own this shell. And the coral. And the chest. And, shortly, you."', 'Baron Barnacle: "Sideways is the only civilised way to walk."', 'Baron Barnacle: "My cousin rents a hut on Grandma Atolla. I did not get the family good looks. I got the claws."', 'Baron Barnacle: "Mind the garden. It took four hundred years."'],
+    rage: ['Baron Barnacle has gone a deeper shade of red.', 'He is snapping at the water itself now.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -520,6 +535,7 @@ const BOSS_BREAK_TEXT = {
   palm: 'Palm tree down! Grandma Atolla has fewer coconuts to throw.',
   gem: 'Back crystal shattered! Queen Quartzelle\'s webs are smaller now.',
   speaker: 'Speaker busted! DJ Gigawatt\'s Bass Drop is lower now.',
+  pincer: 'Claw snapped off! Baron Barnacle\'s geyser rows have wider gaps now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -986,6 +1002,10 @@ export class Enemies {
       case 'boomboxMech':
         cd = 2.4; // neon note volleys; every 3rd attack (2nd enraged), in front of you, a crouch and a Bass Drop instead (see the beat move)
         BOSS_MOVES.beat.attack(this, e, n);
+        break;
+      case 'hermitKing':
+        cd = 2.4; // bubble volleys; every 3rd attack (2nd enraged), in front of you, a drum and a Geyser Row instead (see the geyser move)
+        BOSS_MOVES.geyser.attack(this, e, n);
         break;
       case 'crystalSpider':
         cd = 2.4; // crystal shard volleys; every 3rd attack (2nd enraged) a rear-up and a Web Wall instead (see the web move)
@@ -1510,6 +1530,7 @@ export class Enemies {
       case 'palm': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'gem': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'speaker': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'pincer': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -2107,6 +2128,7 @@ export class Enemies {
     if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
     if (u.mech) BOSS_MOVES.beat.pose(this, e, dt); // DJ Gigawatt's stomp, skate, crouch, speakers and his Bass Drop wall
+    if (u.hermit) BOSS_MOVES.geyser.pose(this, e, dt); // Baron Barnacle's scuttle, claws, eyestalks, garden and his Geyser Row
     if (u.spider) BOSS_MOVES.web.pose(this, e, dt); // Queen Quartzelle's walk, turning over onto the roof, rear-up and her Web Wall
     if (u.turtle) BOSS_MOVES.whirl.pose(this, e, dt); // Grandma Atolla's nap, paddling, rear-up and her Whirlpool
     if (u.dragon) BOSS_MOVES.rake.pose(this, e, dt); // Duchess Brûlée's rear-up, her Rake and its curtain, her wings
