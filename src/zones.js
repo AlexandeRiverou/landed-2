@@ -122,7 +122,7 @@ export const ZONES = [
   {
     name: 'Cloud Kingdom', blurb: 'Castles on clouds, golden gates and a harp nobody tunes. Please wipe your wheels.',
     world: { palette: 'heaven', floor: -260, seaLevel: -700, amp: 0.2, hillBase: 0.4, roughness: 1.3, terrace: 0, mesa: 0, canyon: 0, spikes: 0, snowLine: 9999, floatingIslands: 1.7, propTheme: 'cloudKingdom', propDensity: 0.25, balloons: 0.6, tempBias: -0.6 },
-    sky: 'heaven', weather: 'feathers', clouds: ['#fffaf0', 70, -60], fog: 1.1, mood: 'dream', lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands', 'weather'], // the cloud sea stays soft and the islands stay put
+    sky: 'heaven', weather: 'feathers', clouds: ['#fffaf0', 70, -60], fog: 1.1, mood: 'dream', setPiece: 'harp', lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands', 'weather'], // the cloud sea stays soft and the islands stay put
   },
   {
     name: 'Stratosphere', blurb: 'Above the clouds. The sky is getting dark. That is space up there.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can, the Salt Mirror's flamingo flock)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can, the Salt Mirror's flamingo flock, the Cloud Kingdom's golden harp)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })

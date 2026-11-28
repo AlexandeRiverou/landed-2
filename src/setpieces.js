@@ -1,8 +1,8 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
 // the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's
-// gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can and
-// the Salt Mirror's flamingo flock.
+// gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can, the
+// Salt Mirror's flamingo flock and the Cloud Kingdom's golden harp.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -259,12 +259,30 @@ export const FLOCK = {
   brush: 3.5,            // m: closer than this ruffles a bird's feathers
 };
 
+// Cloud Kingdom: a giant golden harp stands on the clouds, the one nobody tunes. Its strings are harmless: fly through
+// one and it rings out; skim along them and you play a glissando for a bonus. Its gold frame is solid.
+export const HARP = {
+  near: 550, far: 900, drop: 1500,
+  slope: 8, base: 10,    // the ground may fall this much across the pedestal, which sinks this far into the cloud
+  P: 6, padW: 16, padD: 10, padX: -21, // the pedestal: its height over the low side, its length and depth, and where
+                         // it stands (under the pillar and the soundboard's foot, the harp's base)
+  pillarX: -24, top: 76, // the pillar (the harp's front column) and the height of its capital
+  board: [[-20, 9], [24, 50]], boardR: [3.2, 1.6], // the soundboard, from its foot up to the neck, widest at the foot
+  neck: [[-24, 76], [-12, 74], [0, 66], [10, 61], [18, 60], [24, 54]], neckR: 1.8, // the neck's S-curve
+  strings: 13, x0: -17, dx: 3, sR: 0.18, // the strings: how many, where the first stands, how far apart, how thick
+  reach: 0.8,            // a string sounds when you pass this close to it (past your plane's own size)
+  gliss: 6, glissT: 2.5, score: 40, // this many different strings within this many seconds: "Glissando!", once per harp
+  ghost: [2, 5], ghostNear: 400, // now and then a string rings on its own, when you're this close
+  dmg: 6, bumpEvery: 1,
+};
+
 const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
 
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
-const _local = new THREE.Vector3(), _col = new THREE.Color();
+const _local = new THREE.Vector3(), _col = new THREE.Color(), _white = new THREE.Color('#ffffff');
+const _m4 = new THREE.Matrix4(), _dir = new THREE.Vector3(), _pos = new THREE.Vector3();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Vector3();
 const SPRAY = ['#ffffff', '#e8f6ff', '#bfe4ff'];
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
@@ -319,6 +337,11 @@ export class SetPieces {
     this.flock = null;
     this.flockT = 0;
     this.flockParts = null; // the flamingo's shared parts and material, made with the first flock
+    this.harp = null;
+    this.harpT = 0;
+    this.harpTip = false;
+    this.harpBumpTip = false;
+    this.harpMats = null; // made with the first harp, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -381,6 +404,8 @@ export class SetPieces {
     this.canT = 0;
     this.dropFlock();
     this.flockT = 0;
+    this.dropHarp();
+    this.harpT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -471,6 +496,7 @@ export class SetPieces {
     if (this.kind === 'barn') { this.updateBarn(dt); return; }
     if (this.kind === 'can') { this.updateCan(dt); return; }
     if (this.kind === 'flock') { this.updateFlock(dt); return; }
+    if (this.kind === 'harp') { this.updateHarp(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -2838,5 +2864,242 @@ export class SetPieces {
       b.puffT = 1;
       G.fx.emit(_b.set(b.x, b.y + up, b.z), 8, { colors: ['#ff8fb1', '#ffc2d4', '#ffffff'], speed: 6, life: 1.2, size: 1.6, gravity: -2, drag: 1 });
     }
+  }
+
+  // Cloud Kingdom: the golden harp.
+  get harpInfo() { return this.harp; }
+
+  dropHarp() {
+    if (!this.harp) return;
+    this.G.scene.remove(this.harp.group);
+    for (const geo of new Set(this.harp.geos)) geo.dispose();
+    this.harp.strings.dispose(); // its instance buffers
+    this.harp = null;
+  }
+
+  // Fairly level cloud ahead for the pedestal (it sinks into the high side).
+  placeHarp() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0), H = HARP, w = H.padW / 2, d = H.padD / 2;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    for (let tries = 0; tries < 24 * 4; tries++) {
+      const k = Math.floor(tries / 4);
+      if (tries % 4 === 0) this._harpSpot = [rand(H.near, H.far), rand(-0.35, 0.35)];
+      const [dd, ss] = this._harpSpot, s = ss * dd, x = p.pos.x + f.x * dd - f.z * s, z = p.pos.z + f.z * dd + f.x * s;
+      // The strings face you first (fly straight through and you pluck one), then turned a little at a time.
+      const yaw = Math.atan2(p.pos.x - x, p.pos.z - z) + (tries % 4) * 0.35 * (k % 2 ? 1 : -1);
+      const hs = [[0, 0], [w, d], [-w, d], [w, -d], [-w, -d], [w, 0], [-w, 0]].map(([a, b]) => this.barnGround(x, z, yaw, H.padX + a, b));
+      const lo = Math.min(...hs), hi = Math.max(...hs);
+      if (hi - lo > H.slope || lo < G.world.seaLevel + 2) continue;
+      // No cloud hill may poke up through the soundboard or the strings over the open side.
+      if ([0, 12, 24].some((sx) => this.barnGround(x, z, yaw, sx, 0) > lo + this.harpBoardY(sx) - 3)) continue;
+      return this.buildHarp(x, lo, z, yaw);
+    }
+    return null;
+  }
+
+  // The neck's height above local x, read off the curve (it runs from the pillar's top down to the scroll).
+  harpNeckY(pts, x) {
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (x >= a.x && x <= b.x) return a.y + (b.y - a.y) * ((x - a.x) / (b.x - a.x || 1));
+    }
+    return pts[pts.length - 1].y;
+  }
+
+  harpBoardY(x) { const [[ax, ay], [bx, by]] = HARP.board; return ay + (by - ay) * ((x - ax) / (bx - ax)); }
+
+  buildHarp(x, y, z, yaw) {
+    const M = (this.harpMats ||= {
+      gold: new THREE.MeshLambertMaterial({ color: '#e8b84a', emissive: '#5a3a08', emissiveIntensity: 0.35, flatShading: true }),
+      gold2: new THREE.MeshLambertMaterial({ color: '#c8922e', emissive: '#3a2404', emissiveIntensity: 0.3, flatShading: true }),
+      ivory: new THREE.MeshLambertMaterial({ color: '#fbf3e4', flatShading: true }),
+      marble: new THREE.MeshLambertMaterial({ color: '#f2eee8', flatShading: true }),
+      cloud: new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.15 }),
+      halo: new THREE.MeshBasicMaterial({ color: '#fff2b0', transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }),
+      string: new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+    });
+    const H = HARP, g = new THREE.Group(), geos = [], P = H.P;
+    const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    const along = (o, a, b) => { const dir = b.clone().sub(a), len = dir.length(); o.quaternion.setFromUnitVectors(_Y, dir.normalize()); o.position.copy(a).addScaledVector(dir, len / 2); return o; };
+    // The pedestal: white marble with gold bands, sunk into the cloud, puffs of cloud piled round its foot.
+    mesh(new THREE.BoxGeometry(H.padW, P + H.base, H.padD), M.marble).position.set(H.padX, (P - H.base) / 2, 0);
+    for (const yy of [P - 0.4, 0.6]) mesh(new THREE.BoxGeometry(H.padW + 0.6, 0.8, H.padD + 0.6), M.gold2).position.set(H.padX, yy, 0);
+    mesh(new THREE.BoxGeometry(H.padW - 3, 1.2, H.padD - 2), M.gold).position.set(H.padX, P + 0.6, 0);
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * Math.PI * 2, px = H.padX + Math.cos(a) * (H.padW / 2 + 1), pz = Math.sin(a) * (H.padD / 2 + 1);
+      const gy = this.barnGround(x, z, yaw, px, pz) - y, puff = mesh(new THREE.SphereGeometry(1, 10, 7), M.cloud);
+      const s = 2.5 + (k % 3) * 1.2;
+      puff.scale.set(s * 1.4, s * 0.8, s * 1.2); puff.position.set(px, gy + s * 0.2, pz);
+    }
+    // The pillar: a fluted gold column with a crowned capital, a pair of carved wings and a halo.
+    const px = H.pillarX, top = H.top;
+    mesh(new THREE.BoxGeometry(6, 4, 6), M.gold2).position.set(px, P + 2, 0);
+    mesh(new THREE.CylinderGeometry(2.0, 2.6, top - P - 4, 16), M.gold).position.set(px, (top + P + 4) / 2, 0);
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2, fl = mesh(new THREE.BoxGeometry(0.5, top - P - 10, 0.5), M.gold2);
+      fl.position.set(px + Math.cos(a) * 2.25, (top + P + 4) / 2, Math.sin(a) * 2.25);
+    }
+    for (const yy of [P + 5, (top + P) / 2, top - 3]) { const rg = mesh(new THREE.TorusGeometry(2.6, 0.5, 6, 16), M.gold2); rg.rotation.x = Math.PI / 2; rg.position.set(px, yy, 0); }
+    mesh(new THREE.CylinderGeometry(3.3, 2.4, 3, 16), M.gold).position.set(px, top, 0);
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, sp = mesh(new THREE.ConeGeometry(0.5, 1.8, 6), M.gold2); sp.position.set(px + Math.cos(a) * 2.8, top + 2.4, Math.sin(a) * 2.8); }
+    mesh(new THREE.SphereGeometry(1.3, 10, 8), M.gold).position.set(px, top + 3, 0);
+    for (const sz of [-1, 1]) {
+      const wing = mesh(new THREE.SphereGeometry(1, 12, 8), M.gold);
+      wing.scale.set(1.2, 2.8, 5); wing.rotation.x = sz * 0.55; wing.position.set(px - 0.6, top - 1, sz * 4.2);
+      const tip = mesh(new THREE.SphereGeometry(1, 10, 6), M.gold2);
+      tip.scale.set(0.9, 1.6, 3); tip.rotation.x = sz * 0.9; tip.position.set(px - 0.6, top - 4.2, sz * 6.6);
+    }
+    const halo = mesh(new THREE.TorusGeometry(3, 0.35, 6, 24), M.halo);
+    halo.rotation.x = Math.PI / 2; halo.position.set(px, top + 6.5, 0);
+    // The soundboard: an ivory board widening toward its foot, gold-trimmed, with a gold eyelet for every string.
+    const [[ax, ay], [bx, by]] = H.board, A = new THREE.Vector3(ax, ay, 0), B = new THREE.Vector3(bx, by, 0);
+    const board = along(mesh(new THREE.CylinderGeometry(H.boardR[1], H.boardR[0], A.distanceTo(B), 12), M.ivory), A, B);
+    board.scale.z = 0.8;
+    const trim = along(mesh(new THREE.CylinderGeometry(H.boardR[1] + 0.25, H.boardR[0] + 0.25, A.distanceTo(B) * 0.98, 12, 1, true), M.gold2), A, B);
+    trim.scale.set(1, 1, 0.35);
+    mesh(new THREE.BoxGeometry(6, ay - P + 1, 6), M.gold2).position.set(ax, (ay + P) / 2, 0);
+    // The neck: a gold S-curve from the capital down to a scroll over the soundboard's top.
+    const curve = new THREE.CatmullRomCurve3(H.neck.map(([nx, ny]) => new THREE.Vector3(nx, ny, 0)));
+    mesh(new THREE.TubeGeometry(curve, 48, H.neckR, 10), M.gold);
+    const scroll = mesh(new THREE.TorusGeometry(2.4, 0.9, 8, 16, Math.PI * 1.5), M.gold);
+    scroll.position.set(bx + 1.5, by + 2, 0); scroll.rotation.z = -Math.PI / 2;
+    const pts = curve.getSpacedPoints(120);
+    // The strings, one instanced mesh, each drawn as two halves so its middle can swing when it's plucked. Real harps
+    // colour their Cs red and their Fs blue so you can find your place; this one plays a five-note scale, so its Cs are
+    // red and its Gs blue. The rest are pale gold, so they still show against the white clouds.
+    const list = [];
+    for (let i = 0; i < H.strings; i++) {
+      const sx = H.x0 + i * H.dx, lo = this.harpBoardY(sx), hi = this.harpNeckY(pts, sx) - H.neckR * 0.6;
+      const pin = mesh(new THREE.SphereGeometry(0.45, 6, 4), M.gold2);
+      pin.position.set(sx, hi + H.neckR * 0.7, 0);
+      for (const sz of [-1, 1]) mesh(new THREE.SphereGeometry(0.4, 6, 4), M.gold2).position.set(sx, lo + 0.3, sz * H.boardR[0] * 0.55);
+      const semis = [0, 2, 4, 7, 9][i % 5] + 12 * Math.floor(i / 5);
+      const base = new THREE.Color(semis % 12 === 0 ? '#e0404a' : semis % 12 === 7 ? '#3a5ad8' : '#ffd98a');
+      list.push({ x: sx, lo, hi, amp: 0, cd: 0, at: -99, base, freq: 130.81 * 2 ** (semis / 12) });
+    }
+    const unit = new THREE.CylinderGeometry(1, 1, 1, 6);
+    geos.push(unit);
+    const strings = new THREE.InstancedMesh(unit, M.string, H.strings * 2);
+    strings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    g.add(strings);
+    this.mergeStatic(g, [strings], geos);
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    this.G.scene.add(g);
+    this.harp = { group: g, geos, strings, list, pos: g.position, yaw, neck: pts.filter((_, k) => k % 10 === 0),
+      plucked: 0, gliss: false, bumpT: 0, ghostT: rand(...H.ghost) };
+    this.poseStrings(0);
+    return this.harp;
+  }
+
+  // Each string's two halves, its middle swung out of the plane while it rings; it glows as it sounds.
+  poseStrings(t) {
+    const h = this.harp, H = HARP, m4 = _m4, q = _qb, mid = _a, lo = _b, hi = _q, sc = _local;
+    h.list.forEach((s, i) => {
+      const len = s.hi - s.lo, swing = s.amp * 0.9 * Math.min(1, len / 30) * Math.sin(t * (30 + 3 * i) + i * 1.7);
+      lo.set(s.x, s.lo, 0); hi.set(s.x, s.hi, 0); mid.set(s.x, (s.lo + s.hi) / 2, swing);
+      for (let k = 0; k < 2; k++) {
+        const a = k ? mid : lo, b = k ? hi : mid, dir = _dir.copy(b).sub(a), l = dir.length();
+        q.setFromUnitVectors(_Y, dir.normalize());
+        m4.compose(_pos.copy(a).addScaledVector(dir, l / 2), q, sc.set(H.sR, l, H.sR));
+        h.strings.setMatrixAt(i * 2 + k, m4);
+        const glow = Math.min(1, s.amp);
+        h.strings.setColorAt(i * 2 + k, _col.copy(s.base).lerp(_white, glow * 0.8));
+      }
+    });
+    h.strings.instanceMatrix.needsUpdate = true;
+    h.strings.instanceColor.needsUpdate = true;
+  }
+
+  pluckHarp(s, v, detune = 1) {
+    s.amp = Math.max(s.amp, v);
+    const A = this.G.audio;
+    A?.tone?.(s.freq * detune, 1.4, { type: 'triangle', vol: 0.12 * v });
+    // The octave above, unless a sweep is already ringing lots of strings at once.
+    if (this.harpRinging() < 4) A?.tone?.(s.freq * 2 * detune, 0.8, { type: 'sine', vol: 0.04 * v });
+  }
+
+  // How many strings were plucked within the last `within` seconds.
+  harpRinging(within = 0.5) {
+    const h = this.harp, t = this.G.time;
+    let n = 0;
+    if (h) for (const s of h.list) if (t - s.at < within) n++;
+    return n;
+  }
+
+  updateHarp(dt) {
+    const G = this.G, p = G.player, H = HARP;
+    if (this.harp && Math.hypot(this.harp.pos.x - p.pos.x, this.harp.pos.z - p.pos.z) > H.drop) this.dropHarp();
+    if (!this.harp && !G.terrain.stale && (this.harpT -= dt) <= 0) { this.harpT = 0.5; this.placeHarp(); }
+    const h = this.harp;
+    if (!h) return;
+    const t = G.time;
+    for (const s of h.list) { s.amp *= Math.exp(-2.2 * dt); s.cd = Math.max(0, s.cd - dt); }
+    this.harpMats.halo.opacity = 0.35 + 0.2 * Math.sin(t * 2);
+    h.bumpT = Math.max(0, h.bumpT - dt);
+    const dist = Math.hypot(h.pos.x - p.pos.x, h.pos.z - p.pos.z);
+    // Nobody tunes it: now and then a string rings on its own, a little sharp, when you're near enough to hear.
+    if (dist < H.ghostNear && (h.ghostT -= dt) <= 0) {
+      h.ghostT = rand(...H.ghost);
+      this.pluckHarp(h.list[Math.floor(rand(0, h.list.length))], 0.5 * (1 - dist / H.ghostNear), 1.018);
+    }
+    // A few gold motes drift up round the strings.
+    if (dist < 900) {
+      const sx = rand(H.x0, H.x0 + H.dx * (H.strings - 1)), sy = rand(this.harpBoardY(sx), 60), cs = Math.cos(h.yaw), sn = Math.sin(h.yaw);
+      G.fx.emit(_pos.set(h.pos.x + sx * cs, h.pos.y + sy, h.pos.z - sx * sn), 4 * dt, { colors: ['#fff2b0', '#ffd23a', '#ffffff'], speed: 1, up: 3, life: 2.5, size: 1.4, gravity: 0, drag: 0.5 });
+    }
+    if (!p.dead) {
+      const L = this.archLocal(h, _local), r = 2.5 * (p.sizeScale || 1);
+      // Plucking: fly through a string (it never hurts) and it sounds.
+      for (const s of h.list) {
+        if (s.cd > 0) continue;
+        const cy = Math.min(s.hi, Math.max(s.lo, L.y));
+        if (Math.hypot(L.x - s.x, L.y - cy, L.z) > r + H.reach) continue;
+        s.cd = 0.4; s.at = t;
+        this.pluckHarp(s, 1);
+        h.plucked++;
+        const cs = Math.cos(h.yaw), sn = Math.sin(h.yaw);
+        G.fx.emit(_pos.set(h.pos.x + s.x * cs, h.pos.y + cy, h.pos.z - s.x * sn), 5, { colors: ['#fff2b0', '#ffd23a', '#ffffff'], speed: 6, up: 2, life: 0.9, size: 1.6, gravity: -1, drag: 0.8 });
+        if (!this.harpTip) { this.harpTip = true; G.ui.notify('The golden harp plays as you fly through it! Skim along its strings for a glissando.', 'info', 4, 1); }
+      }
+      // A glissando: enough different strings in one sweep.
+      if (!h.gliss && this.harpRinging(H.glissT) >= H.gliss) {
+        h.gliss = true;
+        G.score += H.score;
+        G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${H.score} Glissando!`);
+        G.fx.emit(p.pos, 30, { colors: ['#fff2b0', '#ffd23a', '#ffffff', '#e0404a', '#3a5ad8'], speed: 12, up: 3, life: 1.4, size: 2.4, gravity: -2, drag: 0.6 });
+        G.audio?.sparkle?.();
+      }
+      // The gold frame and the pedestal are solid.
+      let hit = false;
+      const push = (mx, my, mz) => {
+        const cs = Math.cos(h.yaw), sn = Math.sin(h.yaw);
+        p.pos.x += mx * cs + mz * sn; p.pos.z += -mx * sn + mz * cs; p.pos.y += my;
+        this.archLocal(h, L);
+        hit = true;
+      };
+      const bar = (ax, ay, bx, by, ra, rb) => { // a round bar in the harp's plane, from a to b, radius ra to rb
+        const ux = bx - ax, uy = by - ay, k = Math.min(1, Math.max(0, ((L.x - ax) * ux + (L.y - ay) * uy) / (ux * ux + uy * uy)));
+        const dx = L.x - (ax + ux * k), dy = L.y - (ay + uy * k), d = Math.hypot(dx, dy, L.z), rad = ra + (rb - ra) * k;
+        if (d < rad + r) { const m = d > 1e-3 ? (rad + r - d) / d : 0; push(dx * m, d > 1e-3 ? dy * m : rad + r, L.z * m); }
+      };
+      {
+        const w = H.padW / 2 + r, d = H.padD / 2 + r, ox = w - Math.abs(L.x - H.padX), oz = d - Math.abs(L.z), oy = H.P + r - L.y;
+        if (ox > 0 && oz > 0 && oy > 0 && L.y > -H.base) { const m = Math.min(ox, oz, oy); if (m === oy) push(0, oy, 0); else if (m === ox) push(Math.sign(L.x - H.padX) * ox, 0, 0); else push(0, 0, Math.sign(L.z) * oz); }
+      }
+      bar(H.pillarX, H.P, H.pillarX, H.top - 2, 2.6, 2.6);
+      bar(H.pillarX, H.top - 2, H.pillarX, H.top + 3, 3.4, 3.4); // the capital
+      const [[ax, ay], [bx, by]] = H.board;
+      bar(ax, ay, bx, by, H.boardR[0], H.boardR[1]);
+      for (let k = 1; k < h.neck.length; k++) bar(h.neck[k - 1].x, h.neck[k - 1].y, h.neck[k].x, h.neck[k].y, H.neckR, H.neckR);
+      if (hit && h.bumpT <= 0) {
+        h.bumpT = H.bumpEvery;
+        p.damage(H.dmg);
+        G.fx.emit(p.pos, 18, { colors: ['#e8b84a', '#fff2b0', '#ffffff'], speed: 18, life: 0.8, size: 4 });
+        if (!this.harpBumpTip) { this.harpBumpTip = true; G.ui.notify('The harp\'s frame is solid gold! Fly through its strings instead.', 'warn', 4, 1); }
+      }
+    }
+    this.poseStrings(t);
   }
 }
