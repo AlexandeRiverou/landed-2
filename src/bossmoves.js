@@ -119,7 +119,7 @@ export const LEAP = {
 export const BEAT = {
   walk: 40, walkRage: 48, turn: 1.4, ahead: 80, side: 55, near: 12, chase: 220, stride: 15, tilt: 0.3,
   every: 6, everyRage: 4, opener: 3, dash: 110, dashRage: 125, dashTurn: 2.6, dashMax: 7, front: 140, frontSide: 25, show: 9,
-  tell: 1.3, first: 1.9, tellRage: 1, ringSpeed: 90, ringMax: 280, H: [28, 22, 16], cap: [60, 48, 36], rise: 12, under: 6, dmg: 18, slow: 10, over: 60,
+  tell: 1.3, first: 1.9, tellRage: 1, deep: 40, ringSpeed: 90, ringMax: 280, H: [28, 22, 16], cap: [60, 48, 36], rise: 12, under: 6, dmg: 18, slow: 10, over: 60,
   notes: 4, noteSpeed: 75, noteDmg: 9, spread: 0.08, colors: ['#ff3ad0', '#3af0ff'],
 };
 const NEON = ['#ff3ad0', '#3af0ff', '#8a4aff', '#ffffff'];
@@ -2569,8 +2569,10 @@ export const MOVES = {
         const want = m.phase === 'show' ? Math.min(top, p.speed / c.pace + d * 1.5) : top * Math.min(1, d / 40);
         go = want * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4)));
         const nx = e.pos.x + Math.sin(m.head) * go * dt, nz = e.pos.z + Math.cos(m.head) * go * dt;
-        // Only on dry land; blocked by the sea, he turns away from it.
-        if (G.terrain.surfaceHeight(nx, nz) > waterLine() + 1) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; }
+        // Only on dry land, and never down into ground more than `deep` m below the ground under you (a pit or a canyon
+        // floor would put him out of your reach): blocked, he turns away.
+        const gn = G.terrain.surfaceHeight(nx, nz), low = Math.min(G.terrain.surfaceHeight(p.pos.x, p.pos.z) - BEAT.deep, G.terrain.surfaceHeight(e.pos.x, e.pos.z) - 0.5);
+        if (gn > waterLine() + 1 && gn > low) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; }
       }
       // He looks where he goes, except when keeping pace ahead of you: then he turns round to face you.
       const look = m.phase === 'show' ? Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z) : m.head;
@@ -2626,7 +2628,7 @@ export const MOVES = {
         if (m.tell <= 0) {
           const s = e.mesh.scale.x, y0 = e.pos.y - MECH_FEET * s, h0 = p.pos.y - MOVES.beat.floor(en, p.pos.x, p.pos.z, y0), H = MOVES.beat.height(e, h0);
           // under: the plane was below its top when it rose, so getting over it is a dodge (a plane already high gets none)
-          m.ring = { x: e.pos.x, z: e.pos.z, y0, r: 6 * s, H, under: h0 < H - BEAT.under, prev: null };
+          m.ring = { x: e.pos.x, z: e.pos.z, y0, r: 6 * s, H, h0, under: h0 < H - BEAT.under, prev: null };
           m.drops++;
           m.slam = 0.45;
           dodgeStart(en, e);

@@ -183,13 +183,11 @@ try {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
     window.OBJ_FOR_TEST = await import('./src/objectives.js');
     window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
-    window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.TOAD_FEET_FOR_TEST = (await import('./src/models.js')).TOAD_FEET;
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
     window.SPIDER_FEET_FOR_TEST = (await import('./src/models.js')).SPIDER_FEET;
     window.MECH_FEET_FOR_TEST = (await import('./src/models.js')).MECH_FEET;
-    window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1326,18 +1324,16 @@ try {
         const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
         if (d.lengthSq() < 1) d.set(1, 0, 0);
         d.normalize();
-        p.pos.copy(e.pos).addScaledVector(d, 150);
+        // (round him to a spot whose ground is near his: the land here may have deep pits, which he stays out of)
+        const g0 = e.pos.y - feet;
+        for (let k = 0; k < 12; k++) {
+          p.pos.copy(e.pos).addScaledVector(d, 150);
+          if (Math.abs(T.surfaceHeight(p.pos.x, p.pos.z) - g0) < 25) break;
+          d.applyAxisAngle(new V(0, 1, 0), Math.PI / 6);
+        }
         p.pos.y = T.surfaceHeight(p.pos.x, p.pos.z) + up; p.prevPos.copy(p.pos);
         p.quat.setFromUnitVectors(new V(0, 0, -1), d.negate()); p.updateAxes();
       };
-      // (each of his attacks, for a failure's report)
-      const B = window.BOSS_MOVES_FOR_TEST.beat, attack0 = B.attack, calls = [];
-      B.attack = function (en, e2, n) {
-        const m = e2.mv || {}, M = B.mouth(e2, new V()), f = p.forward, tx = e2.pos.x - p.pos.x, tz = e2.pos.z - p.pos.z;
-        if (calls.length < 24) calls.push([n, m.phase, m.due ? 1 : 0, +((f.x * tx + f.z * tz) / (Math.hypot(f.x, f.z) * Math.hypot(tx, tz) || 1)).toFixed(2), Math.round(M.distanceTo(p.pos)), m.ring ? 1 : 0, p.landed ? 1 : 0, +(m.tell || 0).toFixed(1), e2 === e ? "same" : "other", G.enemies.list.filter((x) => x.boss).length, Math.round(e2.pos.distanceTo(p.pos)), Math.round(M.distanceTo(e2.pos)), Math.round(p.pos.y), Math.round(e2.pos.y), Math.round(T.surfaceHeight(p.pos.x, p.pos.z)), Math.round(T.surfaceHeight(e2.pos.x, e2.pos.z)), Math.round(G.world.seaLevel), Math.round(Math.hypot(tx, tz))].join(' '));
-        return attack0.call(this, en, e2, n);
-      };
-      r.calls = calls;
       const clear = () => { G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x)); };
       const fly = (n, until = () => false) => {
         for (let i = 0; i < n; i++) {
@@ -1405,7 +1401,9 @@ try {
         up = 60;
         const m = mv(), W = m.ring, h0 = m.hits, ps = m.passes, hull = p.health, speed0 = p.speed;
         l.H = W.H;
-        const a = Math.atan2(p.pos.z - W.z, p.pos.x - W.x), at = new V(W.x + Math.cos(a) * (W.r + 20), W.y0 + (over === 'low' ? 10 : W.H + 15), W.z + Math.sin(a) * (W.r + 20));
+        l.h0 = Math.round(W.h0);
+        const a = Math.atan2(p.pos.z - W.z, p.pos.x - W.x), at = new V(W.x + Math.cos(a) * (W.r + 20), 0, W.z + Math.sin(a) * (W.r + 20));
+        at.y = T.surfaceHeight(at.x, at.z) + (over === 'low' ? 10 : W.H + 15); // (heights count from the ground under the plane)
         let slowed = 0;
         for (let i = 0; i < 30 * 3 && m.ring === W && !W.past; i++) {
           p.pos.copy(at); p.prevPos.copy(at);
@@ -1435,7 +1433,6 @@ try {
       r.volleys = r.volleys.slice(0, 4);
       r.onGround = r.frames ? +(r.onGround / r.frames).toFixed(2) : 0;
       delete r.frames;
-      B.attack = attack0;
       return r;
     };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
@@ -5756,7 +5753,7 @@ try {
     [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
     [(({ turtle: t }) => t && t.nap && t.gulls && t.woke && t.afloat && t.flip[1] - t.flip[0] > 0.3 && t.volleys.length >= 1 && t.volleys.every((n) => n === 5) && t.mid?.tell >= 1.4 && t.mid.under && t.mid.caught === 1 && t.mid.gust > 0 && t.mid.splash === 0 && t.mid.hull === 0 && t.mid.dazed >= 1 && t.mid.back && t.low?.splash === 1 && t.low.hull > 0 && t.high?.caught === 0 && t.high.gust === 0 && t.high.dazed === 0 && t.palmHits >= 1 && t.palmHits <= 12 && t.after === 2)(report), `Grandma Atolla: she starts asleep like an island (gulls round her palms), wakes when you come near, floats and paddles; 5-coconut volleys, 2 with her palms down; her Whirlpool (1.4 s+ tell, she's under and can't be hurt) pulls a plane 30 m up without hurting it (a dodge: she's dazed), splashes one at the water line, and leaves one 100 m up alone (${JSON.stringify(report.turtle)})`],
     [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.race.drops >= 1 && s.race.floor >= 3 && s.race.line === 1 && s.race.back === 1)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead often and keeps pace there 8 s+ facing you, dropping on a silk line to walk the floor 3 s+ (then back up); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
-    [(({ mech: s }) => s && s.onGround >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.3 && s.volleys.length >= 1 && s.volleys.every((n) => n === 4) && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.low?.tell >= 1.3 && s.low.crouch > 0.4 && s.low.arms < -1.5 && s.low.H === 28 && s.low.drawn === 28 && s.low.hits === 1 && s.low.hull > 0 && s.low.slowed >= 4 && s.low.passed === 0 && s.low.gone && s.high?.hits === 0 && s.high.hull === 0 && s.high.passed === 1 && s.high.dazed >= 1 && s.high.gone && s.tall?.H === 52 && s.tall.passed === 1 && s.aloft?.H === 60 && s.aloft.passed === 0 && s.aloft.hits === 0 && s.speakerHits >= 1 && s.speakerHits <= 12 && s.small === 16)(report), `DJ Gigawatt: feet on the ground as he stomps along, legs swinging; flying straight on with him behind you, he trails but skates ahead often and keeps pace there 8 s+ facing you; 4-note volleys; a 1.3 s+ crouch with his arms up, then a Bass Drop wall riding the ground, 12 m over your height when he stomps (28 m at least, 60 at most), that rattles a plane held low in its way (hull and speed lost) and lets one that climbed over its top go (a dodge: he's dazed; none for a plane already over it); with his speakers busted it's 16 m (${JSON.stringify(report.mech)})`],
+    [(({ mech: s }) => s && s.onGround >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.3 && s.volleys.length >= 1 && s.volleys.every((n) => n === 4) && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.low?.tell >= 1.3 && s.low.crouch > 0.4 && s.low.arms < -1.5 && s.low.H === 28 && s.low.drawn === 28 && s.low.hits === 1 && s.low.hull > 0 && s.low.slowed >= 4 && s.low.passed === 0 && s.low.gone && s.high?.hits === 0 && s.high.hull === 0 && s.high.passed === 1 && s.high.dazed >= 1 && s.high.gone && s.tall?.H > 40 && Math.abs(s.tall.H - Math.min(60, s.tall.h0 + 12)) <= 1 && s.tall.passed === 1 && s.aloft?.H === 60 && s.aloft.passed === 0 && s.aloft.hits === 0 && s.speakerHits >= 1 && s.speakerHits <= 12 && s.small === 16)(report), `DJ Gigawatt: feet on the ground as he stomps along, legs swinging; flying straight on with him behind you, he trails but skates ahead often and keeps pace there 8 s+ facing you; 4-note volleys; a 1.3 s+ crouch with his arms up, then a Bass Drop wall riding the ground, 12 m over your height when he stomps (28 m at least, 60 at most), that rattles a plane held low in its way (hull and speed lost) and lets one that climbed over its top go (a dodge: he's dazed; none for a plane already over it); with his speakers busted it's 16 m (${JSON.stringify(report.mech)})`],
     [(({ lands: l }) => l && l.mechElsewhere === 'gooseQueen' && l.mechHome === 'boomboxMech')(report.serpent || {}), `DJ Gigawatt only comes in the digital lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.spiderElsewhere === 'gooseQueen' && l.spiderHome === 'crystalSpider')(report.serpent || {}), `Queen Quartzelle only comes in the Crystal Caverns, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
