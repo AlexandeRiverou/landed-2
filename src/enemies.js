@@ -7,7 +7,7 @@
 // Dragonlings elsewhere.
 // Regular enemies spawn in a cone in front of the player (Hold The Line also sends them from the flanks and above).
 import * as THREE from 'three';
-import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, makeCrystalSpider, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
+import { makeDrone, makeMine, makeGull, makeUfo, makeStorm, makePigeon, makeGoose, makeCrown, makeBlimp, makeBee, makeJelly, makeCannon, makeRivalJet, makeOctopus, makeCrab, makePuffer, makeUmbrella, makeGrudgeRock, makePebble, makeGrumbling, makeOwl, makeKite, makeMoth, makeCarrier, makeFort, makeDeckFighter, makeEmberBat, makeMagmaSpitter, makeCometCharger, makeFlyingSquirrel, makeCrystalBat, makeHailSprite, makeGlitchBug, makeSporePopper, makeSandNoodle, makeGumdropPopper, makeIcicleLancer, makeSwordfish, makeDragonling, makeLavaSerpent, makeAuroraRay, makeSunBeetle, makeHarvestOwl, makeToadBaron, makeCastleDragon, makeIslandTurtle, makeCrystalSpider, makeBoomboxMech, CARRIER_HULL, CARRIER_DECK, FORT_HULL, deckSpot, disposeTree } from './models.js';
 import { pick, rand, T } from './texts.js';
 import { waterLine } from './world.js';
 import { MEGA, TINY } from './powerups.js';
@@ -417,6 +417,20 @@ export const BOSSES = {
     taunts: ['Queen Quartzelle: "Mind the ceiling, dear. It is my floor."', 'Queen Quartzelle: "Eight eyes, and every one of them is on you."', 'Queen Quartzelle: "Do come into my parlour. Everyone does, eventually."', 'Queen Quartzelle: "I spin silk out of starlight and spite."'],
     rage: ['Queen Quartzelle is hanging by a thread. A very angry thread.', 'All eight eyes just narrowed.'],
   },
+  // Land boss for the digital lands: a boombox on robot legs that stomps the ground beside your path (a plane outruns
+  // him), now and then skating ahead to turn and face you, firing neon notes; every 3rd attack (2nd enraged), while
+  // in front of you, he crouches and stomps a Bass Drop, a shockwave wall spreading along the ground (see BEAT). He sets his own
+  // height (hop) and turns himself. His two speakers are breakable (a lower wall), his LED eyes are soft.
+  boomboxMech: {
+    make: makeBoomboxMech, scale: 4, crownY: 2.6, crownZ: 0, crownS: 0.45, radius: 22, hp: 95, speed: 0, orbit: 0, dmg: 20,
+    face: 'none', ground: true, hop: true, markerUp: 34, // his move turns him
+    lands: ['Neon Grid', 'Blockland'],
+    name: 'DJ Gigawatt, the Boombox Mech', short: 'DJ Gigawatt', noun: 'DJ Gigawatt',
+    move: 'beat',
+    desc: 'A giant retro boombox on stompy robot legs and neon sneakers, speakers pumping to the beat. He stomps along the ground firing neon notes; often he skates ahead of you on the jets in his sneakers and turns round to face you: that is your clear shot. When he crouches with his arms up, he stomps a Bass Drop: a shockwave wall that spreads along the ground and rises above you. Climb over it (or roll through it). Bust his speakers for a lower wall; his LED eyes are soft.',
+    taunts: ['DJ Gigawatt: "Is this thing on? Oh, it is ALWAYS on."', 'DJ Gigawatt: "Requests? Denied. Next track: your crash."', 'DJ Gigawatt: "Fresh batteries, fresh beats, fresh wreckage."', 'DJ Gigawatt: "Turn it up! No, further. FURTHER."'],
+    rage: ['DJ Gigawatt cranked it to eleven.', 'The bass just dropped. So did his mood.'],
+  },
   octopus: {
     make: makeOctopus, scale: 3.5, crownY: 8.2, crownS: 1.1, radius: 24, hp: 95, speed: 30, lead: 170, sway: 60, dmg: 20, face: 'player',
     name: 'Admiral Inkworth, the Sky Octopus', short: 'Admiral Inkworth', noun: 'Admiral Inkworth',
@@ -505,6 +519,7 @@ const BOSS_BREAK_TEXT = {
   dragonHorn: 'Horn snapped off! Duchess Brûlée\'s flames are shorter now.',
   palm: 'Palm tree down! Grandma Atolla has fewer coconuts to throw.',
   gem: 'Back crystal shattered! Queen Quartzelle\'s webs are smaller now.',
+  speaker: 'Speaker busted! DJ Gigawatt\'s Bass Drop is lower now.',
 };
 // Breakaway news ({short} = the boss): when it loses you, and when it comes back.
 const SHOOK_OFF = ['{short} lost you! Hull mending fast.', 'Clean getaway! {short} is sulking.', '{short} lost sight of you. Hull mending!'];
@@ -967,6 +982,10 @@ export class Enemies {
       case 'islandTurtle':
         cd = 2.6; // coconut volleys; every 3rd attack (2nd enraged) a Whirlpool instead (see the whirl move)
         BOSS_MOVES.whirl.attack(this, e, n);
+        break;
+      case 'boomboxMech':
+        cd = 2.4; // neon note volleys; every 3rd attack (2nd enraged), in front of you, a crouch and a Bass Drop instead (see the beat move)
+        BOSS_MOVES.beat.attack(this, e, n);
         break;
       case 'crystalSpider':
         cd = 2.4; // crystal shard volleys; every 3rd attack (2nd enraged) a rear-up and a Web Wall instead (see the web move)
@@ -1490,6 +1509,7 @@ export class Enemies {
       case 'dragonHorn': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'palm': if (e.boss) e.hp -= e.maxHp * 0.04; break;
       case 'gem': if (e.boss) e.hp -= e.maxHp * 0.04; break;
+      case 'speaker': if (e.boss) e.hp -= e.maxHp * 0.04; break;
     }
     // Every boss break is news; regular enemies only mention the dramatic ones, quietly.
     const text = (e.elite && part.name === 'prop' && GARY.propText) || (e.boss && BOSS_BREAK_TEXT[part.name]) || BREAK_TEXT[part.name];
@@ -2086,6 +2106,7 @@ export class Enemies {
     if (u.scarab) BOSS_MOVES.mirage.pose(this, e, dt); // the Sun Beetle's mirages and its shadow
     if (u.toad) BOSS_MOVES.leap.pose(this, e, dt); // Count Ribbiton's facing, sac, tongue and shadow
     if (u.owl) BOSS_MOVES.gust.pose(this, e, dt); // Lady Hootrude's rear-up, her gust and its leaves
+    if (u.mech) BOSS_MOVES.beat.pose(this, e, dt); // DJ Gigawatt's stomp, skate, crouch, speakers and his Bass Drop wall
     if (u.spider) BOSS_MOVES.web.pose(this, e, dt); // Queen Quartzelle's walk, turning over onto the roof, rear-up and her Web Wall
     if (u.turtle) BOSS_MOVES.whirl.pose(this, e, dt); // Grandma Atolla's nap, paddling, rear-up and her Whirlpool
     if (u.dragon) BOSS_MOVES.rake.pose(this, e, dt); // Duchess Brûlée's rear-up, her Rake and its curtain, her wings

@@ -433,6 +433,21 @@ doesn't by itself, but flying on from where it put you does.
   of its edge, or barrel-rolling through it, is a dodge (+25, and she's dazed). Each back crystal she loses (1.5 hp, 4% of her
   hp) shrinks the web: 20, 16, then 12 m round. Her eight eyes are the weak spot; on the roof her marker hangs under
   her, pointing up. 95 hp.
+- DJ Gigawatt, the Boombox Mech (a land boss of the Neon Grid and Blockland; the deck brings him only there, and first
+  there once the two openers are done): a giant retro boombox on stompy robot legs and chunky neon sneakers, with two
+  pumping speakers, a cassette deck whose reels spin, a bouncing equalizer, a blinking antenna, pink and cyan neon trim
+  and a visor of LED eyes. He stomps along the ground toward a spot 80 m ahead of you and 55 m to one side (straight at
+  you beyond 220 m), 40 m/s (48 enraged), his feet on the ground and leaning with the slope, so a plane flying on
+  outruns him. Every 6 s (4 s enraged; first 3 s in) the jets in his sneakers fire and he skates past you at 110 m/s
+  (125 enraged) to a spot 140 m ahead and 25 m aside (giving up after 7 s), then keeps pace there for 9 s turned round
+  to face you: your clear shot at his eyes. Most attacks are a volley of 4 neon notes (9 each). Every 3rd attack (every
+  2nd enraged), while he's in front of you (not mid-dash; a due one waits) and within 280 m and you're not landed, he
+  crouches with his arms up for 1.3 s (1.9 s the first time, with a tip; 1 s enraged), then stomps a Bass Drop: a
+  glowing shockwave wall that rides the ground, spreading from his feet at 90 m/s out to 280 m. It rises 12 m over your
+  height above the ground when he stomps (28 m at least, 60 m at most), so getting over it always takes a climb.
+  Caught in it under its top: 18 hull and 10 m/s of speed. Climbing over it (up to 60 m above its top) or rolling
+  through it is a dodge (+25, and he's dazed); none for a plane that was already over it. Each speaker you bust (2 hp,
+  4% of his hp) lowers the wall (22 m to 48 m, then 16 m to 36 m). His LED eyes are the weak spot. 95 hp.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
