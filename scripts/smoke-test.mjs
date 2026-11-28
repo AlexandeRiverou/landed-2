@@ -5460,9 +5460,12 @@ try {
       gm.wait = 1e9;
       if (ball) {
         const p0 = ball.pos.clone();
-        for (let k = 0; k < 30; k++) { G.step(1 / 30); above(); }
-        const g = G.terrain.surfaceHeight(ball.pos.x, ball.pos.z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball;
-        out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +(ball.pos.y - floor).toFixed(2), alive: SP.gumballList.includes(ball) };
+        // Rolling 1 s, then its height over the ground at its lowest in the next third of a second (rolling over a crest it
+        // leaves the ground for a moment, on any land roll).
+        const over = () => { const g = G.terrain.surfaceHeight(ball.pos.x, ball.pos.z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball; return ball.pos.y - floor; };
+        let low = Infinity;
+        for (let k = 0; k < 40; k++) { G.step(1 / 30); above(); if (k >= 30 && Math.abs(over()) < Math.abs(low)) low = over(); }
+        out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +low.toFixed(2), alive: SP.gumballList.includes(ball) };
         // Shot with real bullets placed on it: popped, +10 once.
         const s9 = G.score;
         while (p.bullets.length) p.removeBullet(0);
