@@ -3122,3 +3122,152 @@ export function makeCrystalSpider(hat) {
   if (hat) partyHat(head, 1.5);
   return g;
 }
+
+// DJ Gigawatt, the Boombox Mech: a retro boombox on two stompy robot legs, with two big breakable speakers, a cassette
+// deck whose reels turn, a neon visor face (his LED eyes are the weak spot), an equalizer that bounces to the beat, a
+// telescopic antenna, chunky arms and big neon sneakers with jets in the soles. Origin at his waist; soles MECH_FEET
+// below it. Built as g → body (children[0], animateBoss's) → rig (his own bob and crouch).
+export const MECH_FEET = 3.6;
+export function makeBoomboxMech(hat) {
+  const g = new THREE.Group(), body = new THREE.Group(), rig = new THREE.Group();
+  g.add(body);
+  body.add(rig);
+  const T = {
+    case: '#c9ced8', case2: '#9aa0ae', panel: '#2a2c3a', panel2: '#1a1c28', chrome: '#eef2f8', gold: '#ffcf40',
+    pink: '#ff3ad0', cyan: '#3af0ff', violet: '#8a4aff', cone: '#22222c', cone2: '#3a3a48', sole: '#f4f4f8', shoe: '#ff3ad0', joint: '#6a6e7a',
+  };
+  const skin = lam('#ffffff', { vertexColors: true, emissive: '#0a0a14' });
+  const glow = basic('#ffffff', { vertexColors: true });
+  const mesh = (parent, parts, mat, t = {}) => add(parent, M(parts), mat, t);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const seg = (a, b, r0, r1, col, s = 8) => {
+    const v = new THREE.Vector3().subVectors(b, a), len = v.length(), geo = P(Cyl(r1, r0, len, s), col);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
+    geo.applyMatrix4(new THREE.Matrix4().compose(a.clone().addScaledVector(v, 0.5), q, new THREE.Vector3(1, 1, 1)));
+    return geo;
+  };
+  const W = 7.2, H = 4.2, D = 2.6, CY = 1.7, FZ = D / 2; // the case: width, height, depth, centre height, front face
+  // ---- the case: rounded-off silver box, darker front panel, chrome handle, corner bumpers, a strip of tape ----
+  const B = [];
+  B.push(P(Box(W, H, D), T.case, { y: CY }));
+  B.push(P(Box(W - 0.5, H - 0.4, 0.12), T.panel, { y: CY - 0.05, z: FZ + 0.02 }));
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) B.push(P(Box(0.7, 0.7, D + 0.2), T.case2, { x: sx * (W / 2 - 0.25), y: CY + sy * (H / 2 - 0.25) })); // bumpers
+  B.push(P(Box(W + 0.05, 0.18, D + 0.05), T.case2, { y: CY + H / 2 - 0.05 })); // the lid seam
+  for (const sx of [-1, 1]) B.push(P(Box(0.3, 0.9, 0.5), T.chrome, { x: sx * 2.6, y: CY + H / 2 + 0.4 })); // handle posts
+  B.push(P(Cyl(0.18, 0.18, 5.5, 8), T.chrome, { y: CY + H / 2 + 0.85, rz: PI / 2 })); // the handle bar
+  for (let k = 0; k < 5; k++) B.push(P(Box(0.5, 0.12, 0.12), T.panel2, { x: -2.2 + k * 1.1, y: CY + H / 2 + 0.85, z: 0 })); // grip ridges
+  B.push(P(Box(1.6, 0.5, 0.06), '#f0e6c8', { x: 2.2, y: CY + H / 2 - 0.55, z: FZ + 0.1, rz: -0.08 })); // a strip of masking tape (his name, in marker)
+  B.push(P(Box(1.2, 0.08, 0.02), '#2a2a2a', { x: 2.2, y: CY + H / 2 - 0.55, z: FZ + 0.14, rz: -0.08 }));
+  for (let k = 0; k < 6; k++) B.push(P(Cyl(0.13, 0.13, 0.25, 8), k % 3 ? T.case2 : T.gold, { x: -1.1 + k * 0.44, y: CY + H / 2 - 0.15, z: FZ - 0.4, rx: 0 })); // the piano keys on top
+  // the side vents and a back plate
+  for (const sx of [-1, 1]) for (let k = 0; k < 4; k++) B.push(P(Box(0.06, 0.18, D - 0.8), T.panel2, { x: sx * (W / 2 + 0.02), y: CY - 0.9 + k * 0.5 }));
+  B.push(P(Box(W - 1, H - 1, 0.1), T.case2, { y: CY, z: -FZ - 0.03 }));
+  // the hip block and the waist joint under the case
+  B.push(P(Box(4.2, 0.9, 2.0), T.joint, { y: -0.1 }));
+  B.push(P(Cyl(0.6, 0.8, 0.6, 12), T.case2, { y: 0.3 }));
+  mesh(rig, B, skin);
+  // ---- neon trim round the front, pink and cyan ----
+  const N = [];
+  for (const sy of [-1, 1]) N.push(P(Box(W - 1.4, 0.1, 0.06), sy > 0 ? T.pink : T.cyan, { y: CY + sy * (H / 2 - 0.2), z: FZ + 0.09 }));
+  for (const sx of [-1, 1]) N.push(P(Box(0.1, H - 1.4, 0.06), sx > 0 ? T.pink : T.cyan, { x: sx * (W / 2 - 0.2), y: CY, z: FZ + 0.09 }));
+  N.push(P(Box(4.4, 0.08, 0.06), T.violet, { y: -0.1, z: 1.02 })); // the hip block's stripe
+  mesh(rig, N, glow);
+  // ---- two big speakers (breakable): chrome rim, grille ring, a dark cone that pumps, a glowing dust cap ----
+  const speakers = [], cones = [];
+  for (const sx of [-1, 1]) {
+    const s = new THREE.Group();
+    s.position.set(sx * 2.25, CY - 0.15, FZ + 0.08);
+    rig.add(s);
+    mesh(s, [P(Tor(1.3, 0.16, 6, 28), T.chrome), P(Tor(1.05, 0.06, 4, 24), T.case2, { z: 0.04 }), P(Cyl(1.38, 1.38, 0.1, 28), T.panel2, { rx: PI / 2, z: -0.05 })], skin);
+    for (let k = 0; k < 8; k++) mesh(s, [P(Box(0.05, 0.05, 0.05), T.chrome, { x: Math.cos(k * PI / 4) * 1.48, y: Math.sin(k * PI / 4) * 1.48, z: 0.08 })], skin); // the rim's screws
+    const cone = new THREE.Group();
+    s.add(cone);
+    mesh(cone, [P(Cone(1.1, 0.6, 24, 1, true), T.cone, { rx: -PI / 2, z: 0.0 }), P(Tor(0.75, 0.04, 4, 20), T.cone2, { z: 0.12 }), P(Tor(0.45, 0.04, 4, 16), T.cone2, { z: 0.22 })], lam('#ffffff', { vertexColors: true, side: THREE.DoubleSide }));
+    mesh(cone, [P(Sph(0.32, 12, 8), sx > 0 ? T.pink : T.cyan, { z: 0.28, sz: 0.55 })], glow); // dust cap
+    breakable(g, s, 1.6, 'speaker', 2);
+    speakers.push(s);
+    cones.push(cone);
+  }
+  // ---- the cassette deck in the middle: a window with two turning reels and the tape between them ----
+  const deck = new THREE.Group();
+  deck.position.set(0, CY - 0.55, FZ + 0.1);
+  rig.add(deck);
+  mesh(deck, [P(Box(1.9, 1.25, 0.08), T.chrome), P(Box(1.7, 1.05, 0.06), '#0e0e18', { z: 0.03 }), P(Box(1.3, 0.4, 0.04), '#f8f0d8', { y: 0.32, z: 0.07 }), P(Box(1.0, 0.06, 0.02), T.pink, { y: 0.38, z: 0.1 })], skin);
+  mesh(deck, [P(Box(0.55, 0.05, 0.02), '#6a3a2a', { y: -0.28, z: 0.08 })], skin); // the tape run between the reels
+  const reels = [];
+  for (const sx of [-1, 1]) {
+    const r = new THREE.Group();
+    r.position.set(sx * 0.45, -0.18, 0.08);
+    deck.add(r);
+    const RL = [P(Cyl(0.26, 0.26, 0.04, 14), '#5a3a2a', { rx: PI / 2 }), P(Cyl(0.1, 0.1, 0.06, 10), T.chrome, { rx: PI / 2 })];
+    for (let k = 0; k < 6; k++) RL.push(P(Box(0.04, 0.12, 0.05), T.chrome, { x: Math.cos(k * PI / 3) * 0.12, y: Math.sin(k * PI / 3) * 0.12, rz: k * PI / 3 }));
+    mesh(r, RL, skin);
+    reels.push(r);
+  }
+  // the knobs and buttons under the deck
+  const K = [];
+  for (let k = 0; k < 5; k++) K.push(P(Box(0.28, 0.2, 0.2), k === 1 ? '#ff4040' : T.case2, { x: -0.8 + k * 0.4, y: CY - 1.5, z: FZ + 0.12 }));
+  for (const sx of [-1, 1]) K.push(P(Cyl(0.22, 0.22, 0.25, 12), T.chrome, { x: sx * 1.15, y: CY + 0.6, z: FZ + 0.15, rx: PI / 2 }), P(Box(0.04, 0.16, 0.05), T.gold, { x: sx * 1.15, y: CY + 0.7, z: FZ + 0.29 }));
+  mesh(rig, K, skin);
+  // ---- his face: a neon visor across the top with two big LED eyes (the weak spot) and an equalizer for a mouth ----
+  const face = new THREE.Group();
+  face.position.set(0, CY + 1.15, FZ + 0.1);
+  rig.add(face);
+  mesh(face, [P(Box(4.4, 1.15, 0.1), '#08080f'), P(Box(4.55, 0.08, 0.12), T.cyan, { y: 0.6 }), P(Box(4.55, 0.08, 0.12), T.pink, { y: -0.6 })], skin);
+  const E = [];
+  for (const sx of [-1, 1]) {
+    E.push(P(Box(0.95, 0.55, 0.06), '#7affff', { x: sx * 1.35, y: 0.12, z: 0.08 }));
+    E.push(P(Box(0.4, 0.22, 0.04), '#ffffff', { x: sx * 1.35 + 0.15, y: 0.22, z: 0.12 }));
+  }
+  const eyes = add(face, M(E), glow);
+  weak(g, eyes, 1.3, 3); // his LED eyes are soft
+  const eq = [];
+  for (let k = 0; k < 7; k++) {
+    const bar = add(face, Box(0.16, 0.5, 0.05), basic(k % 2 ? T.pink : T.violet), { x: -0.48 + k * 0.16, y: -0.08, z: 0.08 });
+    bar.geometry = bar.geometry.clone().translate(0, 0.25, 0); // grows up from its foot
+    bar.position.y = -0.4;
+    eq.push(bar);
+  }
+  // ---- a telescopic antenna, leaning back, with a blinking tip ----
+  const ant = new THREE.Group();
+  ant.position.set(-2.9, CY + H / 2 + 0.1, -0.6);
+  ant.rotation.set(-0.35, 0, 0.25);
+  rig.add(ant);
+  mesh(ant, [P(Cyl(0.12, 0.16, 2.2, 6), T.chrome, { y: 1.1 }), P(Cyl(0.08, 0.1, 2.0, 6), T.chrome, { y: 3.2 }), P(Cyl(0.05, 0.07, 1.6, 6), T.chrome, { y: 4.9 }), P(Sph(0.22, 8, 6), T.case2)], skin);
+  const tip = add(ant, Sph(0.22, 10, 8), basic('#ff4060'), { y: 5.8 });
+  // ---- arms: shoulder ball, upper arm, elbow, forearm and a big white mitt; each on a shoulder pivot ----
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const sh = new THREE.Group(), el = new THREE.Group();
+    sh.position.set(sx * (W / 2 + 0.45), CY + 0.6, 0);
+    rig.add(sh);
+    mesh(sh, [P(Sph(0.6, 12, 8), T.joint), seg(V(0, 0, 0), V(sx * 0.4, -1.5, 0), 0.4, 0.35, T.case2), P(Tor(0.4, 0.08, 4, 12), T.pink, { x: sx * 0.2, y: -0.75, rx: PI / 2 })], skin);
+    el.position.set(sx * 0.4, -1.5, 0);
+    sh.add(el);
+    mesh(el, [P(Sph(0.42, 10, 8), T.joint), seg(V(0, 0, 0), V(0, -1.3, 0.35), 0.35, 0.3, T.case2), P(Sph(0.65, 12, 8), '#f8f8fc', { y: -1.6, z: 0.45, sx: 1.1, sy: 0.9 }), P(Box(0.75, 0.25, 0.3), '#f8f8fc', { y: -1.25, z: 0.4 }), P(Tor(0.36, 0.08, 4, 12), T.cyan, { y: -1.15, z: 0.38, rx: PI / 2 })], skin);
+    sh.userData = { sx, el };
+    arms.push(sh);
+  }
+  // ---- legs: hip ball, thigh, knee, shin and a big neon sneaker with a white sole and a jet in it ----
+  const legs = [], jets = [];
+  for (const sx of [-1, 1]) {
+    const hip = new THREE.Group(), knee = new THREE.Group();
+    hip.position.set(sx * 1.45, -0.5, 0);
+    rig.add(hip);
+    mesh(hip, [P(Sph(0.55, 12, 8), T.joint), seg(V(0, 0, 0), V(0, -1.5, 0.15), 0.5, 0.42, T.case2), P(Box(1.05, 0.5, 1.05), T.case, { y: -0.8, z: 0.08 }), P(Box(1.08, 0.08, 1.08), sx > 0 ? T.pink : T.cyan, { y: -0.6, z: 0.08 })], skin);
+    knee.position.set(0, -1.55, 0.15);
+    hip.add(knee);
+    const F = -MECH_FEET + 0.5 + 1.55; // the sole, in knee space
+    mesh(knee, [P(Sph(0.45, 10, 8), T.joint), seg(V(0, 0, 0), V(0, F + 0.55, -0.1), 0.4, 0.36, T.case2),
+      P(Box(1.3, 0.55, 2.3), T.shoe, { y: F + 0.35, z: 0.35 }), P(Box(1.35, 0.22, 2.45), T.sole, { y: F + 0.1, z: 0.38 }), // the sneaker and its sole
+      P(Sph(0.66, 10, 6), T.shoe, { y: F + 0.55, z: 1.25, sy: 0.6, sx: 1 }), P(Box(1.32, 0.1, 0.4), '#ffffff', { y: F + 0.6, z: -0.3 }), // toe cap, heel stripe
+      P(Box(0.08, 0.08, 1.3), '#ffffff', { x: 0.4, y: F + 0.68, z: 0.5, ry: 0.3 }), P(Box(0.08, 0.08, 1.3), '#ffffff', { x: -0.4, y: F + 0.68, z: 0.5, ry: -0.3 })], skin); // laces
+    const jet = add(knee, new THREE.CircleGeometry(0.55, 16), new THREE.MeshBasicMaterial({ color: '#7affff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), { y: F - 0.02, z: 0.38, rx: PI / 2 });
+    hip.userData = { sx, knee, ph: sx > 0 ? 0 : PI };
+    legs.push(hip);
+    jets.push(jet);
+  }
+  Object.assign(g.userData, { mech: true, rig, face, eyes, eq, speakers, cones, reels, tip, arms, mechLegs: legs, jets, crownOn: face });
+  if (hat) partyHat(face, 2.6);
+  return g;
+}

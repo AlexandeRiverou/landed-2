@@ -188,6 +188,7 @@ try {
     window.TOAD_FEET_FOR_TEST = (await import('./src/models.js')).TOAD_FEET;
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
     window.SPIDER_FEET_FOR_TEST = (await import('./src/models.js')).SPIDER_FEET;
+    window.MECH_FEET_FOR_TEST = (await import('./src/models.js')).MECH_FEET;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1311,6 +1312,141 @@ try {
       delete r.frames;
       return r;
     };
+    // DJ Gigawatt: feet on the ground as he stomps along, legs swinging; a straight run with him behind you (he trails, but
+    // skates ahead now and then and keeps pace facing you); 4-note volleys; a crouch, then a Bass Drop wall that rattles
+    // a plane held low in its way and lets one held just over its top go (a dodge); with his speakers busted it's lower.
+    const mechChecks = (e) => {
+      const p = G.player, V = p.pos.constructor, u = e.mesh.userData, T = G.terrain, mv = () => e.mv || {};
+      const r = { volleys: [], onGround: 0, frames: 0, walked: 0, swing: [9, -9] };
+      const feet = window.MECH_FEET_FOR_TEST * e.mesh.scale.x, leg = u.mechLegs[0];
+      let up = 60; // how high park() holds the plane over the ground
+      // 150 m from him, facing him (his Bass Drop only comes from in front of you).
+      const park = () => {
+        const d = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z);
+        if (d.lengthSq() < 1) d.set(1, 0, 0);
+        d.normalize();
+        // (round him to a spot whose ground is near his: the land here may have deep pits, which he stays out of)
+        const g0 = e.pos.y - feet;
+        for (let k = 0; k < 12; k++) {
+          p.pos.copy(e.pos).addScaledVector(d, 150);
+          if (Math.abs(T.surfaceHeight(p.pos.x, p.pos.z) - g0) < 25) break;
+          d.applyAxisAngle(new V(0, 1, 0), Math.PI / 6);
+        }
+        p.pos.y = T.surfaceHeight(p.pos.x, p.pos.z) + up; p.prevPos.copy(p.pos);
+        p.quat.setFromUnitVectors(new V(0, 0, -1), d.negate()); p.updateAxes();
+      };
+      const clear = () => { G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x)); };
+      const fly = (n, until = () => false) => {
+        for (let i = 0; i < n; i++) {
+          const shots0 = new Set(G.enemies.shots), v0 = mv().volleys, at = e.pos.clone();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
+          if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
+          r.frames++;
+          const dy = e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
+          if (Math.abs(dy) < 3) r.onGround++;
+          // (what the fight looked like, for a failure's report)
+          const D = (r.dbg ||= { dy: [1e9, -1e9], gone: 0, landed: 0, dead: 0, front: 0, phase: {}, far: 0, ring: 0, due: 0 });
+          D.dy = [Math.min(D.dy[0], Math.round(dy)), Math.max(D.dy[1], Math.round(dy))];
+          if (!G.enemies.list.includes(e)) { D.gone++; D.goneAt ??= r.frames; }
+          if (p.landed) D.landed++;
+          if (p.dead) D.dead++;
+          const tx = e.pos.x - p.pos.x, tz = e.pos.z - p.pos.z;
+          if ((p.forward.x * tx + p.forward.z * tz) / (Math.hypot(p.forward.x, p.forward.z) * Math.hypot(tx, tz) || 1) > 0.3) D.front++;
+          D.phase[mv().phase] = (D.phase[mv().phase] || 0) + 1;
+          if (Math.hypot(tx, tz) > 280) D.far++;
+          if (mv().ring) D.ring++;
+          if (mv().due) D.due++;
+          D.cd = +(e.cd || 0).toFixed(1); D.att = e.attacks; D.bosses = G.enemies.list.filter((x) => x.boss).map((x) => x.kind).join();
+          r.walked += Math.hypot(e.pos.x - at.x, e.pos.z - at.z);
+          const s = leg.rotation.x;
+          r.swing = [Math.min(r.swing[0], +s.toFixed(2)), Math.max(r.swing[1], +s.toFixed(2))];
+          if (until()) return true;
+        }
+        return false;
+      };
+      fly(30 * 6);
+      r.walked = Math.round(r.walked);
+      {
+        const m = mv(), f0 = new V(p.forward.x, 0, p.forward.z);
+        if (f0.lengthSq() < 0.01) f0.set(0, 0, -1);
+        f0.normalize();
+        // Fly the way whose ground stays nearest his for 3 km (he never walks down a cliff or into a deep pit, which a
+        // straight line here might cross).
+        {
+          const g0 = e.pos.y - feet, best = { k: 0, v: Infinity }, f = f0.clone();
+          for (let k = 0; k < 12; k++, f.applyAxisAngle(new V(0, 1, 0), Math.PI / 6)) {
+            let v = 0;
+            for (let t = 100; t <= 3000; t += 50) v = Math.max(v, Math.abs(T.surfaceHeight(e.pos.x + f.x * t, e.pos.z + f.z * t) - g0));
+            if (v < best.v) Object.assign(best, { k, v });
+          }
+          f0.applyAxisAngle(new V(0, 1, 0), (best.k * Math.PI) / 6);
+        }
+        Object.assign(m, { phase: 'trail', clock: 3 });
+        const at = e.pos.clone().addScaledVector(f0, 60), dashes0 = m.dashes;
+        const R = { frames: 0, ahead: 0, shown: 0, aheadShown: 0, facing: 0, start: 0 };
+        for (let i = 0; i < 30 * 40; i++) {
+          at.addScaledVector(f0, p.speed / 30);
+          p.pos.set(at.x, T.surfaceHeight(at.x, at.z) + 70, at.z); p.prevPos.copy(p.pos);
+          p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
+          p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1);
+          const lead = (e.pos.x - p.pos.x) * f0.x + (e.pos.z - p.pos.z) * f0.z;
+          if (i === 0) R.start = Math.round(lead);
+          R.frames++;
+          if (lead > 0) R.ahead++;
+          if (m.phase === 'show') {
+            R.shown++;
+            if (lead > 0) R.aheadShown++;
+            const to = new V(p.pos.x - e.pos.x, 0, p.pos.z - e.pos.z).normalize();
+            if (to.x * Math.sin(e.yaw) + to.z * Math.cos(e.yaw) > 0.7) R.facing++;
+          }
+        }
+        r.race = { start: R.start, dashes: m.dashes - dashes0, ahead: +(R.ahead / R.frames).toFixed(2), shown: +(R.shown / 30).toFixed(1), aheadShown: R.shown ? +(R.aheadShown / R.shown).toFixed(2) : 0, facing: R.shown ? +(R.facing / R.shown).toFixed(2) : 0 };
+      }
+      // The next Bass Drop, the plane parked `at0` m up when he stomps (the wall rises 12 m over that, at least 28 m,
+      // at most 60), then held still in the wall's way ('low': 10 m over the ground; 'high': 15 m over the wall's top).
+      const drop = (over, at0 = 10) => {
+        up = at0;
+        const done = (l) => { up = 60; return l; };
+        if (!fly(30 * 40, () => mv().tell > 0)) return done(null);
+        const l = { tell: +mv().tell0.toFixed(2), crouch: 0, arms: 0 };
+        if (!fly(30 * 4, () => { l.crouch = Math.max(l.crouch, +(-u.rig.position.y).toFixed(2)); l.arms = Math.min(l.arms, +u.arms[0].rotation.x.toFixed(2)); return !!mv().ring; })) return done(l);
+        up = 60;
+        const m = mv(), W = m.ring, h0 = m.hits, ps = m.passes, hull = p.health, speed0 = p.speed;
+        l.H = W.H;
+        l.h0 = Math.round(W.h0);
+        const a = Math.atan2(p.pos.z - W.z, p.pos.x - W.x), at = new V(W.x + Math.cos(a) * (W.r + 20), 0, W.z + Math.sin(a) * (W.r + 20));
+        at.y = T.surfaceHeight(at.x, at.z) + (over === 'low' ? 10 : W.H + 15); // (heights count from the ground under the plane)
+        let slowed = 0;
+        for (let i = 0; i < 30 * 3 && m.ring === W && !W.past; i++) {
+          p.pos.copy(at); p.prevPos.copy(at);
+          clear();
+          p.invuln = 0; p.grace = 1; const sp = p.speed; G.step(1 / 30); // not step(): it makes the plane invulnerable
+          if (W.past) slowed = +(sp - p.speed).toFixed(1);
+          if (i === 0 && u.wallFx?.group.visible) {
+            // Its top band drawn at its height over the ground, all round the ring.
+            const tp = u.wallFx.top.geometry.attributes.position;
+            let worst = 0;
+            for (let j = 0; j < tp.count; j += 2) worst = Math.max(worst, Math.abs((tp.getY(j) + tp.getY(j + 1)) / 2 - W.H - T.surfaceHeight(tp.getX(j), tp.getZ(j))));
+            l.drawn = worst < 0.5 ? W.H : -1;
+          }
+        }
+        Object.assign(l, { hits: m.hits - h0, hull: +(hull - p.health).toFixed(1), slowed, passed: m.passes - ps, dazed: +(e.dazed || 0).toFixed(1) });
+        for (let i = 0; i < 30 * 5 && m.ring; i++) { park(); p.invuln = 99; G.step(1 / 30); }
+        l.gone = !m.ring && !u.wallFx.group.visible;
+        p.invuln = 99; p.health = p.maxHealth; p.speed = speed0;
+        return done(l);
+      };
+      r.low = drop('low');
+      r.high = drop('high');
+      r.tall = drop('high', 40); // 40 m up when he stomps: a 52 m wall, still a climb
+      r.aloft = drop('high', 100); // already high: a 60 m wall you were never under, so no dodge
+      for (const c of u.parts.filter((x) => x.name === 'speaker')) { let n = 0; while (!c.broken && n < 60) { G.enemies.damagePart(e, c, 1, c.obj.getWorldPosition(new V())); n++; } r.speakerHits = n; }
+      r.small = drop('high', 4); // low enough that the wall stays at its least (16 m with both speakers out)
+      r.volleys = r.volleys.slice(0, 4);
+      r.onGround = r.frames ? +(r.onGround / r.frames).toFixed(2) : 0;
+      delete r.frames;
+      return r;
+    };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
     const place = () => ({ pos: G.player.pos.clone(), prev: G.player.prevPos.clone(), quat: G.player.quat.clone(), speed: G.player.speed });
     const putBack = (s) => { const p = G.player; p.pos.copy(s.pos); p.prevPos.copy(s.prev); p.quat.copy(s.quat); p.speed = s.speed; p.updateAxes(); };
@@ -1333,11 +1469,11 @@ try {
       // turn, whatever land the loop has reached by now.
       // Duchess Brûlée's Rake check holds the plane at set heights, which a cave roof's push would undo. Queen Quartzelle
       // is the caves': give her a cave roof (the ground's rebuild below builds it).
-      const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
+      const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon') && place();
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
@@ -1423,6 +1559,7 @@ try {
       if (kind === 'castleDragon' && e.kind === kind) out.dragon = dragonChecks(e);
       if (kind === 'islandTurtle' && e.kind === kind) out.turtle = turtleChecks(e, turtleNap);
       if (kind === 'crystalSpider' && e.kind === kind) out.spider = spiderChecks(e);
+      if (kind === 'boomboxMech' && e.kind === kind) out.mech = mechChecks(e);
       e.hp = 0;
       step(3);
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
@@ -1488,6 +1625,13 @@ try {
       O.bossDeck = ['kingDrone', 'gooseQueen', 'crystalSpider'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Crystal Caverns');
       L.spiderHome = draw();
+      // DJ Gigawatt in the digital lands.
+      O.bossDeck = ['boomboxMech', 'gooseQueen'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
+      L.mechElsewhere = draw();
+      O.bossDeck = ['kingDrone', 'gooseQueen', 'boomboxMech'];
+      G.zones.index = ZONES.findIndex((z) => z.name === 'Neon Grid');
+      L.mechHome = draw();
       // Duchess Brûlée in the castle lands.
       O.bossDeck = ['castleDragon', 'gooseQueen'];
       G.zones.index = ZONES.findIndex((z) => z.name === 'Meadowlands');
@@ -1632,6 +1776,7 @@ try {
           if (kind === 'castleDragon') Object.assign(S, { rakes: e.mv?.rakes || 0, tells: e.rakeTells || 0 });
           if (kind === 'islandTurtle') Object.assign(S, { whirls: e.mv?.whirls || 0, tells: e.whirlTells || 0 });
           if (kind === 'crystalSpider') Object.assign(S, { webs: e.mv?.webs || 0, tells: e.webTip ? 1 : 0 });
+          if (kind === 'boomboxMech') Object.assign(S, { drops: e.mv?.drops || 0, tells: e.dropTip ? 1 : 0 });
           M.kinds[kind] = S;
           end();
           if (spot0) putBack(spot0);
@@ -5315,9 +5460,13 @@ try {
       gm.wait = 1e9;
       if (ball) {
         const p0 = ball.pos.clone();
-        for (let k = 0; k < 30; k++) { G.step(1 / 30); above(); }
-        const g = G.terrain.surfaceHeight(ball.pos.x, ball.pos.z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball;
-        out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +(ball.pos.y - floor).toFixed(2), alive: SP.gumballList.includes(ball) };
+        // Rolling 1 s, then its height over the ground at its lowest in the next 2 s (rolling over a crest or bouncing off a
+        // drop it leaves the ground for a moment, on any land roll).
+        // The roll snaps it to the ground where it was at the start of the frame, so that's where its height is read.
+        const over = (x, z) => { const g = G.terrain.surfaceHeight(x, z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball; return ball.pos.y - floor; };
+        let low = Infinity;
+        for (let k = 0; k < 90; k++) { const x0 = ball.pos.x, z0 = ball.pos.z; G.step(1 / 30); above(); if (k >= 30 && SP.gumballList.includes(ball) && Math.abs(over(x0, z0)) < Math.abs(low)) low = over(x0, z0); }
+        out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +low.toFixed(2), alive: SP.gumballList.includes(ball) };
         // Shot with real bullets placed on it: popped, +10 once.
         const s9 = G.score;
         while (p.bullets.length) p.removeBullet(0);
@@ -5620,6 +5769,8 @@ try {
     [(({ dragonFly: f }) => f && (f.tower ? f.perched && f.rooted && f.onTop && f.launch > 0 && f.launch <= 2.2 : f.roofed) && f.wing[1] - f.wing[0] > 0.3 && f.bank > 0.02 && f.backward <= 6 && f.shadow !== null && Math.abs(f.shadow - 0.6) < 0.05)(report), `Duchess Brûlée: she starts lying on top of her tower (rooted in the ground or on a cloud bank; none under a roof), takes off within about 2 s, then flaps, banks into her turns, flies head first and casts a shadow on the ground (${JSON.stringify(report.dragonFly)})`],
     [(({ turtle: t }) => t && t.nap && t.gulls && t.woke && t.afloat && t.flip[1] - t.flip[0] > 0.3 && t.volleys.length >= 1 && t.volleys.every((n) => n === 5) && t.mid?.tell >= 1.4 && t.mid.under && t.mid.caught === 1 && t.mid.gust > 0 && t.mid.splash === 0 && t.mid.hull === 0 && t.mid.dazed >= 1 && t.mid.back && t.low?.splash === 1 && t.low.hull > 0 && t.high?.caught === 0 && t.high.gust === 0 && t.high.dazed === 0 && t.palmHits >= 1 && t.palmHits <= 12 && t.after === 2)(report), `Grandma Atolla: she starts asleep like an island (gulls round her palms), wakes when you come near, floats and paddles; 5-coconut volleys, 2 with her palms down; her Whirlpool (1.4 s+ tell, she's under and can't be hurt) pulls a plane 30 m up without hurting it (a dodge: she's dazed), splashes one at the water line, and leaves one 100 m up alone (${JSON.stringify(report.turtle)})`],
     [(({ spider: s }) => s && s.roofed && s.flip === 1 && s.onRock >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.2 && s.volleys.length >= 1 && s.volleys.every((n) => n === 5) && s.on?.tell >= 1.3 && s.on.rear > 0.6 && s.on.spun === 1 && s.on.R === 24 && s.on.drawn === 24 && s.on.snared === 1 && s.on.torn && s.on.hull > 0 && s.on.slowed >= 4 && s.on.gone && s.edge?.snared === 0 && s.edge.hull === 0 && s.edge.passed === 1 && s.edge.dazed >= 1 && s.edge.gone && s.gemHits >= 1 && s.gemHits <= 12 && s.small === 12 && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.race.drops >= 1 && s.race.floor >= 3 && s.race.line === 1 && s.race.back === 1)(report), `Queen Quartzelle: in a cave she hangs upside down from the roof (feet on the rock) and walks along it, legs swinging; flying straight on with her behind you, she trails but dashes ahead often and keeps pace there 8 s+ facing you, dropping on a silk line to walk the floor 3 s+ (then back up); 5-shard volleys; a 1.3 s+ rear-up while a web spins up across your path, then a 24 m web that snares a plane flown through its middle (hull and speed lost, it tears) and lets one 25 m past its edge go (a dodge: she's dazed); with her back crystals shattered the web is 12 m (${JSON.stringify(report.spider)})`],
+    [(({ mech: s }) => s && s.onGround >= 0.8 && s.walked >= 60 && s.swing[1] - s.swing[0] > 0.3 && s.volleys.length >= 1 && s.volleys.every((n) => n === 4) && s.race?.start < 0 && s.race.dashes >= 2 && s.race.ahead >= 0.35 && s.race.ahead <= 0.95 && s.race.shown >= 8 && s.race.aheadShown >= 0.8 && s.race.facing >= 0.7 && s.low?.tell >= 1.3 && s.low.crouch > 0.4 && s.low.arms < -1.5 && Math.abs(s.low.H - Math.min(60, Math.max(28, s.low.h0 + 12))) < 0.5 && s.low.drawn === s.low.H && s.low.hits === 1 && s.low.hull > 0 && s.low.slowed >= 4 && s.low.passed === 0 && s.low.gone && s.high?.hits === 0 && s.high.hull === 0 && s.high.passed === 1 && s.high.dazed >= 1 && s.high.gone && s.tall?.H > 28 && Math.abs(s.tall.H - Math.min(60, Math.max(28, s.tall.h0 + 12))) < 0.5 && s.tall.passed === (s.tall.h0 < s.tall.H - 6 ? 1 : 0) && s.aloft?.H === 60 && s.aloft.passed === 0 && s.aloft.hits === 0 && s.speakerHits >= 1 && s.speakerHits <= 12 && s.small?.H < 24 && Math.abs(s.small.H - Math.min(36, Math.max(16, s.small.h0 + 12))) < 0.5)(report), `DJ Gigawatt: feet on the ground as he stomps along, legs swinging; flying straight on with him behind you, he trails but skates ahead often and keeps pace there 8 s+ facing you; 4-note volleys; a 1.3 s+ crouch with his arms up, then a Bass Drop wall riding the ground, 12 m over your height when he stomps (28 m at least, 60 at most), that rattles a plane held low in its way (hull and speed lost) and lets one that climbed over its top go (a dodge: he's dazed; none for a plane already over it); with his speakers busted it's 16 m (${JSON.stringify(report.mech)})`],
+    [(({ lands: l }) => l && l.mechElsewhere === 'gooseQueen' && l.mechHome === 'boomboxMech')(report.serpent || {}), `DJ Gigawatt only comes in the digital lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.spiderElsewhere === 'gooseQueen' && l.spiderHome === 'crystalSpider')(report.serpent || {}), `Queen Quartzelle only comes in the Crystal Caverns, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.turtleElsewhere === 'gooseQueen' && l.turtleHome === 'islandTurtle')(report.serpent || {}), `Grandma Atolla only comes in the Tropical Archipelago, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
     [(({ lands: l }) => l && l.dragonElsewhere === 'gooseQueen' && l.dragonHome === 'castleDragon')(report.serpent || {}), `Duchess Brûlée only comes in the castle lands, and comes first there (${JSON.stringify(report.serpent?.lands)})`],
@@ -5640,6 +5791,7 @@ try {
         auroraRay: (s) => /h/.test(s.fans) && /v/.test(s.fans), sunBeetle: (s) => s.mirage >= 2, harvestOwl: (s) => s.gust >= 1, toadBaron: (s) => s.hops >= 2, castleDragon: (s) => s.rakes + s.tells >= 1, // (a sparkle line drawn counts: the window may end before the fire)
         islandTurtle: (s) => s.whirls + s.tells >= 1, // (a foam ring drawn counts)
         crystalSpider: (s) => s.webs + s.tells >= 1, // (a web spinning up counts)
+        boomboxMech: (s) => s.drops + s.tells >= 1, // (a crouch counts)
       };
       const kinds = report.moves?.kinds || {}, miss = Object.keys(SIG).filter((k) => !kinds[k] || !SIG[k](kinds[k]));
       const hz = report.moves?.hazards || [], fired = hz.filter((h) => h.fired >= 0);
