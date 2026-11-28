@@ -147,9 +147,10 @@ try {
     // Canyon Country's trestle (land 3) does the same with __smokeTrestle, and the Candy Kingdom's gumball machine with
     // __smokeGumball (its gumballs' colours and the chute's aim roll aside too), the Dune Sea's caravan with
     // __smokeCaravan, the Meadowlands' barn (land 0, flown by nearly every check) with __smokeBarn, and the Giant's
-    // Garden watering can with __smokeCan, and the Salt Mirror's flamingos with __smokeFlock.
+    // Garden watering can with __smokeCan, the Salt Mirror's flamingos with __smokeFlock and the Cloud Kingdom's harp with
+    // __smokeHarp.
     const SP = window.G.zones.setPieces;
-    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle'], ['updateGumball', 'placeGumball', '__smokeGumball'], ['updateCaravan', 'placeCaravan', '__smokeCaravan'], ['updateBarn', 'placeBarn', '__smokeBarn'], ['updateCan', 'placeCan', '__smokeCan'], ['updateFlock', 'placeFlock', '__smokeFlock']]) {
+    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle'], ['updateGumball', 'placeGumball', '__smokeGumball'], ['updateCaravan', 'placeCaravan', '__smokeCaravan'], ['updateBarn', 'placeBarn', '__smokeBarn'], ['updateCan', 'placeCan', '__smokeCan'], ['updateFlock', 'placeFlock', '__smokeFlock'], ['updateHarp', 'placeHarp', '__smokeHarp']]) {
       const f = SP[up];
       SP[up] = function (dt) { if (window[flag]) return f.call(this, dt); };
       for (const k of [place, up]) window.__smokeAside(SP, k);
@@ -5803,7 +5804,45 @@ try {
       out.join.hits = hits.length;
       p.speed = v0; p.wind.copy(w0);
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo; out.beltGumball = !!SP.gumballInfo; out.beltCaravan = !!SP.caravanInfo; out.beltBarn = !!SP.barnInfo; out.beltCan = !!SP.canInfo; out.beltFlock = !!SP.flockInfo;
+    // Cloud Kingdom: a giant golden harp on the clouds. Flying through its strings plucks them and never hurts; skimming
+    // along them is +40 once ("Glissando!"); the gold frame is solid: one knock, and you're shoved clear.
+    const { HARP } = await import('./src/setpieces.js');
+    out.saltHarp = !!SP.harpInfo;
+    window.__smokeHarp = true;
+    into('Cloud Kingdom');
+    for (let k = 0; k < 40 && !SP.harpInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    const hp = SP.harpInfo;
+    out.harp = !!hp;
+    if (hp) {
+      const cs = Math.cos(hp.yaw), sn = Math.sin(hp.yaw), r = 2.5 * (p.sizeScale || 1);
+      const put = (lx, ly, lz) => { p.pos.set(hp.pos.x + lx * cs + lz * sn, hp.pos.y + ly, hp.pos.z - lx * sn + lz * cs); p.prevPos?.copy(p.pos); };
+      // The pedestal stands on its low side and sinks into the high side, no deeper than its footing.
+      out.harpGrounded = [[0, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]].every(([a, b]) => { const x = HARP.padX + a * HARP.padW / 2, z = b * HARP.padD / 2, h = G.terrain.surfaceHeight(hp.pos.x + x * cs + z * sn, hp.pos.z - x * sn + z * cs); return h >= hp.pos.y - 0.01 && h <= hp.pos.y + HARP.slope + 0.01; });
+      const v0 = p.speed, w0 = p.wind.clone();
+      p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
+      const still = () => { p.speed = 0.001; p.gust.set(0, 0, 0); clear(); };
+      // Straight through the strings, between two of them: a note or two, no knock, no glissando.
+      hits.length = 0;
+      const s17 = G.score, mid = HARP.x0 + HARP.dx * 4.5;
+      for (let k = 0; k <= 40; k++) { put(mid, 36, 40 - k * 2); still(); G.step(1 / 30); }
+      out.strum = { plucked: hp.plucked, gliss: hp.gliss, score: G.score - s17, hits: hits.length };
+      for (let k = 0; k < 90; k++) { put(0, 36, 200); still(); G.step(1 / 30); }
+      // Along the strings: a glissando, +40 once, still no knock; and again, nothing more.
+      const s18 = G.score, p0 = hp.plucked;
+      for (let k = 0; k <= 30; k++) { put(HARP.pillarX + 6 + k, 46, 0.5); still(); G.step(1 / 30); }
+      out.gliss = { gliss: hp.gliss, plucked: hp.plucked - p0, score: G.score - s18, need: HARP.score, hits: hits.length };
+      for (let k = 0; k < 90; k++) { put(0, 36, 200); still(); G.step(1 / 30); }
+      for (let k = 0; k <= 30; k++) { put(HARP.pillarX + 6 + k, 46, 0.5); still(); G.step(1 / 30); }
+      out.gliss.again = G.score - s18 - out.gliss.score;
+      // Into the pillar: one knock, and you're out of it.
+      hits.length = 0;
+      hp.bumpT = 0;
+      put(HARP.pillarX + 1, 40, 0.5); still(); G.step(1 / 30);
+      const L = SP.archLocal(hp, p.pos.clone());
+      out.pillar = { hits: hits.filter((n) => n === HARP.dmg).length, off: Math.hypot(L.x - HARP.pillarX, L.z) >= 2.6 + r - 0.1, at: [+L.x.toFixed(1), +L.y.toFixed(1), +L.z.toFixed(1)] };
+      p.speed = v0; p.wind.copy(w0);
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo; out.beltGumball = !!SP.gumballInfo; out.beltCaravan = !!SP.caravanInfo; out.beltBarn = !!SP.barnInfo; out.beltCan = !!SP.canInfo; out.beltFlock = !!SP.flockInfo; out.beltHarp = !!SP.harpInfo;
     window.__smokeBarn = false; // the checks after this one fly the Meadowlands again: no barn in their way
     p.damage = damage;
     p.god = god;
@@ -6251,6 +6290,7 @@ try {
     [(({ setPieces: q }) => q.barn && !q.duneBarn && !q.beltBarn && q.barnLater && q.barnGrounded && q.storm?.stormed && q.storm.score >= q.storm.need && q.storm.score < q.storm.need + 15 && q.storm.again < q.storm.need && q.storm.hits === 0 && q.barnWall?.hits === 1 && q.barnWall.off && q.barnFloor?.hits === 0 && q.hens?.fled && q.hens.pecking)(report), `set pieces: the Meadowlands have their big red barn (no other land does), not in the first seconds of a flight, standing level on the ground; flying in one door and out the other is +40 once with no bump; its walls are solid: one knock and you're shoved clear; skimming its floor is no knock; the hens scatter when buzzed and later peck again (${JSON.stringify(report.setPieces && { barn: report.setPieces.barn, dune: report.setPieces.duneBarn, belt: report.setPieces.beltBarn, later: report.setPieces.barnLater, grounded: report.setPieces.barnGrounded, storm: report.setPieces.storm, wall: report.setPieces.barnWall, floor: report.setPieces.barnFloor, hens: report.setPieces.hens })})`],
     [(({ setPieces: q }) => q.can && !q.meadowCan && !q.beltCan && q.canGrounded && q.handle?.threaded && q.handle.score >= q.handle.need && q.handle.score < q.handle.need + 15 && q.handle.again < q.handle.need && q.handle.hits === 0 && q.water?.splashed && q.water.score >= q.water.need && q.water.hits === 0 && q.water.down > 0 && q.drum?.hits === 1 && q.drum.off)(report), `set pieces: the Giant's Garden has its giant watering can (no other land does), standing on the ground; flying under its top handle is +30 once with no bump; its dripping water is +10 once, pushes you down and never knocks you; the drum is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { can: report.setPieces.can, meadow: report.setPieces.meadowCan, belt: report.setPieces.beltCan, grounded: report.setPieces.canGrounded, handle: report.setPieces.handle, water: report.setPieces.water, drum: report.setPieces.drum })})`],
     [(({ setPieces: q }) => q.flock && !q.gardenFlock && !q.beltFlock && q.flockWading && q.flight?.calm && q.flight.up && q.flight.score >= q.flight.need && q.flight.score < q.flight.need + 15 && q.flight.alt > q.flight.needAlt * 0.8 && q.flight.home && q.join?.up && q.join.joined && q.join.score >= q.join.need && q.join.score < q.join.need + 15 && q.join.puff && q.join.hits === 0)(report), `set pieces: the Salt Mirror has its flamingo flock (no other land does), every bird wading on its own spot; buzzing it sends it up (+10 once), it flies its loop and lands back on its spots; flying along with the leader is +40 once; brushing a bird never knocks you (${JSON.stringify(report.setPieces && { flock: report.setPieces.flock, garden: report.setPieces.gardenFlock, belt: report.setPieces.beltFlock, wading: report.setPieces.flockWading, flight: report.setPieces.flight, join: report.setPieces.join })})`],
+    [(({ setPieces: q }) => q.harp && !q.saltHarp && !q.beltHarp && q.harpGrounded && q.strum?.plucked >= 1 && !q.strum.gliss && q.strum.score === 0 && q.strum.hits === 0 && q.gliss?.gliss && q.gliss.plucked >= 6 && q.gliss.score >= q.gliss.need && q.gliss.score < q.gliss.need + 15 && q.gliss.again < q.gliss.need && q.gliss.hits === 0 && q.pillar?.hits === 1 && q.pillar.off)(report), `set pieces: the Cloud Kingdom has its golden harp (no other land does), its pedestal on the cloud; flying through the strings plucks them and never knocks you; skimming along them is +40 once ("Glissando!"); the gold pillar is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { harp: report.setPieces.harp, salt: report.setPieces.saltHarp, belt: report.setPieces.beltHarp, grounded: report.setPieces.harpGrounded, strum: report.setPieces.strum, gliss: report.setPieces.gliss, pillar: report.setPieces.pillar })})`],
     [(({ setPieces: q }) => q.gumball && !q.trestleGumball && !q.beltGumball && q.gumballGrounded && q.gumRoll?.out && q.gumRoll.moved > 1 && Math.abs(q.gumRoll.onGround) < 0.5 && q.gumShot?.popped && q.gumShot.score >= 10 && q.gumShot.score < 20 && q.gumRam?.popped && q.gumRam.score === 0 && q.gumRam.hits === 0 && q.gumBase?.hits === 1 && q.gumBase.off)(report), `set pieces: the Candy Kingdom has its gumball machine (no other land does), sunk into the ground; its crank turns out a gumball that rolls away along the ground; shooting one pops it for +10, flying into one is a harmless splat; the machine is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { gumball: report.setPieces.gumball, trestle: report.setPieces.trestleGumball, belt: report.setPieces.beltGumball, grounded: report.setPieces.gumballGrounded, roll: report.setPieces.gumRoll, shot: report.setPieces.gumShot, ram: report.setPieces.gumRam, base: report.setPieces.gumBase })})`],
     [(({ setPieces: q }) => q.trestle && !q.millTrestle && !q.beltTrestle && q.trestleGrounded && q.under?.under && q.under.room > 2.5 && q.under.score >= 25 && q.under.score < 50 && q.under.hits === 0 && q.race?.raced && q.race.score >= 25 && q.race.score < 50 && q.race.hits === 0 && q.deck?.hits === 1 && q.deck.off)(report), `set pieces: Canyon Country has its railway trestle over a gorge (no other land does), its legs in the ground; flying under the deck between two legs is +25 once with no bump, so is racing close past the engine; the deck is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { trestle: report.setPieces.trestle, mill: report.setPieces.millTrestle, belt: report.setPieces.beltTrestle, grounded: report.setPieces.trestleGrounded, under: report.setPieces.under, race: report.setPieces.race, deck: report.setPieces.deck })})`],
     [(({ setPieces: q }) => q.mill && !q.shroomMill && !q.beltMill && q.millGrounded && q.sails?.threaded && q.sails.score >= 25 && q.sails.score < 50 && q.sails.hits === 0 && q.sail?.hits === 1 && q.sail.off)(report), `set pieces: the Autumn Woods has its great windmill (no other land does), sunk into the ground; slipping between its turning sails is +25 once with no bump, a sail is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { mill: report.setPieces.mill, shroom: report.setPieces.shroomMill, belt: report.setPieces.beltMill, grounded: report.setPieces.millGrounded, sails: report.setPieces.sails, sail: report.setPieces.sail })})`],
