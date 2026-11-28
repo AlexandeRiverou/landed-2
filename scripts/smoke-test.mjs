@@ -183,6 +183,7 @@ try {
     window.POWERUPS_FOR_TEST = (await import('./src/powerups.js')).POWERUPS;
     window.OBJ_FOR_TEST = await import('./src/objectives.js');
     window.BOSSES_FOR_TEST = (await import('./src/enemies.js')).BOSSES;
+    window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.MINE_FOR_TEST = (await import('./src/enemies.js')).MINE;
     window.TOAD_FEET_FOR_TEST = (await import('./src/models.js')).TOAD_FEET;
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
