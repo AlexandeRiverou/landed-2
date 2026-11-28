@@ -112,7 +112,7 @@ export const ZONES = [
   {
     name: 'Salt Mirror', blurb: 'A salt flat under an inch of water. The sky is above you and below you. Pick one.',
     world: { palette: 'salt', amp: 0.04, hillBase: 0.05, roughness: 0.08, terrace: 0, mesa: 0, canyon: 0, spikes: 0, seaLevel: 30, snowLine: 9999, propTheme: 'salt', propDensity: 0.25, floatingIslands: 0, balloons: 0.4, tempBias: -0.3 },
-    sky: 'pastel', weather: 'clear', clouds: ['#ffffff', 30], mood: 'dream', lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands'],
+    sky: 'pastel', weather: 'clear', clouds: ['#ffffff', 30], mood: 'dream', setPiece: 'flock', lock: [...LOCK, ...SHAPE_LOCK, 'sea', 'islands'],
   },
   {
     name: 'Sky Islands', blurb: 'The ground fell away. Islands float. Physics filed for leave.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can, the Salt Mirror's flamingo flock)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
