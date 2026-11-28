@@ -145,9 +145,9 @@ try {
     // Canyon Country's trestle (land 3) does the same with __smokeTrestle, and the Candy Kingdom's gumball machine with
     // __smokeGumball (its gumballs' colours and the chute's aim roll aside too), the Dune Sea's caravan with
     // __smokeCaravan, the Meadowlands' barn (land 0, flown by nearly every check) with __smokeBarn, and the Giant's
-    // Garden watering can with __smokeCan.
+    // Garden watering can with __smokeCan, and the Salt Mirror's flamingos with __smokeFlock.
     const SP = window.G.zones.setPieces;
-    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle'], ['updateGumball', 'placeGumball', '__smokeGumball'], ['updateCaravan', 'placeCaravan', '__smokeCaravan'], ['updateBarn', 'placeBarn', '__smokeBarn'], ['updateCan', 'placeCan', '__smokeCan']]) {
+    for (const [up, place, flag] of [['updateMill', 'placeMill', '__smokeMill'], ['updateTrestle', 'placeTrestle', '__smokeTrestle'], ['updateGumball', 'placeGumball', '__smokeGumball'], ['updateCaravan', 'placeCaravan', '__smokeCaravan'], ['updateBarn', 'placeBarn', '__smokeBarn'], ['updateCan', 'placeCan', '__smokeCan'], ['updateFlock', 'placeFlock', '__smokeFlock']]) {
       const f = SP[up];
       SP[up] = function (dt) { if (window[flag]) return f.call(this, dt); };
       for (const k of [place, up]) window.__smokeAside(SP, k);
@@ -5625,7 +5625,49 @@ try {
       out.drum = { hits: hits.filter((n) => n === CAN.dmg).length, off: Math.hypot(L.x, L.z) >= CAN.R + 0.9 + r - 0.1 || L.y >= CAN.H + 0.9 + r - 0.1, at: [+L.x.toFixed(1), +L.y.toFixed(1), +L.z.toFixed(1)] };
       p.speed = v0; p.wind.copy(w0);
     }
-    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo; out.beltGumball = !!SP.gumballInfo; out.beltCaravan = !!SP.caravanInfo; out.beltBarn = !!SP.barnInfo; out.beltCan = !!SP.canInfo;
+    // Salt Mirror: a flock of flamingos wading in the shallows. Buzz it low and it takes off (+10 once), flies one loop
+    // and lands back on its spot; flying along with its leader is +40 once; the birds never knock you.
+    const { FLOCK } = await import('./src/setpieces.js');
+    out.gardenFlock = !!SP.flockInfo;
+    window.__smokeFlock = true;
+    into('Salt Mirror');
+    for (let k = 0; k < 40 && !SP.flockInfo; k++) { step(15); p.pos.addScaledVector(p.forward, 40); }
+    const fl = SP.flockInfo;
+    out.flock = !!fl;
+    if (fl) {
+      // Every bird stands on its own spot, in shallow water or on wet salt.
+      out.flockWading = fl.birds.length >= FLOCK.birds - 4 && fl.birds.every((b) => { const h = G.terrain.surfaceHeight(b.hx, b.hz) - fl.water; return b.y === b.hy && h >= FLOCK.wade[0] - 0.01 && h <= FLOCK.wade[1] + 0.01; });
+      const v0 = p.speed, w0 = p.wind.clone();
+      p.wind.set(0, 0, 0); p.gust.set(0, 0, 0);
+      const still = () => { p.speed = 0.001; p.gust.set(0, 0, 0); clear(); };
+      const at = (x, y, z) => { p.pos.set(x, y, z); p.prevPos?.copy(p.pos); still(); G.step(1 / 30); };
+      const away = () => at(fl.mid.x + 600, fl.water + 200, fl.mid.z);
+      hits.length = 0;
+      const s15 = G.score;
+      for (let k = 0; k < 30; k++) away(); // far off, the flock stays put
+      out.flight = { calm: fl.state === 'feed' };
+      at(fl.mid.x + FLOCK.scare - 15, fl.water + 15, fl.mid.z);
+      out.flight.up = fl.state === 'fly';
+      out.flight.score = G.score - s15; out.flight.need = FLOCK.startle;
+      let alt = 0, n = 0;
+      while (fl.state === 'fly' && n++ < 30 * 60) { away(); alt = Math.max(alt, fl.birds[0].y - fl.water); }
+      out.flight.alt = +alt.toFixed(1); out.flight.needAlt = FLOCK.alt;
+      out.flight.home = fl.state === 'feed' && fl.birds.every((b) => b.x === b.hx && b.z === b.hz && b.y === b.hy);
+      for (let k = 0; k < 30 * (FLOCK.rest + 1); k++) away();
+      // Up again (no second +10), then fly along with the leader.
+      const s16 = G.score;
+      at(fl.mid.x + FLOCK.scare - 15, fl.water + 15, fl.mid.z);
+      n = 0;
+      while (fl.state === 'fly' && !fl.joined && n++ < 30 * 60) { const L = fl.birds[0]; at(L.x + 10, L.y + 10, L.z); }
+      out.join = { up: n > 0, joined: fl.joined, score: G.score - s16, need: FLOCK.score };
+      // Right into a bird: its feathers fly, you don't get knocked.
+      const b = fl.birds[3];
+      at(b.x, b.y + FLOCK.size * 1.1, b.z);
+      out.join.puff = b.puffT > 0;
+      out.join.hits = hits.length;
+      p.speed = v0; p.wind.copy(w0);
+    }
+    into('Meteor Belt'); step(30); out.belt = SP.list.length; out.beltCastle = !!SP.castleInfo; out.beltMeteors = SP.meteorList.length; out.beltArches = SP.archList.length; out.beltWhales = SP.whaleList.length; out.beltShrooms = SP.shroomList.length; out.beltMill = !!SP.millInfo; out.beltTrestle = !!SP.trestleInfo; out.beltGumball = !!SP.gumballInfo; out.beltCaravan = !!SP.caravanInfo; out.beltBarn = !!SP.barnInfo; out.beltCan = !!SP.canInfo; out.beltFlock = !!SP.flockInfo;
     window.__smokeBarn = false; // the checks after this one fly the Meadowlands again: no barn in their way
     p.damage = damage;
     p.god = god;
@@ -6069,6 +6111,7 @@ try {
     [(({ setPieces: q }) => q.caravan && !q.gumCaravan && !q.beltCaravan && q.caravanGrounded && q.caravanWalk?.moved > 1 && q.caravanWalk.walking && q.caravanWalk.grounded && q.buzz?.buzzed && q.buzz.score >= 25 && q.buzz.score < 50 && q.buzz.hits === 0 && q.camelBump?.hits === 1 && q.camelBump.off)(report), `set pieces: the Dune Sea has its camel caravan (no other land does), every camel on the ground underfoot; it walks on across the dunes, still on the ground; buzzing the lead camel is +25 once with no bump; the camels are solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { caravan: report.setPieces.caravan, gumball: report.setPieces.gumCaravan, belt: report.setPieces.beltCaravan, grounded: report.setPieces.caravanGrounded, gaps: report.setPieces.hoofGaps, walk: report.setPieces.caravanWalk, buzz: report.setPieces.buzz, bump: report.setPieces.camelBump })})`],
     [(({ setPieces: q }) => q.barn && !q.duneBarn && !q.beltBarn && q.barnLater && q.barnGrounded && q.storm?.stormed && q.storm.score >= q.storm.need && q.storm.score < q.storm.need + 15 && q.storm.again < q.storm.need && q.storm.hits === 0 && q.barnWall?.hits === 1 && q.barnWall.off && q.barnFloor?.hits === 0 && q.hens?.fled && q.hens.pecking)(report), `set pieces: the Meadowlands have their big red barn (no other land does), not in the first seconds of a flight, standing level on the ground; flying in one door and out the other is +40 once with no bump; its walls are solid: one knock and you're shoved clear; skimming its floor is no knock; the hens scatter when buzzed and later peck again (${JSON.stringify(report.setPieces && { barn: report.setPieces.barn, dune: report.setPieces.duneBarn, belt: report.setPieces.beltBarn, later: report.setPieces.barnLater, grounded: report.setPieces.barnGrounded, storm: report.setPieces.storm, wall: report.setPieces.barnWall, floor: report.setPieces.barnFloor, hens: report.setPieces.hens })})`],
     [(({ setPieces: q }) => q.can && !q.meadowCan && !q.beltCan && q.canGrounded && q.handle?.threaded && q.handle.score >= q.handle.need && q.handle.score < q.handle.need + 15 && q.handle.again < q.handle.need && q.handle.hits === 0 && q.water?.splashed && q.water.score >= q.water.need && q.water.hits === 0 && q.water.down > 0 && q.drum?.hits === 1 && q.drum.off)(report), `set pieces: the Giant's Garden has its giant watering can (no other land does), standing on the ground; flying under its top handle is +30 once with no bump; its dripping water is +10 once, pushes you down and never knocks you; the drum is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { can: report.setPieces.can, meadow: report.setPieces.meadowCan, belt: report.setPieces.beltCan, grounded: report.setPieces.canGrounded, handle: report.setPieces.handle, water: report.setPieces.water, drum: report.setPieces.drum })})`],
+    [(({ setPieces: q }) => q.flock && !q.gardenFlock && !q.beltFlock && q.flockWading && q.flight?.calm && q.flight.up && q.flight.score >= q.flight.need && q.flight.score < q.flight.need + 15 && q.flight.alt > q.flight.needAlt * 0.8 && q.flight.home && q.join?.up && q.join.joined && q.join.score >= q.join.need && q.join.score < q.join.need + 15 && q.join.puff && q.join.hits === 0)(report), `set pieces: the Salt Mirror has its flamingo flock (no other land does), every bird wading on its own spot; buzzing it sends it up (+10 once), it flies its loop and lands back on its spots; flying along with the leader is +40 once; brushing a bird never knocks you (${JSON.stringify(report.setPieces && { flock: report.setPieces.flock, garden: report.setPieces.gardenFlock, belt: report.setPieces.beltFlock, wading: report.setPieces.flockWading, flight: report.setPieces.flight, join: report.setPieces.join })})`],
     [(({ setPieces: q }) => q.gumball && !q.trestleGumball && !q.beltGumball && q.gumballGrounded && q.gumRoll?.out && q.gumRoll.moved > 1 && Math.abs(q.gumRoll.onGround) < 0.5 && q.gumShot?.popped && q.gumShot.score >= 10 && q.gumShot.score < 20 && q.gumRam?.popped && q.gumRam.score === 0 && q.gumRam.hits === 0 && q.gumBase?.hits === 1 && q.gumBase.off)(report), `set pieces: the Candy Kingdom has its gumball machine (no other land does), sunk into the ground; its crank turns out a gumball that rolls away along the ground; shooting one pops it for +10, flying into one is a harmless splat; the machine is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { gumball: report.setPieces.gumball, trestle: report.setPieces.trestleGumball, belt: report.setPieces.beltGumball, grounded: report.setPieces.gumballGrounded, roll: report.setPieces.gumRoll, shot: report.setPieces.gumShot, ram: report.setPieces.gumRam, base: report.setPieces.gumBase })})`],
     [(({ setPieces: q }) => q.trestle && !q.millTrestle && !q.beltTrestle && q.trestleGrounded && q.under?.under && q.under.room > 2.5 && q.under.score >= 25 && q.under.score < 50 && q.under.hits === 0 && q.race?.raced && q.race.score >= 25 && q.race.score < 50 && q.race.hits === 0 && q.deck?.hits === 1 && q.deck.off)(report), `set pieces: Canyon Country has its railway trestle over a gorge (no other land does), its legs in the ground; flying under the deck between two legs is +25 once with no bump, so is racing close past the engine; the deck is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { trestle: report.setPieces.trestle, mill: report.setPieces.millTrestle, belt: report.setPieces.beltTrestle, grounded: report.setPieces.trestleGrounded, under: report.setPieces.under, race: report.setPieces.race, deck: report.setPieces.deck })})`],
     [(({ setPieces: q }) => q.mill && !q.shroomMill && !q.beltMill && q.millGrounded && q.sails?.threaded && q.sails.score >= 25 && q.sails.score < 50 && q.sails.hits === 0 && q.sail?.hits === 1 && q.sail.off)(report), `set pieces: the Autumn Woods has its great windmill (no other land does), sunk into the ground; slipping between its turning sails is +25 once with no bump, a sail is solid: one knock and you're shoved clear (${JSON.stringify(report.setPieces && { mill: report.setPieces.mill, shroom: report.setPieces.shroomMill, belt: report.setPieces.beltMill, grounded: report.setPieces.millGrounded, sails: report.setPieces.sails, sail: report.setPieces.sail })})`],

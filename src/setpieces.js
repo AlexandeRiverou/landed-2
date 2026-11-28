@@ -1,7 +1,8 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
 // the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's
-// gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn and the Giant's Garden watering can.
+// gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can and
+// the Salt Mirror's flamingo flock.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -239,12 +240,31 @@ export const CAN = {
   dmg: 6, bumpEvery: 1,
 };
 
+// Salt Mirror: a flock of flamingos wading in the shallow water, feeding and preening. Buzz them low and the whole
+// flock runs across the water and takes off, circles the flat in a V and glides back down to its spot. Fly along with
+// the flock for a bonus. The birds are harmless: brushing one only ruffles its feathers.
+export const FLOCK = {
+  near: 450, far: 800, drop: 1500,
+  birds: 14, spread: 24, gap: 4.5, // the flock stands within this radius of its middle, birds at least this far apart
+  size: 2.6,             // a flamingo is about 1.5 m tall, shown at this scale so you see them from the air
+  wade: [-1.5, 0],       // the ground under every bird, from the water's surface: they wade in the shallows
+  scare: 55, scareUp: 30, // buzzing the flock this close, this low, sends it up
+  rest: 8,               // s on the ground after landing before it can be sent up again
+  takeoff: 6, landing: 8, // s of the run and climb, and of the glide down
+  loop: 110, speed: 26,  // the flight: one loop of this radius at this speed (m/s), back to where they started
+  alt: 40,               // m over the water
+  rank: [4.5, 3.6],      // the V: each rank this far behind and to the side
+  startle: 10,           // sending them up, once per flock
+  with: 30, withT: 2.5, score: 40, // this close to any bird of the flock for this long, in the air: "Flying with the flamingos!"
+  brush: 3.5,            // m: closer than this ruffles a bird's feathers
+};
+
 const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
 
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
-const _local = new THREE.Vector3();
+const _local = new THREE.Vector3(), _dummy = new THREE.Object3D(), _col = new THREE.Color();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Vector3();
 const SPRAY = ['#ffffff', '#e8f6ff', '#bfe4ff'];
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
@@ -296,6 +316,9 @@ export class SetPieces {
     this.canT = 0;
     this.canTip = false;
     this.canMats = null; // made with the first can, like the mill's
+    this.flock = null;
+    this.flockT = 0;
+    this.flockParts = null; // the flamingo's shared parts and material, made with the first flock
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -356,6 +379,8 @@ export class SetPieces {
     this.barnWait = BARN.wait;
     this.dropCan();
     this.canT = 0;
+    this.dropFlock();
+    this.flockT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -445,6 +470,7 @@ export class SetPieces {
     if (this.kind === 'caravan') { this.updateCaravan(dt); return; }
     if (this.kind === 'barn') { this.updateBarn(dt); return; }
     if (this.kind === 'can') { this.updateCan(dt); return; }
+    if (this.kind === 'flock') { this.updateFlock(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -2536,6 +2562,280 @@ export class SetPieces {
       p.damage(C.dmg);
       G.fx.emit(p.pos, 18, { colors: ['#2f9e8f', '#d9b45a', '#b9c3c8'], speed: 18, life: 0.8, size: 4 });
       if (!this.canTip) { this.canTip = true; G.ui.notify('That watering can is solid tin! Fly under its handle instead.', 'warn', 4, 1); }
+    }
+  }
+
+  // Salt Mirror: the flamingo flock. Each body part is one instanced mesh for the whole flock (seven draw calls), posed
+  // per bird every frame from a small skeleton that is never added to the scene.
+  get flockInfo() { return this.flock; }
+
+  dropFlock() {
+    if (!this.flock) return;
+    this.G.scene.remove(this.flock.group);
+    for (const m of this.flock.meshes) m.dispose(); // the instance buffers; the shared parts stay in flockParts
+    this.flock = null;
+  }
+
+  // The flamingo's parts, built once and shared by every flock: body, neck (with head and beak), each wing and the
+  // legs, coloured per vertex so each part is a single mesh. Bird space: feet at the origin, facing +z, about 1.5 tall.
+  flockKit() {
+    if (this.flockParts) return this.flockParts;
+    const PINK = '#ff8fb1', DEEP = '#ff5c8a', PALE = '#ffc2d4', BLACK = '#1d1418', BEAK = '#f4e8e0', LEG = '#e8718e';
+    const bits = [], col = new THREE.Color(), m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), ee = new THREE.Euler();
+    const add = (geo, c, pos, scl = [1, 1, 1], rot = [0, 0, 0], q) => {
+      const g = geo.index ? geo.toNonIndexed() : geo;
+      if (g !== geo) geo.dispose();
+      g.deleteAttribute('uv');
+      m4.compose(new THREE.Vector3(...pos), q || qq.setFromEuler(ee.set(...rot)), new THREE.Vector3(...scl));
+      g.applyMatrix4(m4);
+      col.set(c);
+      const n = g.attributes.position.count, a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { a[i * 3] = col.r; a[i * 3 + 1] = col.g; a[i * 3 + 2] = col.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+      bits.push(g);
+    };
+    // A thin round bone from a to b.
+    const seg = (a, b, r0, r1, c) => {
+      const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A), len = d.length();
+      add(new THREE.CylinderGeometry(r1, r0, len, 6), c, A.addScaledVector(d, 0.5).toArray(), [1, 1, 1], null, new THREE.Quaternion().setFromUnitVectors(_Y, d.normalize()));
+    };
+    const done = () => { const g = mergeGeometries(bits); for (const b of bits) b.dispose(); bits.length = 0; return g; };
+    const ball = (w = 14, h = 10) => new THREE.SphereGeometry(1, w, h);
+    // The body: a plump oval, deeper pink on the back, a pale tail.
+    add(ball(), PINK, [0, 1.12, 0], [0.24, 0.25, 0.46]);
+    add(ball(), DEEP, [0, 1.24, -0.06], [0.2, 0.12, 0.36]);
+    add(new THREE.ConeGeometry(0.12, 0.3, 8), PALE, [0, 1.16, -0.5], [1, 1, 1], [-Math.PI / 2 - 0.2, 0, 0]);
+    const body = done();
+    // The neck, an S-curve from the pivot on the front of the body, the head and the bent, black-tipped beak.
+    const curve = new THREE.CatmullRomCurve3([[0, 0, 0], [0, 0.22, 0.1], [0, 0.42, 0], [0, 0.6, 0.02], [0, 0.72, 0.14]].map((v) => new THREE.Vector3(...v)));
+    add(new THREE.TubeGeometry(curve, 24, 0.045, 6), PINK, [0, 0, 0]);
+    add(ball(8, 6), PINK, [0, 0, 0], [0.09, 0.09, 0.09]);
+    const neck = done();
+    // The head, on its own pivot at the top of the neck, so it can stay level in flight.
+    add(ball(10, 8), PINK, [0, 0, 0], [0.075, 0.075, 0.09]);
+    add(new THREE.ConeGeometry(0.045, 0.14, 8), BEAK, [0, -0.01, 0.12], [1, 1, 1], [Math.PI / 2 + 0.5, 0, 0]);
+    add(new THREE.ConeGeometry(0.03, 0.09, 8), BLACK, [0, -0.055, 0.19], [1, 1, 1], [Math.PI / 2 + 1.1, 0, 0]);
+    for (const sx of [-1, 1]) add(ball(6, 4), BLACK, [sx * 0.06, 0.03, 0.04], [0.016, 0.016, 0.016]);
+    const head = done();
+    // A wing from its shoulder, spread along x: pink coverts, black flight feathers at the tip and the trailing edge.
+    const wing = (sx) => {
+      add(ball(), DEEP, [sx * 0.4, 0, 0], [0.42, 0.03, 0.2]);
+      add(ball(), PINK, [sx * 0.25, 0.01, 0.03], [0.3, 0.035, 0.15]);
+      add(ball(), BLACK, [sx * 0.85, 0, -0.03], [0.3, 0.025, 0.13]);
+      add(ball(), BLACK, [sx * 0.45, -0.005, -0.16], [0.36, 0.02, 0.07]);
+      return done();
+    };
+    const wingR = wing(1), wingL = wing(-1);
+    // The legs from the hip: one straight down to a webbed foot, the other tucked up under the body.
+    seg([0.05, 0, 0], [0.05, -0.47, 0.01], 0.03, 0.026, LEG);
+    add(ball(6, 4), LEG, [0.05, -0.47, 0.01], [0.035, 0.035, 0.035]);
+    seg([0.05, -0.47, 0.01], [0.05, -0.94, 0], 0.024, 0.02, LEG);
+    add(new THREE.BoxGeometry(0.09, 0.02, 0.16), LEG, [0.05, -0.94, 0.05]);
+    seg([-0.05, 0, 0], [-0.05, -0.3, 0.06], 0.03, 0.026, LEG);
+    add(ball(6, 4), LEG, [-0.05, -0.3, 0.06], [0.035, 0.035, 0.035]);
+    seg([-0.05, -0.3, 0.06], [-0.05, -0.1, -0.32], 0.024, 0.02, LEG);
+    const legs = done();
+    const ring = new THREE.TorusGeometry(1, 0.05, 4, 24);
+    ring.rotateX(Math.PI / 2);
+    this.flockParts = {
+      body, neck, head, wingR, wingL, legs, ring,
+      mat: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+      ringMat: new THREE.MeshBasicMaterial({ color: '#d8ecff', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }),
+    };
+    return this.flockParts;
+  }
+
+  // Shallow water or wet salt ahead, wide enough for the whole flock to stand in.
+  placeFlock() {
+    const G = this.G, p = G.player, F = FLOCK, sea = G.world.seaLevel, f = p.forward.clone().setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    const wet = (x, z) => { const h = G.terrain.surfaceHeight(x, z) - sea; return h >= F.wade[0] && h <= F.wade[1]; };
+    for (let tries = 0; tries < 24; tries++) {
+      const d = rand(F.near, F.far), s = rand(-0.35, 0.35) * d, x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
+      let ok = wet(x, z);
+      for (let k = 0; ok && k < 8; k++) ok = wet(x + Math.cos(k * Math.PI / 4) * F.spread, z + Math.sin(k * Math.PI / 4) * F.spread);
+      if (!ok) continue;
+      const homes = [];
+      for (let k = 0; k < F.birds * 5 && homes.length < F.birds; k++) {
+        const a = rand(0, Math.PI * 2), r = Math.sqrt(rand(0, 1)) * F.spread, hx = x + Math.cos(a) * r, hz = z + Math.sin(a) * r;
+        if (!wet(hx, hz) || homes.some((h) => Math.hypot(h.x - hx, h.z - hz) < F.gap)) continue;
+        homes.push({ x: hx, z: hz, y: G.terrain.surfaceHeight(hx, hz) });
+      }
+      if (homes.length >= F.birds - 4) return this.buildFlock(x, z, homes);
+    }
+    return null;
+  }
+
+  buildFlock(x, z, homes) {
+    const K = this.flockKit(), F = FLOCK, n = homes.length, g = new THREE.Group(), sea = this.G.world.seaLevel;
+    g.position.set(x, 0, z);
+    const inst = (geo, mat, count = n) => {
+      const m = new THREE.InstancedMesh(geo, mat, count);
+      m.frustumCulled = false; // the flock flies far from where it was built
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      g.add(m);
+      return m;
+    };
+    const meshes = [inst(K.body, K.mat), inst(K.neck, K.mat), inst(K.head, K.mat), inst(K.wingR, K.mat), inst(K.wingL, K.mat), inst(K.legs, K.mat), inst(K.ring, K.ringMat, n * 2)];
+    for (let i = 0; i < n * 2; i++) meshes[6].setColorAt(i, new THREE.Color(0, 0, 0));
+    const birds = homes.map((h, i) => {
+      const root = new THREE.Object3D();
+      root.rotation.order = 'YXZ';
+      const pivot = (px, py, pz) => { const o = new THREE.Object3D(); o.position.set(px, py, pz); root.add(o); return o; };
+      const neck = pivot(0, 1.2, 0.3), head = new THREE.Object3D();
+      head.position.set(0, 0.74, 0.18);
+      neck.add(head);
+      const b = { hx: h.x, hz: h.z, hy: h.y, x: h.x, y: h.y, z: h.z, yaw: rand(0, Math.PI * 2), yawRate: 0, root,
+        neck, head, wingR: pivot(0.17, 1.22, 0.08), wingL: pivot(-0.17, 1.22, 0.08), legs: pivot(0, 0.95, -0.02),
+        feed: i % 3 ? 1 : 0, feedTo: i % 3 ? 1 : 0, feedT: rand(1, 8), ph: rand(0, 10), puffT: 0, wet: h.y < sea - 0.05,
+        rank: Math.ceil(i / 2), side: (i % 2 ? 1 : -1) * Math.ceil(i / 2), delay: i * 0.07 };
+      b.wingR.rotation.order = b.wingL.rotation.order = 'YXZ'; // fold back, then hang down the flank
+      return b;
+    });
+    this.G.scene.add(g);
+    this.flock = { group: g, meshes, birds, pos: g.position, mid: { x, z }, water: sea, state: 'feed', t: 0, restT: 0,
+      T: (Math.PI * 2 * F.loop) / F.speed, u: [0, 1], nn: [1, 0], startled: false, joined: false, withT: 0 };
+    this.poseFlock(0);
+    return this.flock;
+  }
+
+  // Where a bird of the flying flock wants to be at time t into the flight: its place in the V behind the leader, who
+  // flies one loop out from the flock's spot and back.
+  flockTarget(f, b, t, out) {
+    const F = FLOCK, ph = (Math.PI * 2 * t) / f.T, [ux, uz] = f.u, [nx, nz] = f.nn;
+    const cx = f.mid.x + nx * F.loop, cz = f.mid.z + nz * F.loop, cs = Math.cos(ph), sn = Math.sin(ph);
+    const tx = nx * sn + ux * cs, tz = nz * sn + uz * cs; // the leader's heading
+    return out.set(
+      cx - nx * F.loop * cs + ux * F.loop * sn - tx * b.rank * F.rank[0] + tz * b.side * F.rank[1],
+      f.water + F.alt - b.rank * 0.5 + 0.6 * Math.sin(t * 1.3 + b.ph),
+      cz - nz * F.loop * cs + uz * F.loop * sn - tz * b.rank * F.rank[0] - tx * b.side * F.rank[1]);
+  }
+
+  poseFlock(dt) {
+    const G = this.G, F = FLOCK, f = this.flock, t = G.time, S = F.size, sm = (k) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
+    const [body, neck, head, wingR, wingL, legs, rings] = f.meshes;
+    const flying = f.state === 'fly', ft = f.t;
+    f.birds.forEach((b, i) => {
+      // How far into the air: kh along the ground, kv up, kw the wings (spread first, folded last).
+      let kh = 0, kv = 0, kw = 0;
+      if (flying) {
+        const a = ft - b.delay, e = f.T - ft;
+        kh = Math.min(sm(a / F.takeoff), sm(e / F.landing));
+        kv = Math.min(sm((a - 0.9) / (F.takeoff - 0.9)), sm((e - 1) / (F.landing - 1)));
+        kw = Math.min(sm(a / 1), sm(e / 1.2));
+      }
+      const px = b.x, py = b.y, pz = b.z;
+      if (kh > 0) {
+        this.flockTarget(f, b, ft, _b);
+        b.x = b.hx + (_b.x - b.hx) * kh; b.z = b.hz + (_b.z - b.hz) * kh; b.y = b.hy + (_b.y - b.hy) * kv;
+      } else { b.x = b.hx; b.z = b.hz; b.y = b.hy; }
+      // Face the way it's going (a little nose up while climbing, banked into the turn).
+      let pitch = 0;
+      if (dt > 0) {
+        const vx = (b.x - px) / dt, vy = (b.y - py) / dt, vz = (b.z - pz) / dt, vh = Math.hypot(vx, vz);
+        if (vh > 2) {
+          let dy = Math.atan2(vx, vz) - b.yaw;
+          dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+          const turn = dy * Math.min(1, dt * 6);
+          b.yaw += turn; b.yawRate = turn / dt;
+          pitch = Math.max(-0.4, Math.min(0.4, -Math.atan2(vy, vh) * 0.5));
+        } else b.yawRate = 0;
+        // On the ground: some feed, head down and sweeping, some stand up tall, and they swap now and then.
+        if ((b.feedT -= dt) <= 0) { b.feedTo = 1 - b.feedTo; b.feedT = rand(3, 8); }
+        b.feed += Math.max(-dt * 1.2, Math.min(dt * 1.2, b.feedTo - b.feed));
+        b.puffT = Math.max(0, b.puffT - dt);
+        // The run: their feet splash across the water as they go.
+        if (flying && kh > 0.02 && b.wet && b.y - f.water < 0.5) G.fx.emit(_b.set(b.x, f.water + 0.3, b.z), 22 * dt, { colors: ['#ffffff', '#e8f6ff', '#ffd6e2'], speed: 4, up: 5, life: 0.7, size: 1.4, gravity: -8, drag: 0.6 });
+      }
+      const r = b.root;
+      r.position.set(b.x - f.pos.x, b.y, b.z - f.pos.z);
+      r.rotation.set(pitch * kv + 0.3 * b.feed * (1 - kw), b.yaw, Math.max(-0.5, Math.min(0.5, -b.yawRate * 1.2)) * kv);
+      r.scale.setScalar(S);
+      const bob = 0.04 * Math.sin(t * 1.1 + b.ph), feedNeck = 2.5 + 0.12 * Math.sin(t * 2 + b.ph);
+      b.neck.rotation.set((0.1 + bob + (feedNeck - 0.1) * b.feed) * (1 - kw) + 1.3 * kw, 0.35 * b.feed * Math.sin(t * 0.8 + b.ph) * (1 - kw), 0);
+      const flap = 0.6 * kw * (0.25 + 0.75 * sm((f.T - ft - F.landing * 0.6) / 1.5)) * Math.sin(t * Math.PI * 2 * 2.6 + b.ph);
+      for (let sx = 1; sx >= -1; sx -= 2) {
+        const w = sx > 0 ? b.wingR : b.wingL;
+        w.rotation.set(1.2 * (1 - kw), sx * (1 - kw) * Math.PI / 2 * 0.93, sx * flap); // folded, they hang down the flanks
+        w.scale.set(0.55 + 0.45 * kw, 1, 1);
+      }
+      b.head.rotation.x = -1.5 * kw; // level in flight, the beak pointing ahead
+      const run = flying && kh > 0.02 && kv < 0.5 ? 1 - kv * 2 : 0; // the run: legs pumping, body bobbing
+      b.legs.rotation.x = 1.45 * kv + 0.3 * run * Math.sin(t * 25 + b.ph);
+      r.position.y += 0.15 * S * run * Math.abs(Math.sin(t * 25 + b.ph));
+      r.updateMatrixWorld(true);
+      body.setMatrixAt(i, r.matrixWorld);
+      neck.setMatrixAt(i, b.neck.matrixWorld);
+      head.setMatrixAt(i, b.head.matrixWorld);
+      wingR.setMatrixAt(i, b.wingR.matrixWorld);
+      wingL.setMatrixAt(i, b.wingL.matrixWorld);
+      legs.setMatrixAt(i, b.legs.matrixWorld);
+      // Ripples spread round the legs of the birds standing in water, two at a time, fading as they go.
+      for (let j = 0; j < 2; j++) {
+        const k = (t * 0.35 + b.ph + j * 0.5) % 1, on = b.wet && kv < 0.02, rad = on ? 0.8 + 3.5 * k : 0;
+        _dummy.position.set(b.x - f.pos.x, f.water + 0.06, b.z - f.pos.z);
+        _dummy.rotation.set(0, 0, 0);
+        _dummy.scale.set(rad, 1, rad);
+        _dummy.updateMatrix();
+        rings.setMatrixAt(i * 2 + j, _dummy.matrix);
+        rings.setColorAt(i * 2 + j, _col.setScalar(0.7 * (1 - k)));
+      }
+    });
+    for (const m of f.meshes) m.instanceMatrix.needsUpdate = true;
+    rings.instanceColor.needsUpdate = true;
+  }
+
+  updateFlock(dt) {
+    const G = this.G, p = G.player, F = FLOCK;
+    if (this.flock && Math.hypot(this.flock.mid.x - p.pos.x, this.flock.mid.z - p.pos.z) > F.drop) this.dropFlock();
+    if (!this.flock && !G.terrain.stale && (this.flockT -= dt) <= 0) { this.flockT = 0.5; this.placeFlock(); }
+    const f = this.flock;
+    if (!f) return;
+    f.restT = Math.max(0, f.restT - dt);
+    const dx = p.pos.x - f.mid.x, dz = p.pos.z - f.mid.z;
+    if (f.state === 'feed' && f.restT <= 0 && !p.dead && Math.hypot(dx, dz) < F.scare && p.pos.y - f.water < F.scareUp) {
+      // Up they go: away from you first, then round in one big loop.
+      f.state = 'fly'; f.t = 0;
+      let ux = -dx, uz = -dz, l = Math.hypot(ux, uz);
+      if (l < 1) { ux = p.forward.x; uz = p.forward.z; l = Math.hypot(ux, uz) || 1; }
+      ux /= l; uz /= l;
+      const sd = rand(0, 1) < 0.5 ? 1 : -1;
+      f.u = [ux, uz]; f.nn = [-uz * sd, ux * sd];
+      for (const b of f.birds) G.fx.emit(_b.set(b.x, Math.max(b.y, f.water) + 0.5, b.z), 4, { colors: ['#ffffff', '#ffd6e2', '#ff8fb1'], speed: 6, up: 6, life: 1, size: 1.6, gravity: -6, drag: 0.8 });
+      if (!f.startled) {
+        f.startled = true;
+        G.score += F.startle;
+        G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${F.startle} Up they go!`);
+        G.ui.notify('The flamingos are up! Fly along with the flock for a bonus.', 'info', 4, 1);
+      }
+    }
+    if (f.state === 'fly') {
+      f.t += dt;
+      if (f.t >= f.T) { f.state = 'feed'; f.t = 0; f.restT = F.rest; }
+    }
+    this.poseFlock(dt);
+    if (p.dead) return;
+    // Flying with the flock: close to any of its birds while it's up in the air.
+    const lead = f.birds[0], up = F.size * 1.1, r = 2.5 * (p.sizeScale || 1);
+    if (f.state === 'fly' && lead.y - lead.hy > F.alt * 0.6 && !f.joined) {
+      if (f.birds.some((b) => Math.hypot(p.pos.x - b.x, p.pos.y - b.y - up, p.pos.z - b.z) < F.with)) {
+        if (f.withT === 0) G.fx.popText(p.pos.clone().setY(p.pos.y + 6), 'Keep with them!');
+        f.withT += dt;
+        G.fx.emit(p.pos, 12 * dt, { colors: ['#ff8fb1', '#ffc2d4', '#ffffff'], speed: 3, life: 1.2, size: 1.6, gravity: -1, drag: 1 });
+      }
+      if (f.withT >= F.withT) {
+        f.joined = true;
+        G.score += F.score;
+        G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${F.score} Flying with the flamingos!`);
+        G.fx.emit(p.pos, 30, { colors: ['#ff8fb1', '#ffc2d4', '#ffffff', '#ff5c8a'], speed: 12, up: 3, life: 1.4, size: 2.4, gravity: -2, drag: 0.6 });
+      }
+    }
+    // Brushing a bird only ruffles its feathers.
+    for (const b of f.birds) {
+      if (b.puffT > 0 || Math.hypot(p.pos.x - b.x, p.pos.y - b.y - up, p.pos.z - b.z) > F.brush + r) continue;
+      b.puffT = 1;
+      G.fx.emit(_b.set(b.x, b.y + up, b.z), 8, { colors: ['#ff8fb1', '#ffc2d4', '#ffffff'], speed: 6, life: 1.2, size: 1.6, gravity: -2, drag: 1 });
     }
   }
 }
