@@ -51,22 +51,29 @@ const seedRandom = async (page) => {
     };
     Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
     Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
-    // A second stream for code whose rolls are paced by a real clock (the music picks its next notes by the audio
-    // clock): wrapped with __smokeAside, it rolls from this one, so how fast the machine ran can't shift the main stream.
-    let b = (s ^ 0x9e3779b9) >>> 0;
-    const aside = () => {
-      b = (b + 0x6d2b79f5) | 0;
-      let t = Math.imul(b ^ (b >>> 15), 1 | b);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    // Side streams for code whose rolls are paced by a real clock (the music picks its next notes by the audio clock,
+    // timers fire on real time): wrapped with __smokeAside, it rolls from its own stream, so how fast the machine ran
+    // can't shift the main stream. Each wrapped function gets a stream of its own, keyed by its name, so the real-time
+    // rolls of the music and the timers can't shift the rolls of the set pieces either (they share one stream before,
+    // and a set piece's spot or a gumball's bounce changed from run to run).
+    const stream = (seed) => {
+      let b = seed >>> 0;
+      return () => {
+        b = (b + 0x6d2b79f5) | 0;
+        let t = Math.imul(b ^ (b >>> 15), 1 | b);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
     };
-    const asideCall = (f, self, args) => { const main = Math.random; Math.random = aside; try { return f.apply(self, args); } finally { Math.random = main; } };
+    const keyed = (name) => { let h = (s ^ 0x9e3779b9) >>> 0; for (const ch of name) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0; return stream(h); };
+    const asideCall = (f, self, args, gen) => { const main = Math.random; Math.random = gen; try { return f.apply(self, args); } finally { Math.random = main; } };
     Object.defineProperty(window, '__smokeAside', {
-      value: (obj, name) => { const f = obj[name]; obj[name] = function (...args) { return asideCall(f, this, args); }; },
+      value: (obj, name) => { const f = obj[name], gen = keyed(name); obj[name] = function (...args) { return asideCall(f, this, args, gen); }; },
     });
     // Timers fire on real time too (a boss's follow-up orbs, firework bursts, the opening tips): they roll aside.
     const setT = window.setTimeout.bind(window);
-    window.setTimeout = (cb, ms, ...rest) => (typeof cb === 'function' ? setT((...x) => asideCall(cb, window, x), ms, ...rest) : setT(cb, ms, ...rest));
+    const timerGen = keyed('setTimeout');
+    window.setTimeout = (cb, ms, ...rest) => (typeof cb === 'function' ? setT((...x) => asideCall(cb, window, x, timerGen), ms, ...rest) : setT(cb, ms, ...rest));
     // Held frames: while F.hold is set, the game's requestAnimationFrame callbacks wait (no real-time step or render),
     // so only the test's own G.step calls move the world. F.onStart (a seed) holds them from the Fly click on, and
     // reseeds just before the game's own click handler rolls the first flight.
@@ -74,7 +81,8 @@ const seedRandom = async (page) => {
     Object.defineProperty(window, '__smokeFrames', { value: F });
     const raf = window.requestAnimationFrame.bind(window);
     // Real-time frames step the game by however much time passed, so whatever they roll comes from the side stream.
-    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else asideCall(cb, window, [t]); });
+    const frameGen = keyed('requestAnimationFrame');
+    window.requestAnimationFrame = (cb) => raf(function tick(t) { if (F.hold) raf(tick); else asideCall(cb, window, [t], frameGen); });
     document.addEventListener('click', (e) => {
       if (F.onStart === null || !e.target?.closest?.('#start')) return;
       a = F.onStart >>> 0;
