@@ -1569,7 +1569,10 @@ try {
       // (Flat land may sit below the sea, and forts can't swim, so drain the sea too.)
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
-      const { ground, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel } = G.world;
+      // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so a
+      // spiky land (Volcano Land) or tall peaks the loop has reached can't throw their checks. And calm land has no spikes.
+      const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes } = G.world;
+      const ground = walks || kind === 'harvestOwl' || kind === 'castleDragon';
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
       // turn, whatever land the loop has reached by now.
       // Duchess Brûlée's Rake check holds the plane at set heights, which a cave roof's push would undo. Queen Quartzelle
@@ -1577,7 +1580,7 @@ try {
       const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech' || kind === 'hermitKing') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
-      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: 0 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech' || kind === 'hermitKing') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
@@ -1673,7 +1676,7 @@ try {
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
       if (spot0) putBack(spot0);
       if (roof) { const { zone, ...flags } = roof; Object.assign(G.world, flags); }
-      if (ground) { Object.assign(G.world, { amp, seaLevel }); G.terrain.rebuildAll(); step(30); }
+      if (ground) { Object.assign(G.world, { amp, seaLevel, spikes }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
     if (!out.carrier) out.carrier = { spawned: false };
