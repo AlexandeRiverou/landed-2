@@ -1,7 +1,7 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
 // the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's
-// gumball machine, the Dune Sea's camel caravan and the Meadowlands' big red barn.
+// gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn and the Giant's Garden watering can.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
@@ -220,6 +220,25 @@ export const BARN = {
   dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
 };
 
+// Giant's Garden: a giant's watering can stands in the flowerbeds, its rose still dripping a curtain of water. Its top
+// handle arches over the open can: fly under it, through the gap, for a bonus. The water is harmless: it pushes you
+// down a little and splashes you clean. The tin is solid.
+export const CAN = {
+  near: 550, far: 900, drop: 1500,
+  R: 16, H: 26,          // the can's radius and height (local y 0 is the ground on its low side)
+  slope: 8,              // the most the ground may rise across its foot (the can sinks into the high side)
+  handleR: 16, tube: 1.6, // the top handle: an arch over the can's mouth, in the plane of the spout
+  backR: 8,              // the back handle, on the side away from the spout
+  spoutLen: 34, spoutTip: 34, // the spout reaches out this far beyond the rim, up to this height
+  roseR: 5,              // the sprinkler head on the spout's tip
+  streamR: 5, streamPush: 10, // the dripping curtain: its radius, and how fast it pushes you down (m/s), easing off
+  streamEase: 8,         // over this many metres above the puddle, so it never pushes you into the ground
+  drops: 36,
+  score: 30,             // through the handle, once per can
+  splash: 10,            // flying through the water, once per can
+  dmg: 6, bumpEvery: 1,
+};
+
 const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
 
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
@@ -273,6 +292,10 @@ export class SetPieces {
     this.barnWait = 0;
     this.barnTip = false;
     this.barnMats = null; // made with the first barn, like the mill's
+    this.can = null;
+    this.canT = 0;
+    this.canTip = false;
+    this.canMats = null; // made with the first can, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -331,6 +354,8 @@ export class SetPieces {
     this.dropBarn();
     this.barnT = 0;
     this.barnWait = BARN.wait;
+    this.dropCan();
+    this.canT = 0;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -419,6 +444,7 @@ export class SetPieces {
     if (this.kind === 'gumball') { this.updateGumball(dt); return; }
     if (this.kind === 'caravan') { this.updateCaravan(dt); return; }
     if (this.kind === 'barn') { this.updateBarn(dt); return; }
+    if (this.kind === 'can') { this.updateCan(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -2301,6 +2327,215 @@ export class SetPieces {
         h.head.rotation.x = 1.1 * Math.max(0, Math.sin(t * 2.6 + h.phase)) ** 6;
         h.group.position.y = h.y;
       }
+    }
+  }
+
+  // Giant's Garden: the watering can.
+  get canInfo() { return this.can; }
+
+  dropCan() {
+    if (!this.can) return;
+    this.G.scene.remove(this.can.group);
+    for (const geo of new Set(this.can.geos)) geo.dispose();
+    for (const m of this.can.rippleMats) m.dispose();
+    this.can = null;
+  }
+
+  // Fairly level ground ahead for the can's foot, and dry ground under its spout for the water to land on.
+  placeCan() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0), C = CAN, R = C.R, sea = G.world.seaLevel;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 24 * 4; tries++) {
+      if (tries % 4 === 0) { const d = rand(C.near, C.far), s = rand(-0.35, 0.35) * d; x = p.pos.x + f.x * d - f.z * s; z = p.pos.z + f.z * d + f.x * s; }
+      // First with the handle's gap facing you (you fly straight through), then turned a quarter at a time.
+      const yaw = Math.atan2(p.pos.x - x, p.pos.z - z) + (tries % 4) * Math.PI / 2;
+      const hs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]].map(([a, b]) => this.barnGround(x, z, yaw, a * R, b * R));
+      const lo = Math.min(...hs), hi = Math.max(...hs);
+      if (hi - lo > C.slope || lo < sea + 2) continue;
+      const fx = R + C.spoutLen + 2.5, fs = [[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].map(([a, b]) => this.barnGround(x, z, yaw, fx + a, b));
+      const foot = Math.max(...fs);
+      if (Math.min(...fs) < sea + 1 || foot - Math.min(...fs) > 1.5 || foot > lo + 12) continue; // a flat, dry spot for the puddle
+      return this.buildCan(x, lo, z, yaw, foot - lo);
+    }
+    return null;
+  }
+
+  buildCan(x, y, z, yaw, footY) {
+    const M = (this.canMats ||= {
+      paint: new THREE.MeshLambertMaterial({ color: '#2f9e8f', flatShading: true }),
+      paint2: new THREE.MeshLambertMaterial({ color: '#237a6f', flatShading: true }),
+      brass: new THREE.MeshLambertMaterial({ color: '#d9b45a', flatShading: true }),
+      tin: new THREE.MeshLambertMaterial({ color: '#b9c3c8', flatShading: true }),
+      dark: new THREE.MeshLambertMaterial({ color: '#28323a' }),
+      water: new THREE.MeshLambertMaterial({ color: '#7cc8f0', transparent: true, opacity: 0.75 }),
+      drop: new THREE.MeshLambertMaterial({ color: '#a8dcff', transparent: true, opacity: 0.8 }),
+      petal: new THREE.MeshLambertMaterial({ color: '#fff6f0', flatShading: true }),
+      petal2: new THREE.MeshLambertMaterial({ color: '#ffb3c8', flatShading: true }),
+      heart: new THREE.MeshLambertMaterial({ color: '#ffd23a', flatShading: true }),
+      leaf: new THREE.MeshLambertMaterial({ color: '#4c9a3a', flatShading: true }),
+    });
+    const C = CAN, g = new THREE.Group(), geos = [], R = C.R, H = C.H;
+    const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    // The can: a painted drum sunk a little into the bed, with brass bands, a rolled rim and water inside.
+    mesh(new THREE.CylinderGeometry(R, R * 1.04, H + 4, 32), M.paint).position.y = H / 2 - 2;
+    for (const [yy, rr] of [[1.2, R * 1.04], [H * 0.45, R + 0.1], [H - 1.4, R + 0.1]]) {
+      const band = mesh(new THREE.TorusGeometry(rr, 0.55, 6, 32), M.brass);
+      band.rotation.x = Math.PI / 2; band.position.y = yy;
+    }
+    const rim = mesh(new THREE.TorusGeometry(R, 0.9, 8, 32), M.tin);
+    rim.rotation.x = Math.PI / 2; rim.position.y = H;
+    const water = mesh(new THREE.CircleGeometry(R - 0.6, 28), M.water);
+    water.rotation.x = -Math.PI / 2; water.position.y = H - 2.5;
+    mesh(new THREE.CylinderGeometry(R - 0.7, R - 0.7, 1, 28, 1, true), M.paint2).position.y = H - 0.6; // the inside of the rim
+    // Painted daisies around the sides.
+    for (const [ang, yy, sc, pm] of [[0.25, 11, 1, M.petal], [-0.55, 17, 0.8, M.petal2], [1.1, 7, 0.9, M.petal2], [2.6, 13, 1, M.petal], [-1.9, 9, 0.85, M.petal], [3.6, 18, 0.75, M.petal2]]) {
+      const fl = new THREE.Group();
+      const rr = R * 1.04 - R * 0.04 * (yy + 4) / (H + 4) + 0.3; // on the drum, which flares a little toward the foot
+      fl.position.set(Math.sin(ang) * rr, yy, Math.cos(ang) * rr);
+      fl.rotation.y = ang;
+      fl.scale.setScalar(sc);
+      g.add(fl);
+      for (let k = 0; k < 6; k++) {
+        const a = k * Math.PI / 3, pt = mesh(new THREE.SphereGeometry(1, 7, 5), pm, fl);
+        pt.scale.set(0.9, 2, 0.25); pt.position.set(Math.cos(a) * 2, Math.sin(a) * 2, 0); pt.rotation.z = a - Math.PI / 2;
+      }
+      mesh(new THREE.SphereGeometry(1.1, 8, 6), M.heart, fl).scale.set(1, 1, 0.45);
+      const leaf = mesh(new THREE.SphereGeometry(1, 6, 4), M.leaf, fl);
+      leaf.scale.set(0.8, 2.2, 0.2); leaf.position.set(1.6, -4.4, 0); leaf.rotation.z = -0.7;
+      const stem = mesh(new THREE.BoxGeometry(0.4, 4.5, 0.2), M.leaf, fl);
+      stem.position.set(0, -4, 0);
+    }
+    // The top handle: an arch over the mouth, from the back to the spout side, with brass sockets.
+    const handle = mesh(new THREE.TorusGeometry(C.handleR, C.tube, 10, 32, Math.PI), M.paint2);
+    handle.position.y = H;
+    for (const sx of [-1, 1]) mesh(new THREE.CylinderGeometry(2.2, 2.6, 2, 12), M.brass).position.set(sx * C.handleR, H + 0.4, 0);
+    // The back handle, bowed out the far side.
+    const back = mesh(new THREE.TorusGeometry(C.backR, C.tube * 0.9, 8, 24, Math.PI), M.paint2);
+    back.rotation.z = Math.PI / 2; back.position.set(-R, H * 0.55, 0);
+    // The spout: a long tapering tin pipe out of the low side, up to a brass rose that drips.
+    const a = new THREE.Vector3(R - 1, 5, 0), tip = new THREE.Vector3(R + C.spoutLen, C.spoutTip, 0), dir = tip.clone().sub(a);
+    const len = dir.length();
+    dir.normalize();
+    const spout = mesh(new THREE.CylinderGeometry(1.9, 3.4, len, 16), M.paint);
+    spout.quaternion.setFromUnitVectors(_Y, dir); spout.position.copy(a).addScaledVector(dir, len / 2);
+    const collar = mesh(new THREE.CylinderGeometry(4.2, 4.2, 2.4, 16), M.brass);
+    collar.quaternion.copy(spout.quaternion); collar.position.copy(a).addScaledVector(dir, 2.5);
+    const rose = mesh(new THREE.CylinderGeometry(C.roseR, 2.2, 3.4, 18), M.brass);
+    rose.quaternion.copy(spout.quaternion); rose.position.copy(tip).addScaledVector(dir, 1.6);
+    const face = new THREE.Group(); // the rose's holes
+    face.quaternion.copy(spout.quaternion); face.position.copy(tip).addScaledVector(dir, 3.35);
+    g.add(face);
+    for (let k = 0; k < 13; k++) {
+      const r = k === 0 ? 0 : k < 7 ? 1.8 : 3.5, ang = k < 7 ? k * Math.PI / 3 : k * Math.PI / 3 + 0.5;
+      mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.2, 6), M.dark, face).position.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+    }
+    const roseC = tip.clone().addScaledVector(dir, 1.6);
+    // The puddle under the rose, and its ripples.
+    const sx = roseC.x + 1.5;
+    const pud = mesh(new THREE.CircleGeometry(10, 24), M.water);
+    pud.rotation.x = -Math.PI / 2; pud.position.set(sx, footY + 0.3, 0);
+    const rippleMats = [0, 1].map(() => M.drop.clone()); // each fades as it spreads
+    const ripples = rippleMats.map((mat) => {
+      const rp = mesh(new THREE.TorusGeometry(4, 0.25, 4, 24), mat);
+      rp.rotation.x = Math.PI / 2; rp.position.set(sx, footY + 0.5, 0);
+      return rp;
+    });
+    // The drops, falling from the rose to the puddle.
+    const drops = new THREE.Group();
+    g.add(drops);
+    const dropGeo = new THREE.SphereGeometry(0.55, 6, 4);
+    geos.push(dropGeo);
+    const list = [];
+    for (let k = 0; k < C.drops; k++) {
+      const o = new THREE.Mesh(dropGeo, M.drop);
+      o.scale.set(1, 2.4, 1);
+      drops.add(o);
+      const ang = rand(0, Math.PI * 2), r = Math.sqrt(rand(0, 1)) * (C.streamR - 1);
+      list.push({ o, x: sx + Math.cos(ang) * r, z: Math.sin(ang) * r, ph: rand(0, 1) });
+    }
+    this.mergeStatic(g, [drops, ...ripples], geos);
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    this.G.scene.add(g);
+    this.can = { group: g, geos, rippleMats, drops: list, ripples, pos: g.position, yaw, top: roseC.y - 2.2, // drops start at the rose's lip
+      foot: footY, sx, spoutA: a, spoutB: tip, rose: roseC,
+      threaded: false, splashed: false, splashT: 0, bumpT: 0, prevZ: null };
+    return this.can;
+  }
+
+  updateCan(dt) {
+    const G = this.G, p = G.player, C = CAN;
+    if (this.can && Math.hypot(this.can.pos.x - p.pos.x, this.can.pos.z - p.pos.z) > C.drop) this.dropCan();
+    if (!this.can && !G.terrain.stale && (this.canT -= dt) <= 0) { this.canT = 0.5; this.placeCan(); }
+    const c = this.can;
+    if (!c) return;
+    const t = G.time, fall = c.top - c.foot;
+    for (const d of c.drops) {
+      const k = (t * 0.9 + d.ph) % 1;
+      d.o.position.set(d.x, c.top - k * k * fall, d.z); // speeding up as they fall
+    }
+    c.ripples.forEach((rp, i) => { const k = (t * 0.6 + i * 0.5) % 1; rp.scale.setScalar(0.4 + 1.6 * k); c.rippleMats[i].opacity = 0.8 * (1 - k); });
+    c.bumpT = Math.max(0, c.bumpT - dt);
+    c.splashT = Math.max(0, c.splashT - dt);
+    if (p.dead) { c.prevZ = null; return; }
+    const L = this.archLocal(c, _local), r = 2.5 * (p.sizeScale || 1), R = C.R, H = C.H;
+    // Through the handle: across its plane, under the arch, above the rim.
+    const q = Math.hypot(L.x, L.y - H);
+    if (c.prevZ !== null && Math.sign(c.prevZ) !== Math.sign(L.z) && L.y > H + 1 && q < C.handleR - C.tube && !c.threaded) {
+      c.threaded = true;
+      G.score += C.score;
+      G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${C.score} Through the handle!`);
+      G.fx.emit(p.pos, 24, { colors: ['#ffd23a', '#fff6f0', '#ffb3c8'], speed: 12, up: 3, life: 1.2, size: 2.5, gravity: -3, drag: 0.6 });
+    }
+    c.prevZ = L.z;
+    // The dripping water: a gentle push down and a splash, never a knock.
+    if (Math.hypot(L.x - c.sx, L.z) < C.streamR + r && L.y < c.top && L.y > c.foot) {
+      p.pos.y -= C.streamPush * Math.min(1, Math.max(0, (L.y - c.foot - 2) / C.streamEase)) * dt;
+      if (c.splashT <= 0) { c.splashT = 0.15; G.fx.emit(p.pos, 6, { colors: ['#a8dcff', '#ffffff'], speed: 9, up: 2, life: 0.8, size: 1.8, gravity: -6, drag: 0.8 }); }
+      if (!c.splashed) { c.splashed = true; G.score += C.splash; G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${C.splash} Splash!`); }
+    }
+    // Solid tin.
+    let hit = false;
+    const push = (mx, my, mz) => {
+      const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+      p.pos.x += mx * cs + mz * sn; p.pos.z += -mx * sn + mz * cs; p.pos.y += my;
+      this.archLocal(c, L);
+      hit = true;
+    };
+    // The drum: out the side, or up out of the mouth.
+    {
+      const d = Math.hypot(L.x, L.z), Ro = R + 0.9;
+      if (d < Ro + r && L.y < H + 0.9 + r && L.y > -4) {
+        const side = Ro + r - d, up = H + 0.9 + r - L.y;
+        if (side < up) { const k = d > 1e-3 ? side / d : 0; push(d > 1e-3 ? L.x * k : Ro + r, 0, L.z * k); } else push(0, up, 0);
+      }
+    }
+    // The handles: a ring of tube along an arc. Pushed straight out from the nearest point on it.
+    const arc = (cx, cy, rad, tube, a0, a1) => {
+      let ang = Math.atan2(L.y - cy, L.x - cx);
+      if (a1 > Math.PI && ang < 0) ang += Math.PI * 2;
+      ang = Math.min(a1, Math.max(a0, ang));
+      const ax = cx + Math.cos(ang) * rad, ay = cy + Math.sin(ang) * rad, dx = L.x - ax, dy = L.y - ay, dz = L.z, d = Math.hypot(dx, dy, dz);
+      if (d < tube + r) { const k = d > 1e-3 ? (tube + r - d) / d : 0; push(dx * k, d > 1e-3 ? dy * k : tube + r, dz * k); }
+    };
+    arc(0, H, C.handleR, C.tube, 0, Math.PI);
+    arc(-R, H * 0.55, C.backR, C.tube * 0.9, Math.PI / 2, Math.PI * 1.5);
+    // The spout, a pipe from the drum to the rose, and the rose itself.
+    {
+      const A = c.spoutA, B = c.spoutB, ux = B.x - A.x, uy = B.y - A.y, l2 = ux * ux + uy * uy;
+      const k = Math.min(1, Math.max(0, ((L.x - A.x) * ux + (L.y - A.y) * uy) / l2));
+      const dx = L.x - (A.x + ux * k), dy = L.y - (A.y + uy * k), dz = L.z, d = Math.hypot(dx, dy, dz), rad = 3.4 - 1.5 * k;
+      if (d < rad + r) { const m = d > 1e-3 ? (rad + r - d) / d : 0; push(dx * m, d > 1e-3 ? dy * m : rad + r, dz * m); }
+      const ex = L.x - c.rose.x, ey = L.y - c.rose.y, e = Math.hypot(ex, ey, L.z);
+      if (e < C.roseR + r) { const m = e > 1e-3 ? (C.roseR + r - e) / e : 0; push(ex * m, e > 1e-3 ? ey * m : C.roseR + r, L.z * m); }
+    }
+    if (hit && c.bumpT <= 0) {
+      c.bumpT = C.bumpEvery;
+      p.damage(C.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#2f9e8f', '#d9b45a', '#b9c3c8'], speed: 18, life: 0.8, size: 4 });
+      if (!this.canTip) { this.canTip = true; G.ui.notify('That watering can is solid tin! Fly under its handle instead.', 'warn', 4, 1); }
     }
   }
 }

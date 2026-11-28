@@ -82,7 +82,7 @@ export const ZONES = [
   {
     name: 'Giant\'s Garden', blurb: 'Everything here is enormous. You are basically a bug with a propeller.',
     world: { palette: 'Deep Jungle', propTheme: 'garden', propScale: 3.2, propDensity: 0.9, amp: 0.6, tempBias: -0.3 },
-    sky: 'noon', weather: 'petals', clouds: ['#ffffff', 30], mood: 'day', lock: [...LOCK, 'weather'],
+    sky: 'noon', weather: 'petals', clouds: ['#ffffff', 30], mood: 'day', setPiece: 'can', lock: [...LOCK, 'weather'],
   },
   {
     name: 'Mushroom Forest', blurb: 'Glowing toxic jungle. The mushrooms are bigger than your plane.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn, the Giant's Garden watering can)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
