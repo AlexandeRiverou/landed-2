@@ -2580,7 +2580,7 @@ export const MOVES = {
       m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
       m.gait += (Math.min(m.moving, BEAT.walkRage) * dt) / BEAT.stride; // (skating, his legs don't run any faster)
       // Feet on the ground, and lean with it along his way.
-      const want = MOVES.beat.ground(en, e, e.pos.x, e.pos.z), dy = want - e.pos.y, rate = Math.max(60, m.moving * 4);
+      const want = MOVES.beat.ground(en, e, e.pos.x, e.pos.z), dy = want - e.pos.y, rate = Math.max(150, m.moving * 8);
       e.pos.y += THREE.MathUtils.clamp(dy, -rate * dt, rate * dt);
       const o = 3 * e.mesh.scale.x, sx = Math.sin(e.yaw) * o, sz = Math.cos(e.yaw) * o, T = G.terrain;
       const slope = -Math.atan2(T.surfaceHeight(e.pos.x + sx, e.pos.z + sz) - T.surfaceHeight(e.pos.x - sx, e.pos.z - sz), 2 * o);

@@ -1370,6 +1370,17 @@ try {
         const m = mv(), f0 = new V(p.forward.x, 0, p.forward.z);
         if (f0.lengthSq() < 0.01) f0.set(0, 0, -1);
         f0.normalize();
+        // Fly the way whose ground stays nearest his for 3 km (he never walks down a cliff or into a deep pit, which a
+        // straight line here might cross).
+        {
+          const g0 = e.pos.y - feet, best = { k: 0, v: Infinity }, f = f0.clone();
+          for (let k = 0; k < 12; k++, f.applyAxisAngle(new V(0, 1, 0), Math.PI / 6)) {
+            let v = 0;
+            for (let t = 100; t <= 3000; t += 50) v = Math.max(v, Math.abs(T.surfaceHeight(e.pos.x + f.x * t, e.pos.z + f.z * t) - g0));
+            if (v < best.v) Object.assign(best, { k, v });
+          }
+          f0.applyAxisAngle(new V(0, 1, 0), (best.k * Math.PI) / 6);
+        }
         Object.assign(m, { phase: 'trail', clock: 3 });
         const at = e.pos.clone().addScaledVector(f0, 60), dashes0 = m.dashes;
         const R = { frames: 0, ahead: 0, shown: 0, aheadShown: 0, facing: 0, start: 0 };
