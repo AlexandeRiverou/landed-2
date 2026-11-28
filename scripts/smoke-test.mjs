@@ -5460,12 +5460,12 @@ try {
       gm.wait = 1e9;
       if (ball) {
         const p0 = ball.pos.clone();
-        // Rolling 1 s, then its height over the ground at its lowest in the next third of a second (rolling over a crest it
-        // leaves the ground for a moment, on any land roll).
+        // Rolling 1 s, then its height over the ground at its lowest in the next 2 s (rolling over a crest or bouncing off a
+        // drop it leaves the ground for a moment, on any land roll).
         // The roll snaps it to the ground where it was at the start of the frame, so that's where its height is read.
         const over = (x, z) => { const g = G.terrain.surfaceHeight(x, z), floor = g < G.world.seaLevel ? G.world.seaLevel + GUMBALL.ball * 0.4 : g + GUMBALL.ball; return ball.pos.y - floor; };
         let low = Infinity;
-        for (let k = 0; k < 40; k++) { const x0 = ball.pos.x, z0 = ball.pos.z; G.step(1 / 30); above(); if (k >= 30 && Math.abs(over(x0, z0)) < Math.abs(low)) low = over(x0, z0); }
+        for (let k = 0; k < 90; k++) { const x0 = ball.pos.x, z0 = ball.pos.z; G.step(1 / 30); above(); if (k >= 30 && SP.gumballList.includes(ball) && Math.abs(over(x0, z0)) < Math.abs(low)) low = over(x0, z0); }
         out.gumRoll = { out: true, moved: +ball.pos.distanceTo(p0).toFixed(1), onGround: +low.toFixed(2), alive: SP.gumballList.includes(ball) };
         // Shot with real bullets placed on it: popped, +10 once.
         const s9 = G.score;
