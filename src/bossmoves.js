@@ -111,7 +111,8 @@ export const WEB = {
   walk: 46, walkRage: 54, turn: 1.6, ahead: 80, side: 60, near: 12, chase: 220, stride: 18, climb: 60, drop: 110, tilt: 0.35, far: 300,
   // Now and then (every `every` s, `everyRage` enraged, the first `opener` s in) she dashes past you at `dash`/`dashRage`
   // (faster than a boosting plane) to a spot `front` m ahead and `frontSide` m aside, gives up after `dashMax` s, then
-  // keeps pace there `show` s, turned round to face you: your clear shot at her eyes. Then she drops back.
+  // keeps pace there `show` s, turned round to face you: your clear shot at her eyes (no Web Wall meanwhile). Then she
+  // drops back.
   every: 12, everyRage: 8, opener: 5, dash: 115, dashRage: 130, dashTurn: 2.6, dashMax: 7, front: 140, frontSide: 25, show: 5,
   tell: 1.3, first: 1.9, tellRage: 1, lock: 0.8, lead: 0.9, hold: 3, R: [24, 20, 16, 12], pass: 40, dmg: 16, slow: 14,
   shards: 5, shardSpeed: 75, shardDmg: 9, spread: 0.1, colors: ['#b48cff', '#e6d8ff'], spokes: 12, turns: 6,
@@ -2303,7 +2304,7 @@ export const MOVES = {
       const m = e.mv, G = en.G, p = G.player;
       if (!m || m.tell > 0) return;
       const from = MOVES.web.mouth(e, new THREE.Vector3()), dist = from.distanceTo(p.pos);
-      if (n % (e.enraged ? 2 : 3) === 0 && !m.web && dist < WEB.far && !p.landed && !p.dead) {
+      if (n % (e.enraged ? 2 : 3) === 0 && !m.web && m.phase === 'trail' && dist < WEB.far && !p.landed && !p.dead) { // (not mid-dash: that's your window)
         m.tell = m.tell0 = !e.webTip ? WEB.first : e.enraged ? WEB.tellRage : WEB.tell;
         if (!e.webTip) { e.webTip = true; G.ui.notify('Web Wall! When she rears up, a web spins across your path. Once it stops following you, turn hard round its edge.', 'warn', 4, 1); }
         m.plan = { c: new THREE.Vector3(), n: new THREE.Vector3(), R: MOVES.web.size(e) };
