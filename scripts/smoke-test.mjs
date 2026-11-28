@@ -1582,8 +1582,10 @@ try {
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
       // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so tall
       // peaks or rock pinnacles the loop has reached (Volcano Land's aren't calmed by amp) can't throw their checks. DJ
-      // Gigawatt and Baron Barnacle never step off a cliff, so their calm land has no pinnacles either.
-      const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes } = G.world;
+      // Gigawatt and Baron Barnacle never step off a cliff, so their calm land has no pinnacles, stepped cliffs, table
+      // mountains or canyons either (a canyon cuts down to the sea level, here 400 m under the land).
+      const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes, terrace, mesa, canyon } = G.world;
+      const strider = kind === 'boomboxMech' || kind === 'hermitKing';
       const ground = walks || kind === 'harvestOwl' || kind === 'castleDragon';
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
       // turn, whatever land the loop has reached by now.
@@ -1592,7 +1594,7 @@ try {
       const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech' || kind === 'hermitKing') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
-      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: walks && kind !== 'boomboxMech' && kind !== 'hermitKing' ? spikes : 0 }); G.terrain.rebuildAll(); step(30); }
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: walks && !strider ? spikes : 0 }, strider && { terrace: 0, mesa: 0, canyon: 0 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech' || kind === 'hermitKing') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
@@ -1688,7 +1690,7 @@ try {
       out.bosses[kind] = { spawned: e.kind, attacks, done: G.objectives.completed === done0 + 1 };
       if (spot0) putBack(spot0);
       if (roof) { const { zone, ...flags } = roof; Object.assign(G.world, flags); }
-      if (ground) { Object.assign(G.world, { amp, seaLevel, spikes }); G.terrain.rebuildAll(); step(30); }
+      if (ground) { Object.assign(G.world, { amp, seaLevel, spikes, terrace, mesa, canyon }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
     ownRolls('after the boss loop');
