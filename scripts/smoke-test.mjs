@@ -1334,7 +1334,7 @@ try {
       const B = window.BOSS_MOVES_FOR_TEST.beat, attack0 = B.attack, calls = [];
       B.attack = function (en, e2, n) {
         const m = e2.mv || {}, M = B.mouth(e2, new V()), f = p.forward, tx = e2.pos.x - p.pos.x, tz = e2.pos.z - p.pos.z;
-        if (calls.length < 24) calls.push([n, m.phase, m.due ? 1 : 0, +((f.x * tx + f.z * tz) / (Math.hypot(f.x, f.z) * Math.hypot(tx, tz) || 1)).toFixed(2), Math.round(M.distanceTo(p.pos)), m.ring ? 1 : 0, p.landed ? 1 : 0, +(m.tell || 0).toFixed(1), e2 === e ? "same" : "other", G.enemies.list.filter((x) => x.boss).length, Math.round(e2.pos.distanceTo(p.pos)), Math.round(M.distanceTo(e2.pos))].join(' '));
+        if (calls.length < 24) calls.push([n, m.phase, m.due ? 1 : 0, +((f.x * tx + f.z * tz) / (Math.hypot(f.x, f.z) * Math.hypot(tx, tz) || 1)).toFixed(2), Math.round(M.distanceTo(p.pos)), m.ring ? 1 : 0, p.landed ? 1 : 0, +(m.tell || 0).toFixed(1), e2 === e ? "same" : "other", G.enemies.list.filter((x) => x.boss).length, Math.round(e2.pos.distanceTo(p.pos)), Math.round(M.distanceTo(e2.pos)), Math.round(p.pos.y), Math.round(e2.pos.y), Math.round(T.surfaceHeight(p.pos.x, p.pos.z)), Math.round(T.surfaceHeight(e2.pos.x, e2.pos.z)), Math.round(G.world.seaLevel), Math.round(Math.hypot(tx, tz))].join(' '));
         return attack0.call(this, en, e2, n);
       };
       r.calls = calls;
