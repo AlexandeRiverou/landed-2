@@ -23,7 +23,7 @@ const GROUND_OBJECTIVES = new Set(['lowfly', 'gate', 'buzz', 'tour', 'bullseye',
 export const ZONES = [
   {
     name: 'Meadowlands', blurb: 'Where it all began. Grass, sheep, mild peril.',
-    world: { palette: 'Classic Countryside' }, sky: 'noon', weather: 'clear', clouds: ['#ffffff', 40], mood: 'day', lock: LOCK,
+    world: { palette: 'Classic Countryside' }, sky: 'noon', weather: 'clear', clouds: ['#ffffff', 40], mood: 'day', setPiece: 'barn', lock: LOCK,
   },
   {
     name: 'Autumn Woods', blurb: 'Crunchy leaves, cozy forests and pumpkin-coloured everything.',
@@ -184,7 +184,7 @@ export class Zones {
     this.lap = 1;
     this.sinceZone = 0;
     this.asteroids = new Asteroids(G);
-    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan)
+    this.setPieces = new SetPieces(G); // landmarks that belong to one land (Volcano Land's fire geysers, Princess Kingdom's castle, meteors on the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales, the Mushroom Forest's bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's gumball machine, the Dune Sea's camel caravan, the Meadowlands' big red barn)
     this.decor = new THREE.Group(); // planets in the sky, follows the camera like the sky dome
     this.decks = [];                // gas giant cloud decks (part of the decor) that scroll as you fly
     this.fading = null;             // zone change: the old decor fading out ({ group, t, mats })
