@@ -2298,7 +2298,7 @@ export const MOVES = {
       m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
       m.gait += (m.moving * dt) / WEB.stride;
       // Follow the rock, and lean with it along her way.
-      const here = MOVES.web.surface(en, e, m, e.pos.x, e.pos.z), dy = m.goalY - e.pos.y, rate = Math.abs(dy) > 30 ? WEB.drop : WEB.climb;
+      const here = MOVES.web.surface(en, e, m, e.pos.x, e.pos.z), dy = m.goalY - e.pos.y, rate = Math.abs(dy) > 30 ? WEB.drop : WEB.climb + m.moving * 2; // (keeping her feet on the rock at a dash)
       e.pos.y += THREE.MathUtils.clamp(dy, -rate * dt, rate * dt);
       const o = 4 * e.mesh.scale.x, sx = Math.sin(e.yaw) * o, sz = Math.cos(e.yaw) * o, T = G.terrain;
       const at = (x, z) => (m.roof ? T.ceilingHeight(x, z, e.pos.y) : T.surfaceHeight(x, z, e.pos.y));
