@@ -109,6 +109,10 @@ export const LEAP = {
 // m/s of speed (it tears); getting by it untouched within `pass` m of its edge, or barrel-rolling through it, is +25 Dodge!
 export const WEB = {
   walk: 46, walkRage: 54, turn: 1.6, ahead: 80, side: 60, near: 12, chase: 220, stride: 18, climb: 60, drop: 110, tilt: 0.35, far: 300,
+  // Now and then (every `every` s, `everyRage` enraged, the first `opener` s in) she dashes past you at `dash`/`dashRage`
+  // (faster than a boosting plane) to a spot `front` m ahead and `frontSide` m aside, gives up after `dashMax` s, then
+  // keeps pace there `show` s, turned round to face you: your clear shot at her eyes. Then she drops back.
+  every: 12, everyRage: 8, opener: 5, dash: 115, dashRage: 130, dashTurn: 2.6, dashMax: 7, front: 140, frontSide: 25, show: 5,
   tell: 1.3, first: 1.9, tellRage: 1, lock: 0.8, lead: 0.9, hold: 3, R: [24, 20, 16, 12], pass: 40, dmg: 16, slow: 14,
   shards: 5, shardSpeed: 75, shardDmg: 9, spread: 0.1, colors: ['#b48cff', '#e6d8ff'], spokes: 12, turns: 6,
 };
@@ -2221,7 +2225,7 @@ export const MOVES = {
   },
 
   // Queen Quartzelle (Crystal Caverns): walks the cave roof upside down (the ground where there's no roof) toward a spot
-  // beside your path, firing crystal shards; every 3rd attack (2nd enraged) she rears up and spins a Web Wall across
+  // beside your path, now and then dashing past you to turn and face you (WEB.every), firing crystal shards; every 3rd attack (2nd enraged) she rears up and spins a Web Wall across
   // your path (see WEB). She sets her own height (hop) and turns herself (pose).
   web: {
     spawn(en, e) {
@@ -2231,7 +2235,7 @@ export const MOVES = {
       e.flipK = m.roof ? 1 : 0;
       e.yaw = Math.atan2(en.G.player.pos.x - e.pos.x, en.G.player.pos.z - e.pos.z);
     },
-    fresh: (e) => ({ roof: (e.flipK || 0) > 0.5, goalY: e.pos.y, side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, webs: 0, snares: 0, passes: 0, volleys: 0, walked: 0, plan: null, web: null }),
+    fresh: (e) => ({ roof: (e.flipK || 0) > 0.5, goalY: e.pos.y, side: Math.random() < 0.5 ? 1 : -1, moving: 0, gait: 0, pitch: 0, tell: 0, tell0: 1, webs: 0, snares: 0, passes: 0, volleys: 0, walked: 0, plan: null, web: null, phase: 'trail', clock: WEB.opener, dashes: 0, head: null }),
     // What she stands on at (x, z): the roof over it if there is one (m.roof), else the ground; m.goalY her height there.
     surface(en, e, m, x, z) {
       const T = en.G.terrain, feet = SPIDER_FEET * e.mesh.scale.x, floor = T.surfaceHeight(x, z, e.pos.y);
@@ -2244,23 +2248,43 @@ export const MOVES = {
       const G = en.G, p = c.p, dt = c.dt, m = (e.mv ||= MOVES.web.fresh(e));
       e.vel.set(0, 0, 0);
       MOVES.web.spin(en, e, c);
-      // Walk toward her spot beside your path (not while rearing up), turning a little at a time.
-      const f = flatFwd(p, _a), off = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > WEB.chase ? 0 : WEB.side * m.side;
-      const tx = p.pos.x + f.x * WEB.ahead - f.z * off, tz = p.pos.z + f.z * WEB.ahead + f.x * off;
-      const dx = tx - e.pos.x, dz = tz - e.pos.z, d = Math.hypot(dx, dz), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+      // Her run: mostly she trails toward a spot beside your path (and a plane outruns her); now and then she dashes past
+      // you to a spot well ahead, then keeps pace there facing you (WEB.every). Not while rearing up for a web.
+      const f = flatFwd(p, _a), wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+      m.clock -= dt;
+      const lead = (e.pos.x - p.pos.x) * f.x + (e.pos.z - p.pos.z) * f.z; // how far ahead of you she is
+      if (m.phase === 'trail' && m.clock <= 0 && m.tell <= 0 && !p.landed) {
+        m.phase = 'dash'; m.clock = WEB.dashMax; m.dashes++;
+        if (!e.dashTip) { e.dashTip = true; G.ui.notify('She scuttles ahead of you and turns round: now her eyes are in your sights!', 'info', 3, 1); }
+      } else if (m.phase === 'dash' && (m.clock <= 0 || lead > WEB.front * 0.7)) {
+        m.phase = 'show'; m.clock = WEB.show;
+      } else if (m.phase === 'show' && m.clock <= 0) {
+        m.phase = 'trail'; m.clock = e.enraged ? WEB.everyRage : WEB.every;
+      }
+      const run = m.phase !== 'trail', far = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) > WEB.chase;
+      const spot = run ? WEB.front : WEB.ahead, off = run ? WEB.frontSide * m.side : far ? 0 : WEB.side * m.side;
+      const tx = p.pos.x + f.x * spot - f.z * off, tz = p.pos.z + f.z * spot + f.x * off;
+      const dx = tx - e.pos.x, dz = tz - e.pos.z, d = Math.hypot(dx, dz), turnRate = run ? WEB.dashTurn : WEB.turn;
       e.yaw ??= Math.atan2(dx, dz);
+      m.head ??= e.yaw;
       let go = 0;
-      if (m.tell <= 0 && d > WEB.near) {
-        const turn = wrap(Math.atan2(dx, dz) - e.yaw);
-        e.yaw += THREE.MathUtils.clamp(turn, -WEB.turn * dt, WEB.turn * dt);
-        go = (e.enraged ? WEB.walkRage : WEB.walk) * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4))) * Math.min(1, d / 40);
-        const nx = e.pos.x + Math.sin(e.yaw) * go * dt, nz = e.pos.z + Math.cos(e.yaw) * go * dt;
+      if (m.tell <= 0 && d > (m.phase === 'show' ? 1 : WEB.near)) {
+        const turn = wrap(Math.atan2(dx, dz) - m.head);
+        m.head += THREE.MathUtils.clamp(turn, -turnRate * dt, turnRate * dt);
+        const top = run ? (e.enraged ? WEB.dashRage : WEB.dash) : e.enraged ? WEB.walkRage : WEB.walk;
+        // Keeping pace: your speed, plus a little to close the gap to her spot.
+        const want = m.phase === 'show' ? Math.min(top, p.speed / c.pace + d * 1.5) : top * Math.min(1, d / 40);
+        go = want * Math.max(0.25, Math.cos(Math.min(Math.abs(turn), 1.4)));
+        const nx = e.pos.x + Math.sin(m.head) * go * dt, nz = e.pos.z + Math.cos(m.head) * go * dt;
         // Only where there's rock to hold on to: under a roof if she's on one (no stepping off its edge on purpose), on
         // dry land if she's on the ground. Blocked, she turns away from it.
         const T = G.terrain, roofThere = Number.isFinite(T.ceilingHeight(nx, nz, m.roof ? e.pos.y : T.surfaceHeight(nx, nz) + 5));
         const ok = m.roof ? roofThere : T.surfaceHeight(nx, nz) > waterLine() + 1;
-        if (ok) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { e.yaw += WEB.turn * dt * m.side; go = 0; }
+        if (ok) { e.pos.x = nx; e.pos.z = nz; m.walked += go * dt; } else { m.head += turnRate * dt * m.side; go = 0; }
       }
+      // She looks where she runs, except when keeping pace ahead of you: then she turns round to face you.
+      const look = m.phase === 'show' ? Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z) : m.head;
+      e.yaw += THREE.MathUtils.clamp(wrap(look - e.yaw), -WEB.dashTurn * dt, WEB.dashTurn * dt);
       m.moving += ((go > 1 ? go : 0) - m.moving) * (1 - Math.exp(-dt * 6));
       m.gait += (m.moving * dt) / WEB.stride;
       // Follow the rock, and lean with it along her way.
@@ -2271,7 +2295,7 @@ export const MOVES = {
       const ahead = at(e.pos.x + sx, e.pos.z + sz), back = at(e.pos.x - sx, e.pos.z - sz);
       const slope = Number.isFinite(ahead) && Number.isFinite(back) && Number.isFinite(here) ? -Math.atan2(ahead - back, 2 * o) : 0;
       m.pitch += (THREE.MathUtils.clamp(slope, -WEB.tilt, WEB.tilt) - m.pitch) * (1 - Math.exp(-dt * 4));
-      if (m.walked > 400) { m.walked = 0; m.side = -m.side; } // now and then she crosses to your other side
+      if (m.walked > 400 && !run) { m.walked = 0; m.side = -m.side; } // now and then she crosses to your other side
       return true;
     },
     hold: (e) => e.mv?.tell > 0,

@@ -418,7 +418,10 @@ doesn't by itself, but flying on from where it put you does.
   glittering garden of amethyst crystals, with eight glowing cyan eyes, a little crystal tiara, fangs, feelers and eight
   long banded legs tipped with crystal claws. She walks the cave roof upside down, feet on the rock and leaning with
   it, toward a spot 80 m ahead of you and 60 m to one side (straight at you beyond 220 m), 46 m/s (54 enraged), her
-  legs stepping in a proper gait. Where there's no roof she turns over and walks the ground. Most attacks are a volley
+  legs stepping in a proper gait, so a plane flying on outruns her. Every 12 s (8 s enraged; first 5 s in) she dashes
+  past you at 115 m/s (130 enraged), faster than a boosting plane, to a spot 140 m ahead and 25 m aside (giving up after
+  7 s, with a tip the first time), then keeps pace there for 5 s turned round to face you: your clear shot at her
+  eyes. Then she drops back again. Where there's no roof she turns over and walks the ground. Most attacks are a volley
   of 5 crystal shards (9 each) from her fangs. Every 3rd attack (every 2nd enraged), with you within 300 m and not
   landed, she rears up, front legs high and her crystals glowing brighter, for 1.3 s (1.9 s the first time, with a
   tip; 1 s enraged), while a faint web spins up across your path, where you'll be 0.9 s after it sets, facing the way

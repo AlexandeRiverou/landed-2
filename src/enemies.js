@@ -413,7 +413,7 @@ export const BOSSES = {
     lands: ['Crystal Caverns'],
     name: 'Queen Quartzelle, the Crystal Spider', short: 'Queen Quartzelle', noun: 'Queen Quartzelle',
     move: 'web',
-    desc: 'An enormous amethyst spider whose back has grown a glittering crystal garden. She walks the cave roof upside down, running alongside you and firing crystal shards. When she rears up with her front legs high, a web spins across your path: once it stops following you, turn hard round its edge (or roll through it). Shatter her back crystals for a smaller web; her eight glowing eyes are soft.',
+    desc: 'An enormous amethyst spider whose back has grown a glittering crystal garden. She walks the cave roof upside down, trailing you and firing crystal shards; now and then she dashes ahead and turns round to face you: that is your clear shot. When she rears up with her front legs high, a web spins across your path: once it stops following you, turn hard round its edge (or roll through it). Shatter her back crystals for a smaller web; her eight glowing eyes are soft.',
     taunts: ['Queen Quartzelle: "Mind the ceiling, dear. It is my floor."', 'Queen Quartzelle: "Eight eyes, and every one of them is on you."', 'Queen Quartzelle: "Do come into my parlour. Everyone does, eventually."', 'Queen Quartzelle: "I spin silk out of starlight and spite."'],
     rage: ['Queen Quartzelle is hanging by a thread. A very angry thread.', 'All eight eyes just narrowed.'],
   },
