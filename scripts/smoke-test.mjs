@@ -1336,7 +1336,20 @@ try {
           p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; park(); step(1);
           if (mv().volleys > v0) r.volleys.push(G.enemies.shots.filter((x) => !shots0.has(x) && x.src === e).length);
           r.frames++;
-          if (Math.abs(e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y)) < 3) r.onGround++;
+          const dy = e.pos.y - feet - T.surfaceHeight(e.pos.x, e.pos.z, e.pos.y);
+          if (Math.abs(dy) < 3) r.onGround++;
+          // (what the fight looked like, for a failure's report)
+          const D = (r.dbg ||= { dy: [1e9, -1e9], gone: 0, landed: 0, dead: 0, front: 0, phase: {}, far: 0, ring: 0, due: 0 });
+          D.dy = [Math.min(D.dy[0], Math.round(dy)), Math.max(D.dy[1], Math.round(dy))];
+          if (!G.enemies.list.includes(e)) D.gone++;
+          if (p.landed) D.landed++;
+          if (p.dead) D.dead++;
+          const tx = e.pos.x - p.pos.x, tz = e.pos.z - p.pos.z;
+          if ((p.forward.x * tx + p.forward.z * tz) / (Math.hypot(p.forward.x, p.forward.z) * Math.hypot(tx, tz) || 1) > 0.3) D.front++;
+          D.phase[mv().phase] = (D.phase[mv().phase] || 0) + 1;
+          if (Math.hypot(tx, tz) > 280) D.far++;
+          if (mv().ring) D.ring++;
+          if (mv().due) D.due++;
           r.walked += Math.hypot(e.pos.x - at.x, e.pos.z - at.z);
           const s = leg.rotation.x;
           r.swing = [Math.min(r.swing[0], +s.toFixed(2)), Math.max(r.swing[1], +s.toFixed(2))];

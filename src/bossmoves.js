@@ -2561,7 +2561,8 @@ export const MOVES = {
       e.yaw ??= Math.atan2(dx, dz);
       m.head ??= e.yaw;
       let go = 0;
-      if (m.tell <= 0 && m.slam <= 0 && d > (m.phase === 'show' ? 1 : BEAT.near)) {
+      // (Keeping pace ahead of you he crouches on the move: a Bass Drop never lets you fly up behind him.)
+      if ((m.phase === 'show' || (m.tell <= 0 && m.slam <= 0)) && d > (m.phase === 'show' ? 1 : BEAT.near)) {
         const turn = wrap(Math.atan2(dx, dz) - m.head);
         m.head += THREE.MathUtils.clamp(turn, -turnRate * dt, turnRate * dt);
         const top = run ? (e.enraged ? BEAT.dashRage : BEAT.dash) : e.enraged ? BEAT.walkRage : BEAT.walk;
