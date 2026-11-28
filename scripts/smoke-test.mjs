@@ -51,6 +51,8 @@ const seedRandom = async (page) => {
     };
     Object.defineProperty(Math, 'random', { value: rand, writable: true, configurable: true });
     Object.defineProperty(window, '__smokeSeed', { value: (n) => { a = n >>> 0; } });
+    // A page's own seed, so a check can start its own stream from it (see the boss loop) without rolling from this one.
+    Object.defineProperty(window, '__smokeBase', { value: s >>> 0 });
     // A second stream for code whose rolls are paced by a real clock (the music picks its next notes by the audio
     // clock): wrapped with __smokeAside, it rolls from this one, so how fast the machine ran can't shift the main stream.
     let b = (s ^ 0x9e3779b9) >>> 0;
@@ -1507,7 +1509,7 @@ try {
           p.quat.setFromUnitVectors(new V(0, 0, -1), f0); p.updateAxes();
           p.grace = 1; p.health = p.maxHealth; e.hp = e.maxHp; step(1);
           const D = (r.raceDbg ||= { maxMoving: 0, swaps: 0, tells: 0, dazed: 0, blocked0: m.blocked || 0, phases: {}, dEnd: 0, lead: [1e9, -1e9] });
-          D.maxMoving = Math.max(D.maxMoving, Math.round(m.moving || 0)); if (e.mv !== m) D.swaps++; if (m.tell > 0) D.tells++; if (e.dazed > 0) D.dazed++;
+          D.maxMoving = Math.max(D.maxMoving, Math.round(m.moving || 0)); if (m.clock < 99) D.stepped = (D.stepped || 0) + 1; D.slam = Math.max(D.slam || 0, +(m.slam || 0).toFixed(2)); D.calm = Math.max(D.calm || 0, +G.enemies.calmTimer.toFixed(1)); D.state = e.state; D.quest = !!e.quest; if (e.mv !== m) D.swaps++; if (m.tell > 0) D.tells++; if (e.dazed > 0) D.dazed++;
           D.phases[m.phase] = (D.phases[m.phase] || 0) + 1; D.blocked = (m.blocked || 0) - D.blocked0; D.dEnd = Math.round(Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z));
           const ld = Math.round((e.pos.x - p.pos.x) * f0.x + (e.pos.z - p.pos.z) * f0.z); D.lead = [Math.min(D.lead[0], ld), Math.max(D.lead[1], ld)];
           if (i < 60 || !(m.moving > 10)) continue; // (once he's turned side-on and under way)
@@ -1565,7 +1567,11 @@ try {
       G.objectives.start(G.objectives.makeBoss(kind, opts), 'boss');
       return G.enemies.list.filter((e) => e.boss);
     };
+    // Each boss's turn rolls from its own stream (the page's seed and the boss's name), and so does what comes after the
+    // loop: a new boss (which reshuffles the boss deck) or a change to one boss's checks can't shift every later check.
+    const ownRolls = (name) => window.__smokeSeed?.([...name].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0, (window.__smokeBase ?? 0) ^ 0x811c9dc5));
     for (const kind of Object.keys(window.BOSSES_FOR_TEST)) {
+      ownRolls(kind);
       // A Time Freeze or Slow-Mo grabbed from the last boss's drop would stop this one from attacking.
       G.powerups.active.clear();
       G.powerups.pickups.splice(0).forEach((k) => G.scene.remove(k.mesh));
@@ -1575,8 +1581,8 @@ try {
       // The carrier needs open sea: calm land under a deep sea for its turn (see seaUp).
       // Magmadora needs a lava sea (any sea will do for her test): the same flood.
       // Lady Hootrude and Duchess Brûlée fly low over the land and cast a shadow on it: calm land for them too, so tall
-      // peaks the loop has reached can't throw their checks. DJ Gigawatt and Baron Barnacle never step off a cliff, so
-      // their calm land has no rock pinnacles either (Volcano Land's aren't calmed by amp).
+      // peaks or rock pinnacles the loop has reached (Volcano Land's aren't calmed by amp) can't throw their checks. DJ
+      // Gigawatt and Baron Barnacle never step off a cliff, so their calm land has no pinnacles either.
       const { ground: walks, sea, swim } = window.BOSSES_FOR_TEST[kind], { amp, seaLevel, spikes } = G.world;
       const ground = walks || kind === 'harvestOwl' || kind === 'castleDragon';
       // Count Ribbiton only comes in open lands (no cave roof, tunnels, city or sea over him), Grandma Atolla on the open sea: give them open sky for their
@@ -1586,7 +1592,7 @@ try {
       const roof = (kind === 'toadBaron' || kind === 'islandTurtle' || kind === 'castleDragon' || kind === 'crystalSpider' || kind === 'boomboxMech' || kind === 'hermitKing') && { zone: G.zones.current.name, cave: G.world.cave, tunnels: G.world.tunnels, city: G.world.city, underwater: G.world.underwater };
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
-      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: kind === 'boomboxMech' || kind === 'hermitKing' ? 0 : spikes }); G.terrain.rebuildAll(); step(30); }
+      else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400, spikes: walks && kind !== 'boomboxMech' && kind !== 'hermitKing' ? spikes : 0 }); G.terrain.rebuildAll(); step(30); }
       const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech' || kind === 'hermitKing') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
@@ -1685,6 +1691,7 @@ try {
       if (ground) { Object.assign(G.world, { amp, seaLevel, spikes }); G.terrain.rebuildAll(); step(30); }
       G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x));
     }
+    ownRolls('after the boss loop');
     if (!out.carrier) out.carrier = { spawned: false };
     if (!out.serpent) out.serpent = { spawned: false };
     // Magmadora is Volcano Land's: the deck never brings her anywhere else (another boss comes instead), and in Volcano
