@@ -189,6 +189,7 @@ try {
     window.DRAGON_FEET_FOR_TEST = (await import('./src/models.js')).DRAGON_FEET;
     window.SPIDER_FEET_FOR_TEST = (await import('./src/models.js')).SPIDER_FEET;
     window.MECH_FEET_FOR_TEST = (await import('./src/models.js')).MECH_FEET;
+    window.BOSS_MOVES_FOR_TEST = (await import('./src/bossmoves.js')).MOVES;
     window.QUESTS_FOR_TEST = await import('./src/quests.js');
     window.WORLD_FOR_TEST = await import('./src/world.js');
   });
@@ -1329,6 +1330,14 @@ try {
         p.pos.y = T.surfaceHeight(p.pos.x, p.pos.z) + up; p.prevPos.copy(p.pos);
         p.quat.setFromUnitVectors(new V(0, 0, -1), d.negate()); p.updateAxes();
       };
+      // (each of his attacks, for a failure's report)
+      const B = window.BOSS_MOVES_FOR_TEST.beat, attack0 = B.attack, calls = [];
+      B.attack = function (en, e2, n) {
+        const m = e2.mv || {}, M = B.mouth(e2, new V()), f = p.forward, tx = e2.pos.x - p.pos.x, tz = e2.pos.z - p.pos.z;
+        if (calls.length < 24) calls.push([n, m.phase, m.due ? 1 : 0, +((f.x * tx + f.z * tz) / (Math.hypot(f.x, f.z) * Math.hypot(tx, tz) || 1)).toFixed(2), Math.round(M.distanceTo(p.pos)), m.ring ? 1 : 0, p.landed ? 1 : 0, +(m.tell || 0).toFixed(1)].join(' '));
+        return attack0.call(this, en, e2, n);
+      };
+      r.calls = calls;
       const clear = () => { G.enemies.shots.splice(0).forEach((x) => G.scene.remove(x.mesh)); G.enemies.list.filter((x) => !x.boss).forEach((x) => G.enemies.removeEnemy(x)); };
       const fly = (n, until = () => false) => {
         for (let i = 0; i < n; i++) {
@@ -1341,7 +1350,7 @@ try {
           // (what the fight looked like, for a failure's report)
           const D = (r.dbg ||= { dy: [1e9, -1e9], gone: 0, landed: 0, dead: 0, front: 0, phase: {}, far: 0, ring: 0, due: 0 });
           D.dy = [Math.min(D.dy[0], Math.round(dy)), Math.max(D.dy[1], Math.round(dy))];
-          if (!G.enemies.list.includes(e)) D.gone++;
+          if (!G.enemies.list.includes(e)) { D.gone++; D.goneAt ??= r.frames; }
           if (p.landed) D.landed++;
           if (p.dead) D.dead++;
           const tx = e.pos.x - p.pos.x, tz = e.pos.z - p.pos.z;
@@ -1425,6 +1434,7 @@ try {
       r.volleys = r.volleys.slice(0, 4);
       r.onGround = r.frames ? +(r.onGround / r.frames).toFixed(2) : 0;
       delete r.frames;
+      B.attack = attack0;
       return r;
     };
     // Where the player is (and back there): Glacierra's long checks shouldn't move every later boss's fight elsewhere.
