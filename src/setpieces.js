@@ -264,7 +264,7 @@ const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
 const CAPS = ['#ff4dc4', '#7aff5a', '#4de8ff', '#b07aff'];
 
-const _local = new THREE.Vector3(), _dummy = new THREE.Object3D(), _col = new THREE.Color();
+const _local = new THREE.Vector3(), _col = new THREE.Color();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Vector3();
 const SPRAY = ['#ffffff', '#e8f6ff', '#bfe4ff'];
 const FIRE = ['#ffd23a', '#ff8a1f', '#ff5a14'];
@@ -2639,6 +2639,7 @@ export class SetPieces {
     ring.rotateX(Math.PI / 2);
     this.flockParts = {
       body, neck, head, wingR, wingL, legs, ring,
+      dummy: new THREE.Object3D(), // poses the ripples (made here, not at load: an Object3D rolls a random id)
       mat: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
       ringMat: new THREE.MeshBasicMaterial({ color: '#d8ecff', transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }),
     };
@@ -2714,7 +2715,7 @@ export class SetPieces {
 
   poseFlock(dt) {
     const G = this.G, F = FLOCK, f = this.flock, t = G.time, S = F.size, sm = (k) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
-    const [body, neck, head, wingR, wingL, legs, rings] = f.meshes;
+    const [body, neck, head, wingR, wingL, legs, rings] = f.meshes, _dummy = this.flockParts.dummy;
     const flying = f.state === 'fly', ft = f.t;
     f.birds.forEach((b, i) => {
       // How far into the air: kh along the ground, kv up, kw the wings (spread first, folded last).
