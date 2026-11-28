@@ -210,8 +210,8 @@ export const BARN = {
   doorW: 22, doorH: 16,  // each end's doorway
   eave: 18, brk: 26, ridge: 30, // the gambrel roof: eaves, where the slope breaks, the ridge
   brkX: 10,              // half width at the break
-  base: 12,              // walls and floor go this far down, for a rolling meadow
-  slope: 5,              // the most the ground may rise and fall across the footprint
+  base: 14,              // the stone footing, walls and floor go this far down, for a rolling meadow
+  slope: 12,             // the most the ground may rise and fall across the footprint (the footing makes up the rest)
   apron: 40,             // the ground this far out of each door must not block it
   siloR: 6, siloH: 34, siloGap: 8, // the silo, standing off one long side
   chickens: 6, scare: 30, scareUp: 20, // chickens scatter when you pass this close, this low
@@ -1932,10 +1932,12 @@ export class SetPieces {
     const G = this.G, p = G.player, f = p.forward.clone().setY(0), B = BARN, W = B.wid / 2, L = B.len / 2;
     if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
     f.normalize();
-    for (let tries = 0; tries < 6; tries++) {
-      const d = rand(B.near, B.far), s = rand(-0.35, 0.35) * d;
-      const x = p.pos.x + f.x * d - f.z * s, z = p.pos.z + f.z * d + f.x * s;
-      const yaw = Math.atan2(p.pos.x - x, p.pos.z - z); // the doors' line points back at you: you see straight through
+    // The meadow rolls a lot, so look at a couple of dozen spots, each turned four ways, and take the first that fits.
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 24 * 4; tries++) {
+      if (tries % 4 === 0) { const d = rand(B.near, B.far), s = rand(-0.35, 0.35) * d; x = p.pos.x + f.x * d - f.z * s; z = p.pos.z + f.z * d + f.x * s; }
+      // First with the doors' line pointing back at you (you see straight through), then turned along the hillside.
+      const yaw = Math.atan2(p.pos.x - x, p.pos.z - z) + (tries % 4) * Math.PI / 4;
       const hs = [];
       for (const lx of [-W, 0, W]) for (const lz of [-L, -L / 2, 0, L / 2, L]) hs.push(this.barnGround(x, z, yaw, lx, lz));
       const lo = Math.min(...hs), hi = Math.max(...hs), sea = G.world.seaLevel;
@@ -1997,6 +1999,7 @@ export class SetPieces {
       roof: new THREE.MeshLambertMaterial({ color: '#4d4446', flatShading: true }),
       dark: new THREE.MeshLambertMaterial({ color: '#2a1e1a' }),
       floor: new THREE.MeshLambertMaterial({ color: '#8a6a44', flatShading: true }),
+      stone: new THREE.MeshLambertMaterial({ color: '#8d877c', flatShading: true }),
       straw: new THREE.MeshLambertMaterial({ color: '#e6c25a', flatShading: true }),
       metal: new THREE.MeshLambertMaterial({ color: '#c3c8cc', flatShading: true }),
       metal2: new THREE.MeshLambertMaterial({ color: '#9aa2a8', flatShading: true }),
@@ -2013,6 +2016,7 @@ export class SetPieces {
     const solid = (x0, x1, z0, z1, y0, y1, o = {}) => boxes.push({ x0, x1, z0, z1, y0, y1, ...o });
     // Floor: planks sunk into the meadow, with straw strewn down the middle.
     box(B.wid, B.base, B.len, M.floor, 0, -B.base / 2, 0);
+    box(B.wid + T + 0.8, B.base, B.len + T + 0.8, M.stone, 0, -B.base / 2 - 0.05, 0); // the fieldstone footing, on a slope
     solid(-W, W, -L, L, -B.base, 0, { floor: true });
     box(B.wid - 6, 0.3, B.len - 4, M.straw, 0, 0.15, 0);
     // The long walls: red boards with darker battens, white corner trim and white-framed windows.
