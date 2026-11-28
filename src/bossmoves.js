@@ -140,6 +140,42 @@ export const GEYSER = {
   bubbles: 4, bubbleSpeed: 70, bubbleDmg: 9, spread: 0.09, colors: ['#e8fbff', '#9ae8ff'],
 };
 const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _q0 = new THREE.Quaternion(), _qFlat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2); // the Geyser Row's instances
+const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _col = new THREE.Color(), RIPPLE = new THREE.Color('#bff4ff');
+// The Geyser Row's shapes, each 1 m tall and about 1 m across (scaled per column). A tube with `ridges` spiral ridges
+// making `turns` turns up it (negative: the other way), `amp` deep, shading from `bottom` at the seabed to `top`.
+function geyserTube(rTop, rBot, ridges, turns, amp, bottom, top) {
+  const geo = new THREE.CylinderGeometry(rTop, rBot, 1, 18, 24, true), pos = geo.attributes.position, c0 = new THREE.Color(bottom), c1 = new THREE.Color(top), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), k = 1 + amp * Math.sin(Math.atan2(z, x) * ridges + y * Math.PI * 2 * turns);
+    pos.setXYZ(i, x * k, y - 0.5, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+// The splash crown on top: a flared cup whose rim breaks into seven ragged petals, pale at the throat, aqua at the tips.
+function geyserCrown() {
+  const geo = new THREE.CylinderGeometry(2.2, 0.8, 1, 28, 3, true), pos = geo.attributes.position, c0 = new THREE.Color('#ffffff'), c1 = new THREE.Color('#5ad8ff'), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), a = Math.atan2(z, x), petal = Math.pow(Math.abs(Math.sin(a * 3.5)), 3);
+    const k = 1 + 0.25 * petal * y;
+    pos.setXYZ(i, x * k, y - 0.5 + 0.7 * petal * y * y, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+// The frothing skirt at the seabed: a low cone of foam, sandy where it meets the floor.
+function geyserSkirt() {
+  const geo = new THREE.CylinderGeometry(0.75, 1.6, 1, 22, 2, true), pos = geo.attributes.position, c0 = new THREE.Color('#d8c8a0'), c1 = new THREE.Color('#e8fbff'), c = new THREE.Color(), col = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i) + 0.5, z = pos.getZ(i), k = 1 + 0.12 * Math.sin(Math.atan2(z, x) * 9) * (1 - y);
+    pos.setXYZ(i, x * k, y, z * k);
+    c.copy(c0).lerp(c1, y); col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
 export const WEB = {
   walk: 46, walkRage: 54, turn: 1.6, ahead: 80, side: 60, near: 12, chase: 220, stride: 18, climb: 60, drop: 110, tilt: 0.35, far: 300,
   // Now and then (every `every` s, `everyRage` enraged, the first `opener` s in) she dashes past you at `dash`/`dashRage`
@@ -451,7 +487,7 @@ export function dropBoss(en, e) {
   if (u.webFx) { en.G.scene.remove(u.webFx.group); u.webFx.disc.geometry.dispose(); u.webFx.disc.children[0].geometry.dispose(); u.webFx.silk.dispose(); u.webFx.fill.dispose(); u.webFx = null; } // Queen Quartzelle's web (its threads share BEAM_LINE)
   if (u.dragFx) { en.G.scene.remove(u.dragFx); u.dragFx.material.dispose(); u.dragFx = null; } // and her drop line
   if (u.wallFx) { en.G.scene.remove(u.wallFx.group); u.wallFx.wall.geometry.dispose(); u.wallFx.top.geometry.dispose(); u.wallFx.wallMat.dispose(); u.wallFx.topMat.dispose(); u.wallFx = null; } // DJ Gigawatt's Bass Drop wall
-  if (u.rowFx) { const f = u.rowFx; en.G.scene.remove(f.group); for (const x of [f.core, f.foam, f.mark]) { x.geometry.dispose(); x.dispose(); } f.coreMat.dispose(); f.foamMat.dispose(); f.markMat.dispose(); u.rowFx = null; } // Baron Barnacle's Geyser Row
+  if (u.rowFx) { const f = u.rowFx; en.G.scene.remove(f.group); for (const x of f.all) { x.geometry.dispose(); x.dispose(); } for (const mt of f.mats) mt.dispose(); u.rowFx = null; } // Baron Barnacle's Geyser Row
   if (u.whirlFx) { en.G.scene.remove(u.whirlFx); disposeTree(u.whirlFx); u.whirlFx = null; } // Grandma Atolla's whirlpool
   if (u.tree) { en.G.scene.remove(u.tree); disposeTree(u.tree); u.tree = null; } // Lady Hootrude's oak, Count Ribbiton's toadstool, Duchess Brûlée's tower
   if (u.groundShadow) { en.G.scene.remove(u.groundShadow); disposeTree(u.groundShadow); u.groundShadow = null; } // a boss's shadow (shade)
@@ -2930,39 +2966,89 @@ export const MOVES = {
       u.fan.rotation.z = 0.25 + Math.sin(t * 0.9) * 0.12;
       if (Math.random() < dt * 1.5) G.fx.emit(MOVES.geyser.mouth(e, _c), 2, { colors: ['#ffffff', '#cff6ff'], speed: 2, life: 1.4, size: 1.2, up: 8 }); // a few bubbles
       shade(en, e, 18);
-      // The Geyser Row: spot marks while he drums, then the columns.
+      // The Geyser Row: churning sand spots with a target ring closing in while he drums, then the geysers: a twisting
+      // jet in a counter-spinning foam sheath, a frothing skirt at the seabed with ripple rings spreading out, and a
+      // splash crown at the top that blooms as the jet arrives. They sway, and fizz down and thin out at the end.
       const R = m.row, fx = R ? MOVES.geyser.rowMesh(en, e) : u.rowFx;
       if (!fx) return;
       fx.group.visible = !!R;
       if (!R) return;
-      const up = R.t < 0 ? 0 : Math.min(1, R.t / GEYSER.rise), end = GEYSER.rise + GEYSER.last;
-      const fade = R.t < end ? 1 : Math.max(0, 1 - (R.t - end) / GEYSER.fade);
-      const n = R.cols.length;
-      fx.core.count = fx.foam.count = fx.mark.count = n;
+      const live = R.t >= 0, up = live ? Math.min(1, R.t / GEYSER.rise) : 0, end = GEYSER.rise + GEYSER.last, rise = 1 - Math.pow(1 - up, 3);
+      const fade = R.t < end ? 1 : Math.max(0, 1 - (R.t - end) / GEYSER.fade), n = R.cols.length, r = GEYSER.r;
+      const tk = R.t < 0 && m.tell0 ? THREE.MathUtils.clamp(1 - m.tell / m.tell0, 0, 1) : 1; // how far into the drum
+      const el = R.t < 0 && m.tell0 ? Math.max(0, m.tell0 - m.tell) : 0, T0 = m.tell0 || 1; // s into the drum: the tell's pulse speeds up from it (at most ~3 Hz)
+      for (const x of fx.all) x.count = n;
+      fx.ripple.count = n * 2; // (after the loop above set it to n)
+      if (live && !R.burst) { // the eruption: a burst of spray and sand at each foot
+        R.burst = true;
+        for (const C of R.cols) {
+          G.fx.emit(_c.set(C.x, C.g + 2, C.z), 6, { colors: ['#ffffff', '#cff6ff', '#7ad8ff'], speed: 34, life: 0.9, size: 4, up: 26, ring: true });
+          G.fx.emit(_c.set(C.x, C.g + 1, C.z), 4, { colors: ['#6a5034', '#c8b890'], speed: 18, life: 1.1, size: 4.5, up: 8, gravity: -20 });
+        }
+      }
       R.cols.forEach((C, i) => {
-        const top = MOVES.geyser.top(en, C.g), h = Math.max(0.1, (top - C.g) * up), wob = 1 + 0.08 * Math.sin(t * 12 + i);
-        _m.compose(_c.set(C.x, C.g + h / 2, C.z), _q0, _s.set(GEYSER.r * 0.55 * wob, h, GEYSER.r * 0.55 * wob)); fx.core.setMatrixAt(i, _m);
-        _m.compose(_c.set(C.x, C.g + h / 2, C.z), _q0, _s.set(GEYSER.r * wob, h, GEYSER.r * wob)); fx.foam.setMatrixAt(i, _m);
-        _m.compose(_c.set(C.x, C.g + 0.4, C.z), _qFlat, _s.set(GEYSER.r * 1.5, GEYSER.r * 1.5, 1)); fx.mark.setMatrixAt(i, _m);
+        const top = MOVES.geyser.top(en, C.g), full = Math.max(0.1, top - C.g), sway = Math.sin(t * 2.3 + i * 1.7) * 0.02;
+        const lift = full * (1 - fade) * 0.85, h = Math.max(0.1, full * rise - lift), base = C.g + lift; // fizzing out: it drops away from the seabed up
+        const thin = 0.55 + 0.45 * fade, wob = 1 + 0.07 * Math.sin(t * 11 + i * 2.1), lean = Math.cos(t * 1.9 + i) * 0.02;
+        _e.set(sway, -t * 2.6 - i, lean, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x, base + h / 2, C.z), _q, _s.set(r * 0.62 * wob * thin, h, r * 0.62 * wob * thin)); fx.core.setMatrixAt(i, _m);
+        _e.set(sway, t * 1.7 + i, lean, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x, base + h / 2, C.z), _q, _s.set(r * wob * thin, h, r * wob * thin)); fx.foam.setMatrixAt(i, _m);
+        // the splash crown rides the jet's top: big while it shoots up, then a steady boil
+        const bloom = (1 + 0.25 * (1 - up)) * (1 + 0.08 * Math.sin(t * 9 + i)) * thin, cr = r * 0.32 * bloom;
+        _e.set(0, t * 0.8 + i, 0, 'XZY'); _q.setFromEuler(_e);
+        _m.compose(_c.set(C.x - Math.sin(lean) * h * 0.5, base + h - cr * 0.5, C.z + Math.sin(sway) * h * 0.5), _q, _s.set(live ? cr : 0.001, live ? cr * 1.4 : 0.001, live ? cr : 0.001)); fx.crown.setMatrixAt(i, _m);
+        _e.set(0, -t * 1.2 - i, 0, 'XZY'); _q.setFromEuler(_e);
+        const sk = live && lift < 1 ? r * (0.75 + 0.06 * Math.sin(t * 7 + i)) * Math.min(1, R.t / 0.2) : 0.001;
+        _m.compose(_c.set(C.x, C.g, C.z), _q, _s.set(sk, sk * 0.45, sk)); fx.skirt.setMatrixAt(i, _m);
+        for (let j = 0; j < 2; j++) { // ripple rings spreading over the seabed, two at a time
+          const l = (t * 0.8 + j * 0.5 + i * 0.137) % 1, rr = live ? r * (0.9 + 1.6 * l) : 0.001;
+          _m.compose(_c.set(C.x, C.g + 0.5, C.z), _qFlat, _s.set(rr, rr, 1)); fx.ripple.setMatrixAt(i * 2 + j, _m);
+          fx.ripple.setColorAt(i * 2 + j, _col.copy(RIPPLE).multiplyScalar((1 - l) * fade));
+        }
+        // the tell: a target ring closing in on the spot, and the spot glowing up, faster as the eruption nears
+        const ring = live ? r * 1.15 : r * (1.6 - 0.45 * tk) * (1 + 0.06 * Math.sin(8 * el + 5 * el * el / T0 + i));
+        _m.compose(_c.set(C.x, C.g + 0.45, C.z), _qFlat, _s.set(ring, ring, 1)); fx.mark.setMatrixAt(i, _m);
+        const sp = r * (0.7 + 0.5 * tk) * (live ? 1.4 : 1);
+        _m.compose(_c.set(C.x, C.g + 0.4, C.z), _qFlat, _s.set(sp, sp, 1)); fx.spot.setMatrixAt(i, _m);
       });
-      fx.core.instanceMatrix.needsUpdate = fx.foam.instanceMatrix.needsUpdate = fx.mark.instanceMatrix.needsUpdate = true;
-      fx.core.visible = fx.foam.visible = R.t >= 0;
-      fx.coreMat.opacity = 0.75 * fade; fx.foamMat.opacity = 0.3 * fade;
-      fx.markMat.opacity = R.t < 0 ? 0.5 + 0.35 * Math.abs(Math.sin(t * 6)) : 0.5 * fade;
+      for (const x of fx.all) x.instanceMatrix.needsUpdate = true;
+      fx.ripple.instanceColor.needsUpdate = true;
+      fx.core.visible = fx.foam.visible = fx.crown.visible = fx.skirt.visible = fx.ripple.visible = live;
+      const flash = live ? Math.max(0, 1 - R.t / 0.3) : 0; // the jets flare white as they burst out
+      fx.coreMat.color.setScalar(1 + 0.7 * flash);
+      fx.coreMat.opacity = 0.8 * fade; fx.foamMat.opacity = 0.32 * fade; fx.crownMat.opacity = 0.7 * fade; fx.skirtMat.opacity = 0.55 * fade;
+      fx.markMat.opacity = live ? 0.4 * fade : 0.45 + 0.4 * tk * Math.abs(Math.sin(5 * el + 2 * el * el / T0));
+      fx.spotMat.opacity = live ? 0.3 * fade : 0.12 + 0.28 * tk;
+      // spray off the crowns and bubbles streaming up the jets (a few per frame)
+      if (live && fade > 0.3 && n) {
+        const C = R.cols[(t * 61 | 0) % n], top = C.g + (MOVES.geyser.top(en, C.g) - C.g) * rise;
+        G.fx.emit(_c.set(C.x, top, C.z), 2, { colors: ['#ffffff', '#cff6ff'], speed: 16, life: 1, size: 3, up: 10, gravity: -14 });
+      }
     },
     rowMesh(en, e) {
       const u = e.mesh.userData;
       if (u.rowFx) return u.rowFx;
-      const N = GEYSER.slots, group = new THREE.Group();
-      const coreMat = new THREE.MeshBasicMaterial({ color: '#f4feff', transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending });
-      const foamMat = new THREE.MeshBasicMaterial({ color: '#7ad8ff', transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+      const N = GEYSER.slots, group = new THREE.Group(), add = THREE.AdditiveBlending;
+      const coreMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, blending: add }); // front side only: rolling through one doesn't white out the screen
+      const foamMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const crownMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const skirtMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, blending: add });
+      const rippleMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.5, depthWrite: false, blending: add });
       const markMat = new THREE.MeshBasicMaterial({ color: '#d8f6ff', transparent: true, opacity: 0.5, depthWrite: false }); // pale foam rings, easy to read through the reef's teal fog
-      const core = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 10, 1, true), coreMat, N);
-      const foam = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.2, 1, 14, 1, true), foamMat, N);
-      const mark = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 16), markMat, N);
-      for (const x of [core, foam, mark]) { x.frustumCulled = false; x.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(x); }
+      const spotMat = new THREE.MeshBasicMaterial({ color: '#9ae8ff', transparent: true, opacity: 0.2, depthWrite: false, blending: add });
+      const core = new THREE.InstancedMesh(geyserTube(1, 0.7, 5, 7, 0.16, '#ffffff', '#9ef0ff'), coreMat, N); // a twisting jet, wider as it rises
+      const foam = new THREE.InstancedMesh(geyserTube(1.15, 0.9, 7, -4, 0.12, '#bff4ff', '#2ab8e8'), foamMat, N); // its sheath, twisting the other way
+      const crown = new THREE.InstancedMesh(geyserCrown(), crownMat, N);
+      const skirt = new THREE.InstancedMesh(geyserSkirt(), skirtMat, N);
+      const ripple = new THREE.InstancedMesh(new THREE.RingGeometry(0.88, 1, 28), rippleMat, N * 2);
+      const mark = new THREE.InstancedMesh(new THREE.RingGeometry(0.72, 1, 28), markMat, N);
+      const spot = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20), spotMat, N);
+      ripple.setColorAt(0, _col.set('#ffffff'));
+      const all = [core, foam, crown, skirt, ripple, mark, spot];
+      for (const x of all) { x.frustumCulled = false; x.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(x); }
       en.G.scene.add(group);
-      return (u.rowFx = { group, core, foam, mark, coreMat, foamMat, markMat });
+      return (u.rowFx = { group, all, mats: [coreMat, foamMat, crownMat, skirtMat, rippleMat, markMat, spotMat], core, foam, crown, skirt, ripple, mark, spot, coreMat, foamMat, crownMat, skirtMat, markMat, spotMat });
     },
     hide(e) { const f = e.mesh.userData.rowFx; if (f) f.group.visible = false; },
   },

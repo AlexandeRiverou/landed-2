@@ -457,8 +457,11 @@ doesn't by itself, but flying on from where it put you does.
   once both claws are off). Every 3rd attack (2nd enraged), while he's in front of you (not mid-dash) and within 280 m,
   he raises both claws and drums the seabed for 1.3 s (1.9 s the first time, with a tip; 1 s enraged): a Geyser Row
   lands across your way where you'll be 0.9 s after its columns are up (following you until 0.8 s before), 252 m wide in 15
-  slots 18 m apart, sand puffing and a pale foam ring pulsing on each column's spot. Then the columns (14 m across) roar up from the seabed to the
-  surface in 0.5 s, hold 3 s and fizz out in 0.6 s (harmless while fading). 3 slots stay clear, one of them 15 to 40 m
+  slots 18 m apart, sand puffing on each column's spot and a pale foam ring closing in on it, pulsing faster as the
+  eruption nears. Then the geysers (14 m across) burst up from the seabed to the surface in 0.5 s in a spray of foam and
+  sand: each a twisting white jet in a counter-spinning foam sheath, a frothing skirt at its foot with ripple rings
+  spreading over the seabed, and a splash crown at its top. They hold 3 s and fizz out in 0.6 s, dropping away from the
+  seabed (harmless while fading). 3 slots stay clear, one of them 15 to 40 m
   off your line, and the slot dead ahead never does, so every row asks for a small turn and one always finds a gap. Flying into a column costs 16 hull and 12 m/s and bobs you up;
   crossing the row through a gap, or rolling through a column, is a dodge (+25, he's dazed). His two claws are
   breakable (5 gaps with one off, 7 with both); his eyes on stalks are soft.
