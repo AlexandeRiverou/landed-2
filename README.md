@@ -448,6 +448,20 @@ doesn't by itself, but flying on from where it put you does.
   Caught in it under its top: 18 hull and 10 m/s of speed. Climbing over it (up to 60 m above its top) or rolling
   through it is a dodge (+25, and he's dazed); none for a plane that was already over it. Each speaker you bust (2 hp,
   4% of his hp) lowers the wall (22 m to 48 m, then 16 m to 36 m). His LED eyes are the weak spot. 95 hp.
+- Baron Barnacle, the Hermit King (the Sunken Reef's land boss; the deck brings him only there, and first there once
+  the two openers are done): a giant hermit crab in a spiral conch so old a coral garden grew on it: branch corals, a
+  purple sea fan, a swaying anemone, starfish, barnacles and a sunken chest wedged in its mouth. He walks the seabed on
+  four legs a side (BEAT's walk: 38 m/s, 46 enraged, never down a cliff or a deep pit), and while he trails he scuttles
+  side-on along your way with his face and his eyes on stalks turned toward you. Every 6 s (4 s enraged) he dashes
+  ahead and keeps pace 9 s facing you. Most attacks are a volley of 4 bubbles from his claws (9 each; from his mouth
+  once both claws are off). Every 3rd attack (2nd enraged), while he's in front of you (not mid-dash) and within 280 m,
+  he raises both claws and drums the seabed for 1.3 s (1.9 s the first time, with a tip; 1 s enraged): a Geyser Row
+  lands across your way where you'll be 0.9 s after its columns are up (following you until 0.8 s before), 252 m wide in 15
+  slots 18 m apart, sand puffing and a pale foam ring pulsing on each column's spot. Then the columns (14 m across) roar up from the seabed to the
+  surface in 0.5 s, hold 3 s and fizz out in 0.6 s (harmless while fading). 3 slots stay clear, one of them 15 to 40 m
+  off your line, and the slot dead ahead never does, so every row asks for a small turn and one always finds a gap. Flying into a column costs 16 hull and 12 m/s and bobs you up;
+  crossing the row through a gap, or rolling through a column, is a dodge (+25, he's dazed). His two claws are
+  breakable (5 gaps with one off, 7 with both); his eyes on stalks are soft.
 - Weak spots (on bosses and enemies alike) wear a faint warm halo in their own colour that breathes slowly: there when
   you look for it, never loud. A hit flashes it white for a moment.
 - Admiral Inkworth the Sky Octopus (a lead boss): jets away and back behind ink clouds, lobbing ink and orb spirals.
