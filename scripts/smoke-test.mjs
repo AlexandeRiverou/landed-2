@@ -1473,7 +1473,7 @@ try {
       if (roof) Object.assign(G.world, { cave: kind === 'crystalSpider' ? 1 : 0, tunnels: 0, city: 0, underwater: false });
       if (sea || swim) seaUp();
       else if (ground) { Object.assign(G.world, { amp: 0.15, seaLevel: -400 }); G.terrain.rebuildAll(); step(30); }
-      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon') && place();
+      const done0 = G.objectives.completed, spot0 = (kind === 'auroraRay' || kind === 'sunBeetle' || kind === 'harvestOwl' || kind === 'castleDragon' || kind === 'boomboxMech') && place();
       const list = startBoss(kind, { mod: null, duo: false });
       const e = list[0];
       let afloat = true;
