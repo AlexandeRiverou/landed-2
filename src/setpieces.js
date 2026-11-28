@@ -1,12 +1,13 @@
 // Land set pieces: big landmarks that belong to one land. Volcano Land's fire geysers, Princess Kingdom's castle,
 // meteors falling onto the Moon and Mars, Frozen Peaks' ice arches, the Tropical Archipelago's breaching whales and
 // the Mushroom Forest's giant bounce mushrooms, the Autumn Woods' great windmill, Canyon Country's railway trestle, the Candy Kingdom's
-// gumball machine and the Dune Sea's camel caravan.
+// gumball machine, the Dune Sea's camel caravan and the Meadowlands' big red barn.
 // Fire geysers: Dark rock cones sit
 // on the slopes above the lava; every so often one rumbles (its crater glows brighter, smoke and embers puff out) and
 // then blows a tall pillar of fire straight up. Flying through the pillar scorches you; skimming past it, close but
 // not in it, is a "Toasty!" near miss worth a few points. The effects are kept subtle: a warm glow, not a light show.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rand } from './texts.js';
 
 export const GEYSER = {
@@ -199,6 +200,26 @@ export const CARAVAN = {
   score: 25,
   dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
 };
+// Meadowlands: a big red barn with doors open at both ends. Flying in one door and out the other is "Barnstormer!".
+export const BARN = {
+  near: 550, far: 900,   // a new barn appears this far ahead, doorway toward you
+  drop: 1500,
+  wait: 20,              // s airborne in the land before the first one, so the starting runway stays clear
+  len: 60, wid: 32,      // along the doors' line, and across
+  wall: 1.6,             // wall thickness
+  doorW: 22, doorH: 16,  // each end's doorway
+  eave: 18, brk: 26, ridge: 30, // the gambrel roof: eaves, where the slope breaks, the ridge
+  brkX: 10,              // half width at the break
+  base: 14,              // the stone footing, walls and floor go this far down, for a rolling meadow
+  slope: 12,             // the most the ground may rise and fall across the footprint (the footing makes up the rest)
+  apron: 40,             // the ground this far out of each door must not block it
+  siloR: 6, siloH: 34, siloGap: 8, // the silo, standing off one long side
+  chickens: 6, scare: 30, scareUp: 20, // chickens scatter when you pass this close, this low
+  hop: 3, flee: 8, settle: 3,          // up 3 m, 8 m away, pecking again after 3 s
+  score: 40,
+  dmg: 6, bumpEvery: 1,  // x1.5 enemy damage = 9 hull, at most once a second
+};
+
 const GUM_COLORS = ['#ff4d8d', '#ffd23a', '#4dc4ff', '#7aff7a', '#b07aff', '#ff8a3a', '#ffffff'];
 
 const _Y = new THREE.Vector3(0, 1, 0), _qb = new THREE.Quaternion();
@@ -247,6 +268,11 @@ export class SetPieces {
     this.caravanT = 0;
     this.caravanTip = false;
     this.caravanMats = null; // made with the first caravan, like the mill's
+    this.barn = null;
+    this.barnT = 0;
+    this.barnWait = 0;
+    this.barnTip = false;
+    this.barnMats = null; // made with the first barn, like the mill's
     this.shrooms = [];
     this.shroomT = 0;
     this.liftT = 0;
@@ -302,6 +328,9 @@ export class SetPieces {
     this.gumT = 0;
     this.dropCaravan();
     this.caravanT = 0;
+    this.dropBarn();
+    this.barnT = 0;
+    this.barnWait = BARN.wait;
     while (this.shrooms.length) this.dropShroom(0);
     this.shroomT = 0;
     this.liftT = 0;
@@ -389,6 +418,7 @@ export class SetPieces {
     if (this.kind === 'trestle') { this.updateTrestle(dt); return; }
     if (this.kind === 'gumball') { this.updateGumball(dt); return; }
     if (this.kind === 'caravan') { this.updateCaravan(dt); return; }
+    if (this.kind === 'barn') { this.updateBarn(dt); return; }
     if (this.kind !== 'geysers') return;
     const G = this.G, p = G.player;
     if (!G.terrain.stale) this.topUp(); // not while a new land is still forming under the fog bank
@@ -1875,6 +1905,402 @@ export class SetPieces {
       p.damage(T.dmg);
       G.fx.emit(p.pos, 18, { colors: ['#c8965a', '#e8c890', '#f2ece0'], speed: 18, life: 0.8, size: 4 });
       if (!this.caravanTip) { this.caravanTip = true; G.ui.notify('Camels are solid! Buzz low past the lead camel for points.', 'warn', 4, 1); }
+    }
+  }
+  // ---- Meadowlands: the big red barn -------------------------------------------------------------------------------
+  // One barn at a time, out ahead of you with a doorway facing your way: red plank walls with white trim, open doors at
+  // both ends, a gambrel roof with a cupola and a rooster weathervane, a silo standing off one side, a stack of round
+  // hay bales and a few chickens pecking about. In one door and out the other is "Barnstormer!", once per barn. Walls,
+  // roof, silo and bales are solid (a little knock, shoved clear, never a wreck); the chickens just scatter.
+  get barnInfo() { return this.barn; }
+
+  dropBarn() {
+    if (!this.barn) return;
+    this.G.scene.remove(this.barn.group);
+    for (const geo of new Set(this.barn.geos)) geo.dispose();
+    this.barn = null;
+  }
+
+  // The ground at a point in a barn's frame (lx across, lz along the doors' line) for a barn at (x, z) facing yaw.
+  barnGround(x, z, yaw, lx, lz) {
+    const cs = Math.cos(yaw), sn = Math.sin(yaw);
+    return this.G.terrain.surfaceHeight(x + lx * cs + lz * sn, z - lx * sn + lz * cs);
+  }
+
+  // Gently rolling dry ground ahead, with nothing rising into either doorway.
+  placeBarn() {
+    const G = this.G, p = G.player, f = p.forward.clone().setY(0), B = BARN, W = B.wid / 2, L = B.len / 2;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    // The meadow rolls a lot, so look at a couple of dozen spots, each turned four ways, and take the first that fits.
+    let x = 0, z = 0;
+    for (let tries = 0; tries < 24 * 4; tries++) {
+      if (tries % 4 === 0) { const d = rand(B.near, B.far), s = rand(-0.35, 0.35) * d; x = p.pos.x + f.x * d - f.z * s; z = p.pos.z + f.z * d + f.x * s; }
+      // First with the doors' line pointing back at you (you see straight through), then turned along the hillside.
+      const yaw = Math.atan2(p.pos.x - x, p.pos.z - z) + (tries % 4) * Math.PI / 4;
+      const hs = [];
+      for (const lx of [-W, 0, W]) for (const lz of [-L, -L / 2, 0, L / 2, L]) hs.push(this.barnGround(x, z, yaw, lx, lz));
+      const lo = Math.min(...hs), hi = Math.max(...hs), sea = G.world.seaLevel;
+      if (hi - lo > B.slope || lo < sea + 2) continue;
+      // The floor sits on the highest ground of the footprint (walls and floor reach down into the rest), so no grass
+      // pokes up inside; out of each door the meadow must not rise into the doorway.
+      let open = true;
+      for (const e of [-1, 1]) for (const k of [0.4, 1]) for (const lx of [-B.doorW / 2, 0, B.doorW / 2]) {
+        const g = this.barnGround(x, z, yaw, lx, e * (L + B.apron * k));
+        if (g > hi + 1 || g < sea + 1) open = false;
+      }
+      const silo = this.barnGround(x, z, yaw, W + B.siloGap + B.siloR, -L / 3);
+      if (!open || silo < sea + 1 || silo < hi - B.base + 1) continue;
+      return this.buildBarn(x, hi, z, yaw);
+    }
+    return null;
+  }
+
+  // The top of the roof at |x| = ax across the barn (above the floor): steep below the break, shallow above it. The
+  // roof overhangs the walls by 1 m.
+  barnRoof(ax) {
+    const B = BARN;
+    if (ax <= B.brkX) return B.ridge - (B.ridge - B.brk) * ax / B.brkX;
+    return B.brk - (B.brk - B.eave) * (Math.min(ax, B.wid / 2 + 1) - B.brkX) / (B.wid / 2 - B.brkX);
+  }
+
+  // A chicken (local +z is forward, 2x size), on its own group so it can hop about.
+  buildHen(M, mesh, brown) {
+    const c = new THREE.Group(), feather = brown ? M.hen2 : M.hen;
+    const ball = (sx, sy, sz, mat, x, y, z, parent = c) => { const o = mesh(new THREE.SphereGeometry(1, 8, 6), mat, parent); o.scale.set(sx, sy, sz); o.position.set(x, y, z); return o; };
+    const box = (w, h, d, mat, x, y, z, parent = c) => { const o = mesh(new THREE.BoxGeometry(w, h, d), mat, parent); o.position.set(x, y, z); return o; };
+    ball(0.42, 0.38, 0.55, feather, 0, 0.75, 0);
+    ball(0.2, 0.34, 0.26, feather, 0, 1.02, -0.5).rotation.x = -0.5; // the tail
+    const head = new THREE.Group();
+    head.position.set(0, 1.08, 0.42);
+    c.add(head);
+    ball(0.2, 0.22, 0.22, feather, 0, 0.1, 0.06, head);
+    const beak = mesh(new THREE.ConeGeometry(0.07, 0.2, 4), M.beak, head);
+    beak.rotation.x = Math.PI / 2; beak.position.set(0, 0.07, 0.32);
+    box(0.06, 0.14, 0.22, M.comb, 0, 0.34, 0.06, head);
+    box(0.06, 0.12, 0.06, M.comb, 0, -0.06, 0.24, head); // the wattle
+    const wings = [-1, 1].map((sx) => {
+      const w = new THREE.Group();
+      w.position.set(sx * 0.4, 0.88, 0);
+      c.add(w);
+      box(0.08, 0.32, 0.6, feather, sx * 0.04, -0.12, 0, w);
+      return w;
+    });
+    for (const sx of [-1, 1]) box(0.05, 0.4, 0.05, M.beak, sx * 0.14, 0.2, 0);
+    c.scale.setScalar(2);
+    return { group: c, head, wings };
+  }
+
+  buildBarn(x, y, z, yaw) {
+    const M = (this.barnMats ||= {
+      red: new THREE.MeshLambertMaterial({ color: '#b3362c', flatShading: true }),
+      red2: new THREE.MeshLambertMaterial({ color: '#8e2a24', flatShading: true }),
+      trim: new THREE.MeshLambertMaterial({ color: '#f3eee4', flatShading: true }),
+      roof: new THREE.MeshLambertMaterial({ color: '#4d4446', flatShading: true }),
+      dark: new THREE.MeshLambertMaterial({ color: '#2a1e1a' }),
+      floor: new THREE.MeshLambertMaterial({ color: '#8a6a44', flatShading: true }),
+      stone: new THREE.MeshLambertMaterial({ color: '#8d877c', flatShading: true }),
+      straw: new THREE.MeshLambertMaterial({ color: '#e6c25a', flatShading: true }),
+      metal: new THREE.MeshLambertMaterial({ color: '#c3c8cc', flatShading: true }),
+      metal2: new THREE.MeshLambertMaterial({ color: '#9aa2a8', flatShading: true }),
+      iron: new THREE.MeshLambertMaterial({ color: '#2b2b2e', flatShading: true }),
+      hen: new THREE.MeshLambertMaterial({ color: '#f4efe6', flatShading: true }),
+      hen2: new THREE.MeshLambertMaterial({ color: '#c8884a', flatShading: true }),
+      comb: new THREE.MeshLambertMaterial({ color: '#d8302a', flatShading: true }),
+      beak: new THREE.MeshLambertMaterial({ color: '#f0b030', flatShading: true }),
+    });
+    const B = BARN, G = this.G, g = new THREE.Group(), geos = [], W = B.wid / 2, L = B.len / 2, T = B.wall;
+    const mesh = (geo, mat, parent = g) => { geos.push(geo); const o = new THREE.Mesh(geo, mat); parent.add(o); return o; };
+    const box = (w, h, d, mat, px, py, pz, parent = g) => { const o = mesh(new THREE.BoxGeometry(w, h, d), mat, parent); o.position.set(px, py, pz); return o; };
+    const boxes = []; // the solid ones, in the barn's frame
+    const solid = (x0, x1, z0, z1, y0, y1, o = {}) => boxes.push({ x0, x1, z0, z1, y0, y1, ...o });
+    // Floor: planks sunk into the meadow, with straw strewn down the middle.
+    box(B.wid, B.base, B.len, M.floor, 0, -B.base / 2, 0);
+    box(B.wid + T + 0.8, B.base, B.len + T + 0.8, M.stone, 0, -B.base / 2 - 0.05, 0); // the fieldstone footing, on a slope
+    solid(-W, W, -L, L, -B.base, 0, { floor: true });
+    box(B.wid - 6, 0.3, B.len - 4, M.straw, 0, 0.15, 0);
+    // The long walls: red boards with darker battens, white corner trim and white-framed windows.
+    for (const sx of [-1, 1]) {
+      const out = sx * (W + T / 2);
+      box(T, B.eave + B.base, B.len, M.red, sx * W, (B.eave - B.base) / 2, 0);
+      solid(W - T / 2, W + T / 2, -L, L, -B.base, B.eave, { mirror: sx });
+      for (let k = -L + 5; k < L - 2; k += 5) box(0.3, B.eave - 1, 0.5, M.red2, out + sx * 0.12, B.eave / 2, k);
+      for (const e of [-1, 1]) box(0.6, B.eave, 1.2, M.trim, out + sx * 0.2, B.eave / 2, e * (L - 0.4));
+      box(0.6, 1, B.len, M.trim, out + sx * 0.2, B.eave - 0.5, 0);
+      for (const k of [-L / 2, 0, L / 2]) {
+        box(0.6, 4.6, 4.6, M.trim, out + sx * 0.2, 11, k);
+        box(0.7, 3.8, 3.8, M.dark, out + sx * 0.25, 11, k);
+        box(0.8, 3.8, 0.35, M.trim, out + sx * 0.3, 11, k);
+        box(0.8, 0.35, 3.8, M.trim, out + sx * 0.3, 11, k);
+      }
+    }
+    // The end walls: the gambrel gable with the big doorway cut out of it.
+    const gable = new THREE.Shape();
+    gable.moveTo(-W - T / 2, -B.base); gable.lineTo(W + T / 2, -B.base); gable.lineTo(W + T / 2, B.eave);
+    gable.lineTo(B.brkX, B.brk); gable.lineTo(0, B.ridge); gable.lineTo(-B.brkX, B.brk); gable.lineTo(-W - T / 2, B.eave);
+    gable.closePath();
+    const hole = new THREE.Path();
+    hole.moveTo(-B.doorW / 2, 0); hole.lineTo(-B.doorW / 2, B.doorH); hole.lineTo(B.doorW / 2, B.doorH); hole.lineTo(B.doorW / 2, 0);
+    hole.closePath();
+    gable.holes.push(hole);
+    const endGeo = new THREE.ExtrudeGeometry(gable, { depth: T, bevelEnabled: false });
+    endGeo.translate(0, 0, -T / 2);
+    const leafW = B.doorW / 2, leafH = B.doorH, diag = Math.hypot(leafW - 1, leafH - 1), tilt = Math.atan2(leafH - 1, leafW - 1);
+    for (const e of [-1, 1]) {
+      mesh(endGeo, M.red).position.z = e * L;
+      const fz = e * (L + T / 2 + 0.3);
+      for (const sx of [-1, 1]) box(1, B.doorH + 1, 0.6, M.trim, sx * (B.doorW / 2 + 0.5), B.doorH / 2, fz);
+      box(B.doorW + 2, 1, 0.6, M.trim, 0, B.doorH + 0.5, fz);
+      box(B.doorW + 6, 0.5, 0.7, M.iron, 0, B.doorH + 1.6, e * (L + T / 2 + 0.5)); // the hinge rail
+      // The doors, swung wide open: red, framed and crossed in white.
+      for (const sx of [-1, 1]) {
+        const hinge = new THREE.Group();
+        hinge.position.set(sx * (B.doorW / 2 + 0.2), 0, e * (L + T / 2 + 0.6));
+        hinge.rotation.y = -e * sx * 0.45; // open about 155 degrees: the far edge stands off the wall
+        g.add(hinge);
+        const lx = sx * leafW / 2;
+        box(leafW, leafH, 0.5, M.red, lx, leafH / 2, 0, hinge);
+        for (const yy of [0.4, leafH - 0.4]) box(leafW, 0.8, 0.7, M.trim, lx, yy, 0, hinge);
+        for (const xx of [0.4, leafW - 0.4]) box(0.8, leafH, 0.7, M.trim, sx * xx, leafH / 2, 0, hinge);
+        for (const s of [-1, 1]) box(diag, 0.7, 0.7, M.trim, lx, leafH / 2, 0, hinge).rotation.z = s * tilt;
+      }
+      // The hayloft door up in the gable, with its hoist beam.
+      box(6.6, 6.6, 0.5, M.trim, 0, 21.5, fz);
+      box(5.4, 5.4, 0.6, M.red2, 0, 21.5, fz + e * 0.05);
+      for (const s of [-1, 1]) box(7, 0.5, 0.7, M.trim, 0, 21.5, fz + e * 0.1).rotation.z = s * Math.PI / 4;
+      box(1, 1, 4, M.floor, 0, 27, e * (L + 2));
+    }
+    // The roof: four long panels (steep below the break, shallow above it), white boards along the gable edges, a
+    // ridge cap, and a little cupola with the weathervane on top.
+    const prof = [[W + 1, this.barnRoof(W + 1)], [B.brkX, B.brk], [0, B.ridge]];
+    for (let i = 0; i < 2; i++) {
+      const [x1, y1] = prof[i], [x2, y2] = prof[i + 1], len = Math.hypot(x1 - x2, y1 - y2), a = Math.atan2(y1 - y2, x1 - x2);
+      const nx = -Math.sin(a), ny = Math.cos(a); // the panel's outward normal (on the +x side)
+      for (const sx of [-1, 1]) {
+        const px = sx * ((x1 + x2) / 2 + nx * 0.4), py = (y1 + y2) / 2 + ny * 0.4;
+        box(len + 0.6, 0.8, B.len + 3, M.roof, px, py, 0).rotation.z = sx * a;
+        for (const e of [-1, 1]) box(len + 0.6, 1, 0.5, M.trim, sx * ((x1 + x2) / 2 + nx * 0.9), (y1 + y2) / 2 + ny * 0.9, e * (L + 1.6)).rotation.z = sx * a;
+      }
+    }
+    box(1.6, 0.8, B.len + 3, M.roof, 0, B.ridge + 0.7, 0);
+    box(4, 3.6, 4, M.red, 0, B.ridge + 2.4, 0);
+    for (const k of [-1, 1]) { box(4.2, 0.4, 4.2, M.trim, 0, B.ridge + 0.8 + k * 1.6 + 1.6, 0); }
+    box(4.1, 1.6, 3.2, M.dark, 0, B.ridge + 2.4, 0); box(3.2, 1.6, 4.1, M.dark, 0, B.ridge + 2.4, 0); // the vents
+    const cap = mesh(new THREE.ConeGeometry(3.6, 2.6, 4), M.roof);
+    cap.position.y = B.ridge + 5.5; cap.rotation.y = Math.PI / 4;
+    box(0.25, 4, 0.25, M.iron, 0, B.ridge + 8.5, 0);
+    for (const a of [0, Math.PI / 2]) box(3, 0.15, 0.15, M.iron, 0, B.ridge + 8, 0).rotation.y = a; // the compass arms
+    const vane = new THREE.Group();
+    vane.position.y = B.ridge + 9.6;
+    g.add(vane);
+    box(0.18, 0.18, 4.2, M.iron, 0, 0, 0, vane); // the arrow: its point into the wind (local +z), the fin behind
+    const tipC = mesh(new THREE.ConeGeometry(0.35, 0.8, 4), M.iron, vane);
+    tipC.rotation.x = Math.PI / 2; tipC.position.z = 2.4;
+    box(0.12, 0.9, 1, M.iron, 0, 0.2, -2, vane);
+    box(0.14, 1.1, 1.7, M.iron, 0, 1.1, 0.1, vane); // the rooster: body, tail, neck and head, comb
+    box(0.14, 1.4, 0.6, M.iron, 0, 1.5, -0.9, vane);
+    box(0.14, 0.9, 0.5, M.iron, 0, 2, 0.8, vane);
+    box(0.14, 0.4, 0.5, M.comb, 0, 2.6, 0.85, vane);
+    box(0.14, 0.6, 0.12, M.iron, 0, 0.45, 0.2, vane);
+    // The silo off the +x side: banded, with a domed cap and a ladder.
+    const so = { x: W + B.siloGap + B.siloR, z: -L / 3 }, R = B.siloR, H = B.siloH;
+    mesh(new THREE.CylinderGeometry(R, R, H + B.base, 14), M.metal).position.set(so.x, (H - B.base) / 2, so.z);
+    for (let h = 4; h < H; h += 6) mesh(new THREE.CylinderGeometry(R + 0.15, R + 0.15, 0.5, 14), M.metal2).position.set(so.x, h, so.z);
+    mesh(new THREE.SphereGeometry(R, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), M.metal2).position.set(so.x, H, so.z);
+    box(1.2, 1, 1.2, M.metal2, so.x, H + R + 0.3, so.z);
+    for (const sx of [-0.6, 0.6]) box(0.15, H, 0.15, M.iron, so.x - R - 0.3, H / 2, so.z + sx);
+    for (let h = 1; h < H; h += 1.2) box(0.12, 0.12, 1.3, M.iron, so.x - R - 0.3, h, so.z);
+    // Round hay bales stacked against the +x wall, nearer the doors you came in by.
+    const bz = L / 3, bx = W + T / 2 + 2.5, br = 2.4;
+    const bg = this.barnGround(x, z, yaw, bx, bz) - y; // they sit on the meadow there, not on the floor's level
+    const bales = [[bz - 5, 0], [bz, 0], [bz + 5, 0], [bz - 2.5, 1], [bz + 2.5, 1]];
+    for (const [zz, row] of bales) {
+      const by = bg + br - 0.3 + row * (br * 1.7);
+      const bale = mesh(new THREE.CylinderGeometry(br, br, 4.6, 12), M.straw);
+      bale.rotation.z = Math.PI / 2; bale.position.set(bx, by, zz);
+      for (const s of [-1, 1]) {
+        const band = mesh(new THREE.CylinderGeometry(br + 0.05, br + 0.05, 0.25, 12), M.floor);
+        band.rotation.z = Math.PI / 2; band.position.set(bx + s * 1.2, by, zz);
+      }
+    }
+    solid(W + T / 2, bx + 2.3, bz - 7.4, bz + 7.4, -B.base, bg + br * 2.7 + br - 0.3);
+    // Chickens, pecking about on the -x side, out of both doorways.
+    const hens = [];
+    for (let k = 0; k < B.chickens; k++) {
+      const h = this.buildHen(M, mesh, k % 3 === 2);
+      h.lx = -(W + rand(5, 16)); h.lz = rand(-L / 2.5, L / 2.5);
+      h.y = this.barnGround(x, z, yaw, h.lx, h.lz) - y;
+      h.group.position.set(h.lx, h.y, h.lz);
+      h.group.rotation.y = rand(0, Math.PI * 2);
+      h.state = 'peck'; h.t = 0; h.phase = rand(0, 6); h.from = [0, 0]; h.to = [0, 0];
+      g.add(h.group);
+      hens.push(h);
+    }
+    this.mergeStatic(g, [vane, ...hens.map((h) => h.group)], geos);
+    g.position.set(x, y, z);
+    g.rotation.y = yaw;
+    G.scene.add(g);
+    this.barn = { group: g, geos, vane, hens, boxes, silo: so, pos: g.position, yaw, heading: rand(0, Math.PI * 2), seed: rand(0, 10), stormed: false, inside: 0, bumpT: 0, prevZ: null };
+    return this.barn;
+  }
+
+  // A barn is a couple of hundred little boxes: draw everything that never moves as one mesh per material. keep: the
+  // groups that move (left as they are).
+  mergeStatic(g, keep, geos) {
+    g.updateMatrixWorld(true);
+    const skip = new Set(), by = new Map(), gone = [];
+    for (const k of keep) k.traverse((o) => skip.add(o));
+    g.traverse((o) => {
+      if (!o.isMesh || skip.has(o)) return;
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld);
+      for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal') geo.deleteAttribute(k);
+      if (!by.has(o.material)) by.set(o.material, []);
+      by.get(o.material).push(geo);
+      gone.push(o);
+    });
+    for (const o of gone) { o.parent.remove(o); o.geometry.dispose(); }
+    for (const [mat, list] of by) {
+      const merged = mergeGeometries(list);
+      for (const geo of list) geo.dispose();
+      g.add(new THREE.Mesh(merged, mat));
+      geos.push(merged);
+    }
+  }
+
+  updateBarn(dt) {
+    const G = this.G, p = G.player, B = BARN;
+    if (this.barn && Math.hypot(this.barn.pos.x - p.pos.x, this.barn.pos.z - p.pos.z) > B.drop) this.dropBarn();
+    if (!p.landed && !p.dead) this.barnWait -= dt;
+    if (!this.barn && this.barnWait <= 0 && !G.terrain.stale && (this.barnT -= dt) <= 0) { this.barnT = 0.5; this.placeBarn(); }
+    const b = this.barn;
+    if (!b) return;
+    const t = G.time;
+    // The weathervane: a lazy meadow breeze that wanders and drops away now and then (the vane holds still then),
+    // or the game's own wind when there is one. A little wobble in the stronger puffs.
+    const air = _a.copy(p.wind).add(p.gust);
+    let target, strength;
+    if (air.lengthSq() > 1) { target = Math.atan2(-air.x, -air.z); strength = 1; }
+    else {
+      target = b.seed + 0.9 * Math.sin(t * 0.031 + b.seed) + 0.5 * Math.sin(t * 0.077);
+      strength = Math.max(0, Math.sin(t * 0.13 + b.seed) * 0.6 + 0.5);
+    }
+    let da = (target - b.heading) % (Math.PI * 2);
+    if (da > Math.PI) da -= Math.PI * 2; else if (da < -Math.PI) da += Math.PI * 2;
+    b.heading += da * Math.min(1, dt * 0.8 * strength);
+    b.vane.rotation.y = b.heading - b.yaw + 0.18 * strength * Math.sin(t * 2.3 + b.seed) * Math.sin(t * 0.7);
+    this.updateHens(b, dt);
+    b.bumpT = Math.max(0, b.bumpT - dt);
+    if (p.dead) { b.prevZ = null; b.inside = 0; return; }
+    const L = this.archLocal(b, _local), r = 2.5 * (p.sizeScale || 1), W = B.wid / 2, Lz = B.len / 2, T = B.wall;
+    // Barnstorming: in through one doorway, out through the other.
+    if (Math.abs(L.x) > W + 2) b.inside = 0;
+    if (b.prevZ !== null && Math.abs(L.x) < B.doorW / 2 && L.y > -2 && L.y < B.doorH) {
+      for (const e of [-1, 1]) {
+        const wall = e * Lz;
+        if (Math.sign(b.prevZ - wall) === Math.sign(L.z - wall)) continue;
+        if (Math.abs(L.z) < Math.abs(b.prevZ)) { b.inside = e; continue; } // in through the e end
+        if (b.inside === -e && !b.stormed) {
+          b.stormed = true;
+          G.score += B.score;
+          G.fx.popText(p.pos.clone().setY(p.pos.y + 6), `+${B.score} Barnstormer!`);
+          const cs = Math.cos(b.yaw), sn = Math.sin(b.yaw), oz = e * (Lz + 4);
+          _b.set(b.pos.x + oz * sn, b.pos.y + 5, b.pos.z + oz * cs); // a puff of straw blown out after you
+          G.fx.emit(_b, 36, { colors: ['#e6c25a', '#f2dc8a', '#c8a040'], speed: 14, up: 4, life: 1.6, size: 3, gravity: -4, drag: 0.5 });
+        }
+        b.inside = 0;
+      }
+    }
+    b.prevZ = L.z;
+    // Solid wood, tin and hay: push out of anything you're in, with a small knock once a second.
+    let hit = false;
+    const push = (mx, my, mz) => {
+      const cs = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+      p.pos.x += mx * cs + mz * sn; p.pos.z += -mx * sn + mz * cs; p.pos.y += my;
+      this.archLocal(b, L);
+      hit = true;
+    };
+    const sgn = (v) => (v < 0 ? -1 : 1);
+    const least = (opts) => opts.reduce((a, o) => (Math.abs(o[0]) + Math.abs(o[1]) + Math.abs(o[2]) < Math.abs(a[0]) + Math.abs(a[1]) + Math.abs(a[2]) ? o : a));
+    for (const s of b.boxes) {
+      if (s.floor && p.landed) continue; // taxiing goes by the meadow under the wheels
+      const x0 = s.mirror === -1 ? -s.x1 : s.x0, x1 = s.mirror === -1 ? -s.x0 : s.x1;
+      if (L.x < x0 - r || L.x > x1 + r || L.z < s.z0 - r || L.z > s.z1 + r || L.y < s.y0 - r || L.y > s.y1 + r) continue;
+      const was = hit;
+      push(...least([[x0 - r - L.x, 0, 0], [x1 + r - L.x, 0, 0], [0, 0, s.z0 - r - L.z], [0, 0, s.z1 + r - L.z], [0, s.y1 + r - L.y, 0]]));
+      if (s.floor) hit = was; // skimming the planks only lifts you: flying low through the barn is the fun of it
+    }
+    // The end walls (the doorway cut out), and the roof over it all.
+    for (const e of [-1, 1]) {
+      const wall = e * Lz, ax = Math.abs(L.x);
+      if (Math.abs(L.z - wall) >= T / 2 + r || ax >= W + T / 2 + r || L.y < -B.base || L.y > this.barnRoof(Math.min(ax, W)) + r) continue;
+      if (ax < B.doorW / 2 - r && L.y < B.doorH - r) continue; // clean through the doorway
+      const side = Math.sign((b.prevZ ?? L.z) - wall) || e, opts = [[0, 0, wall + side * (T / 2 + r) - L.z]];
+      if (L.y < B.doorH - r) opts.push([sgn(L.x) * (B.doorW / 2 - r) - L.x, 0, 0]); // a jamb: nudged into the doorway
+      if (ax < B.doorW / 2 - r) opts.push([0, B.doorH - r - L.y, 0]); // the lintel: nudged down into it
+      push(...least(opts));
+    }
+    {
+      const ax = Math.abs(L.x), top = this.barnRoof(ax);
+      if (ax < W + 1 + r && Math.abs(L.z) < Lz + 1.6 + r && L.y > B.eave - r && L.y < top + r) {
+        const opts = [[0, top + r - L.y, 0], [sgn(L.x) * (W + 1 + r) - L.x, 0, 0], [0, 0, sgn(L.z) * (Lz + 1.6 + r) - L.z]];
+        if (ax < W - T / 2 && Math.abs(L.z) < Lz) opts.push([0, B.eave - r - L.y, 0]); // inside: under the rafters
+        push(...least(opts));
+      }
+    }
+    // The silo: a tin drum with a dome.
+    {
+      const dx = L.x - b.silo.x, dz = L.z - b.silo.z, R = B.siloR, H = B.siloH, d = Math.hypot(dx, dz);
+      if (L.y > H) {
+        const up = L.y - H, d3 = Math.hypot(dx, up, dz);
+        if (d3 < R + r) { const k = d3 > 1e-3 ? (R + r - d3) / d3 : 0; push(dx * k, d3 > 1e-3 ? up * k : R + r, dz * k); }
+      } else if (L.y > -B.base && d < R + r) {
+        const k = d > 1e-3 ? (R + r - d) / d : 0;
+        push(d > 1e-3 ? dx * k : R + r, 0, dz * k);
+      }
+    }
+    if (hit && b.bumpT <= 0) {
+      b.bumpT = B.bumpEvery;
+      p.damage(B.dmg);
+      G.fx.emit(p.pos, 18, { colors: ['#b3362c', '#f3eee4', '#e6c25a'], speed: 18, life: 0.8, size: 4 });
+      if (!this.barnTip) { this.barnTip = true; G.ui.notify('Barns are sturdier than they look! Fly in one door and out the other.', 'warn', 4, 1); }
+    }
+  }
+
+  // The chickens peck about; fly by low and close and they scatter in a flap of feathers, then settle and peck again.
+  updateHens(b, dt) {
+    const G = this.G, p = G.player, B = BARN, t = G.time, cs = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+    const world = (lx, lz) => _q.set(b.pos.x + lx * cs + lz * sn, 0, b.pos.z - lx * sn + lz * cs);
+    const L = this.archLocal(b, _local);
+    for (const h of b.hens) {
+      h.t += dt;
+      const near = !p.dead && h.state !== 'flee' && Math.hypot(L.x - h.lx, L.z - h.lz) < B.scare && L.y - h.y < B.scareUp;
+      if (near) {
+        const ax = h.lx - L.x, az = h.lz - L.z, a = Math.hypot(ax, az) || 1;
+        h.from = [h.lx, h.lz]; h.to = [Math.min(h.lx + (ax / a) * B.flee, -(B.wid / 2 + B.wall + 1)), h.lz + (az / a) * B.flee]; // never into the barn
+        h.state = 'flee'; h.t = 0;
+        h.group.rotation.y = Math.atan2(ax, az);
+        _b.copy(world(h.lx, h.lz)).setY(b.pos.y + h.y + 1.5);
+        G.fx.emit(_b, 2, { colors: ['#ffffff', '#f4efe6', '#c8884a'], speed: 5, up: 3, life: 1.5, size: 1.5, gravity: -1.5, drag: 1.2 });
+      }
+      if (h.state === 'flee') {
+        const k = Math.min(1, h.t / 0.9);
+        h.lx = h.from[0] + (h.to[0] - h.from[0]) * k; h.lz = h.from[1] + (h.to[1] - h.from[1]) * k;
+        const w = world(h.lx, h.lz);
+        h.y = G.terrain.surfaceHeight(w.x, w.z) - b.pos.y;
+        h.group.position.set(h.lx, h.y + B.hop * 4 * k * (1 - k), h.lz);
+        const flap = 0.4 + 0.9 * Math.abs(Math.sin(h.t * 28));
+        h.wings[0].rotation.z = -flap; h.wings[1].rotation.z = flap;
+        h.head.rotation.x = -0.3;
+        if (k >= 1) { h.state = 'settle'; h.t = 0; h.wings[0].rotation.z = h.wings[1].rotation.z = 0; }
+      } else if (h.state === 'settle') {
+        h.head.rotation.x = -0.15 + 0.1 * Math.sin(h.t * 9); // a startled look around
+        h.group.position.y = h.y;
+        if (h.t > B.settle) { h.state = 'peck'; h.t = 0; }
+      } else { // pecking: a quick dip now and then
+        h.head.rotation.x = 1.1 * Math.max(0, Math.sin(t * 2.6 + h.phase)) ** 6;
+        h.group.position.y = h.y;
+      }
     }
   }
 }
